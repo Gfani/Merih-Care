@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  # Database Service
+  postgres:
+    image: postgres:15-alpine
+    container_name: merihcare-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: merihcare_user
+      POSTGRES_PASSWORD: merihcare_password
+      POSTGRES_DB: merihcare_db
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Cache Service
+  redis:
+    image: redis:7-alpine
+    container_name: merihcare-redis
+    restart: always
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:

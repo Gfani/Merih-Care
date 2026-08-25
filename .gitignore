@@ -1,0 +1,103 @@
+# ==========================================
+# Merihcare Root .gitignore
+# Rules for Node (NestJS, React/Vite), Flutter, and IDEs
+# ==========================================
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+tumbs.db
+
+# IDEs & Editor configurations
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.orig
+
+# --- Node & Frontend / Backend Common ---
+node_modules/
+jspm_packages/
+web_app/dist/
+admin-web/dist/
+backend/dist/
+out/
+build/
+
+# Logs & Runtime
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment & Secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+backend/.env
+admin-web/.env
+
+# Diagnostic & Coverage reports
+coverage/
+.nyc_output/
+.eslintcache
+.stylelintcache
+
+# --- Flutter / Dart Specific ---
+# https://github.com/github/gitignore/blob/main/Dart.gitignore
+
+# Flutter tool files
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+
+# Android build files
+mobile/android/local.properties
+mobile/android/key.properties
+mobile/android/app/local.properties
+mobile/android/app/key.properties
+mobile/build/
+mobile/.metadata
+
+# iOS / macOS build files
+mobile/ios/.symlinks/
+mobile/ios/Pods/
+mobile/ios/Flutter/Flutter.podspec
+mobile/ios/Flutter/Generated.xcconfig
+mobile/ios/Flutter/flutter_export_environment.sh
+mobile/ios/ServiceDefinitions.json
+mobile/ios/Runner/GeneratedPluginRegistrant.h
+mobile/ios/Runner/GeneratedPluginRegistrant.m
+mobile/ios/Runner/project.xcworkspace
+
+# Web / Windows / Linux build directories for Flutter
+mobile/build/
+mobile/web/
+mobile/windows/
+mobile/linux/
+mobile/macos/
+
+# Symbol files (Flutter crash reporting, etc.)
+*.symbols
+*.pdb
+*.ipa
+*.apk
+*.ap_
+*.aab
