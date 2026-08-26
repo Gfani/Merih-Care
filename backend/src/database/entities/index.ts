@@ -6,3 +6,4 @@ export * from "./complaint.entity";
 export * from "./review.entity";
 export * from "./emergency.entity";
 export * from "./location.entity";
+export * from "./session.entity";
