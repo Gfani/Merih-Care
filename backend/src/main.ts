@@ -10,7 +10,7 @@ async function bootstrap() {
 
   // Enable Cross-Origin Resource Sharing (CORS) for frontend clients
   app.enableCors({
-    origin: "*", // In production, specify front-end domain
+    origin: true,
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
     credentials: true,
   });

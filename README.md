@@ -100,16 +100,21 @@ To run the local database and other supporting services (such as PostgreSQL and 
         ```bash
         cp .env.example .env
         ```
-    *   Configure your database credentials and API secrets in `.env`.
-4.  Run database migrations (if applicable):
-    ```bash
-    npm run migration:run
-    ```
+    *   Separate configurations are provided for each stage. Place configs in their respective files to load dynamically based on `NODE_ENV` (e.g. `.env.development`, `.env.staging`, `.env.production`).
+4.  Manage local development database (controlled seeding & resets):
+    *   **Reset Database**: Recreate schema and wipe existing tables:
+        ```bash
+        npm run db:reset
+        ```
+    *   **Seed Mock Data**: Populates local tables with mock datasets (blocked in production environment):
+        ```bash
+        npm run db:seed
+        ```
 5.  Start the NestJS development server:
     ```bash
     npm run start:dev
     ```
-    *   The API server will typically run on `http://localhost:3000`.
+    *   The API server will run on `http://localhost:3000`.
 
 ---
 
@@ -123,7 +128,13 @@ To run the local database and other supporting services (such as PostgreSQL and 
     ```bash
     npm install
     ```
-3.  Start the Vite dev server:
+3.  Set up environment configurations:
+    *   Create a `.env` file from the example template:
+        ```bash
+        cp .env.example .env
+        ```
+    *   Vite dynamically loads environment targets (e.g. `.env.development`, `.env.staging`, `.env.production`) depending on the build mode.
+4.  Start the Vite dev server:
     ```bash
     npm run dev
     ```

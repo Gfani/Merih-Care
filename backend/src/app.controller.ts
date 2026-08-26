@@ -140,4 +140,52 @@ export class AppController {
   async move(@Param("id") id: string, @Body() body: any) {
     return this.appService.updateLocation(id, body.x, body.y);
   }
+
+  // ─── PLATFORM SETTINGS ──────────────────────────────────────────────────────────
+  @Get("settings")
+  async getSettings() {
+    return this.appService.getSettings();
+  }
+
+  @Put("settings")
+  async updateSettings(@Body() body: any) {
+    return this.appService.updateSettings(body);
+  }
+
+  // ─── ADMIN PROFILE & PASSWORD ───────────────────────────────────────────────────
+  @Get("admin/profile")
+  async getAdminProfile() {
+    return this.appService.getAdminProfile();
+  }
+
+  @Put("admin/profile")
+  async updateAdminProfile(@Body() body: any) {
+    return this.appService.updateAdminProfile(body.name, body.email);
+  }
+
+  @Put("admin/password")
+  async updateAdminPassword(@Body() body: any) {
+    return this.appService.updateAdminPassword(body.currentPassword, body.newPassword);
+  }
+
+  // ─── ADDITIONAL PLATFORM METRICS & LOGS ──────────────────────────────────────────
+  @Get("audit-logs")
+  async getAuditLogs() {
+    return this.appService.getAuditLogs();
+  }
+
+  @Get("payments")
+  async getPayments() {
+    return this.appService.getTransactions();
+  }
+
+  @Get("requests")
+  async getServiceRequests() {
+    return this.appService.getServiceRequests();
+  }
+
+  @Get("dashboard/stats")
+  async getDashboardStats() {
+    return this.appService.getDashboardStats();
+  }
 }

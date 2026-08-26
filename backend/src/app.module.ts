@@ -21,7 +21,7 @@ import { AppService } from "./app.service";
     // Load config globally
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ".env",
+      envFilePath: process.env.NODE_ENV ? `.env.${process.env.NODE_ENV}` : ".env",
     }),
     
     // Connect Database

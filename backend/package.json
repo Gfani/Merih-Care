@@ -10,7 +10,9 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main"
+    "start:prod": "node dist/main",
+    "db:reset": "ts-node src/db-control.ts reset",
+    "db:seed": "ts-node src/db-control.ts seed"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",

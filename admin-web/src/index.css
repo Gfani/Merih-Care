@@ -186,3 +186,23 @@ input:focus, textarea:focus, select:focus, button:focus-visible {
   border-color: #334155 !important;
 }
 
+@media print {
+  aside, header, button, select, .bg-amber-500 {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+    background: white !important;
+    color: black !important;
+    margin: 0 !important;
+  }
+  .lg\:pl-56, .lg\:pl-16 {
+    padding-left: 0 !important;
+  }
+  .bg-white, .dark\:.bg-white {
+    background-color: white !important;
+    border-color: #e2e8ee !important;
+    box-shadow: none !important;
+  }
+}
+

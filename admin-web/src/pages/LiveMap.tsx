@@ -28,6 +28,11 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
   const [selected, setSelected] = useState<typeof MAP_PINS[0] | null>(null);
   const [filter, setFilter] = useState<"all" | "providers" | "patients">("all");
 
+  const [demoMode] = useState(() => {
+    const stored = localStorage.getItem("demo_mode");
+    return stored === null ? true : stored === "true";
+  });
+
   const visible = MAP_PINS.filter(p =>
     filter === "all" ? true : filter === "providers" ? p.type === "provider" : p.type === "patient"
   );
@@ -71,9 +76,11 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
         </div>
 
         {/* Live badge */}
-        <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-white dark:bg-slate-800/90 rounded-full px-2.5 py-1 shadow-sm">
-          <span className="w-1.5 h-1.5 bg-[#dc2626] rounded-full animate-pulse" />
-          <span className="text-[11px] font-bold text-[#18232e]">LIVE</span>
+        <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-white dark:bg-slate-800/90 rounded-full px-2.5 py-1 shadow-sm border border-[#e2e8ee] dark:border-slate-700">
+          <span className={`w-1.5 h-1.5 rounded-full ${demoMode ? "bg-amber-500 animate-pulse" : "bg-[#dc2626] animate-pulse"}`} />
+          <span className="text-[10px] font-bold text-[#18232e] dark:text-slate-100">
+            {demoMode ? "DEMO (SANDBOX)" : "LIVE API"}
+          </span>
         </div>
 
         {/* Pins */}
@@ -81,27 +88,30 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
           const meta = STATUS_META[pin.status] || { label: pin.status, color: "#94a3b8" };
           const isSelected = selected?.id === pin.id;
           const isProvider = pin.type === "provider";
+          const desc = `${pin.name} (${pin.role}) - Status: ${meta.label}`;
           return (
             <button
               key={pin.id}
               onClick={() => setSelected(isSelected ? null : pin)}
               className={`absolute flex flex-col items-center group ${pin.status === "searching" || pin.status === "on_the_way" || pin.status === "active" ? "animate-bounce" : ""}`}
               style={{ left: `${pin.lat}%`, top: `${pin.lng}%`, transform: "translate(-50%, -100%)" }}
+              aria-label={desc}
+              title={desc}
             >
               <div
                 className={`w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white text-[10px] font-bold transition-transform group-hover:scale-110 ${isSelected ? "scale-125 ring-2 ring-offset-1" : ""}`}
                 style={{ backgroundColor: pin.status === "offline" ? "#94a3b8" : pin.color, ringColor: pin.color } as React.CSSProperties}
               >
                 {isProvider ? (
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4" fill="white"/></svg>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="white" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4" fill="white"/></svg>
                 ) : (
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4" fill="white" stroke="white"/></svg>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="white" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4" fill="white" stroke="white"/></svg>
                 )}
               </div>
               {/* Status dot */}
               <span className="absolute top-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white" style={{ backgroundColor: meta.color }} />
               {/* Name label on hover / selected */}
-              <div className={`mt-1 bg-white dark:bg-slate-800 text-[#18232e] text-[9px] font-semibold px-1.5 py-0.5 rounded shadow-sm whitespace-nowrap ${isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"} transition-opacity`}>
+              <div className={`mt-1 bg-white dark:bg-slate-800 text-[#18232e] dark:text-slate-100 text-[9px] font-semibold px-1.5 py-0.5 rounded shadow-sm whitespace-nowrap ${isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"} transition-opacity`}>
                 {pin.name.split(" ")[0]}
               </div>
             </button>
@@ -110,19 +120,19 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
 
         {/* Selected info card */}
         {selected && (
-          <div className="absolute bottom-3 left-3 right-3 bg-white dark:bg-slate-800/95 backdrop-blur-sm rounded-[12px] shadow-lg p-3 border border-[#e2e8ee]">
+          <div className="absolute bottom-3 left-3 right-3 bg-white dark:bg-slate-800/95 backdrop-blur-sm rounded-[12px] shadow-lg p-3 border border-[#e2e8ee] dark:border-slate-700">
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0" style={{ backgroundColor: selected.color }}>
                 {selected.initials}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <p className="text-xs font-bold text-[#18232e] truncate">{selected.name}</p>
+                  <p className="text-xs font-bold text-[#18232e] dark:text-white truncate">{selected.name}</p>
                   <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold text-white shrink-0" style={{ backgroundColor: STATUS_META[selected.status]?.color || "#94a3b8" }}>
                     {STATUS_META[selected.status]?.label || selected.status}
                   </span>
                 </div>
-                <p className="text-[10px] text-[#8a9aaa]">{selected.role} · {selected.type === "provider" ? "Provider" : "Patient"}</p>
+                <p className="text-[10px] text-[#8a9aaa] dark:text-slate-400">{selected.role} · {selected.type === "provider" ? "Provider" : "Patient"}</p>
               </div>
               <button onClick={() => setSelected(null)} className="text-[#8a9aaa] hover:text-[#4a5a6a] shrink-0 text-lg leading-none">×</button>
             </div>
@@ -133,12 +143,12 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       {/* Sidebar list */}
       <div className={`${compact ? "md:w-48" : "lg:w-64"} space-y-2`}>
         {/* Filter tabs */}
-        <div className="flex gap-1 bg-[#f4f7f9] rounded-[8px] p-1">
+        <div className="flex gap-1 bg-[#f4f7f9] dark:bg-slate-800 rounded-[8px] p-1">
           {(["all", "providers", "patients"] as const).map(f => (
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`flex-1 text-[11px] font-semibold py-1 rounded-[6px] capitalize transition-colors ${filter === f ? "bg-white dark:bg-slate-800 text-[#0d7c6a] shadow-sm" : "text-[#8a9aaa]"}`}
+              className={`flex-1 text-[11px] font-semibold py-1 rounded-[6px] capitalize transition-colors ${filter === f ? "bg-white dark:bg-slate-700 text-[#0d7c6a] dark:text-cyan-400 shadow-sm" : "text-[#8a9aaa]"}`}
             >
               {f === "all" ? "All" : f === "providers" ? "Providers" : "Patients"}
             </button>
@@ -153,9 +163,9 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
             { label: "Searching", count: MAP_PINS.filter(p => p.status === "searching").length, color: "#d97706" },
             { label: "Offline", count: MAP_PINS.filter(p => p.status === "offline").length, color: "#94a3b8" },
           ].map(s => (
-            <div key={s.label} className="bg-white dark:bg-slate-800 border border-[#e2e8ee] rounded-[8px] px-2 py-1.5 text-center">
+            <div key={s.label} className="bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 rounded-[8px] px-2 py-1.5 text-center">
               <p className="text-sm font-bold" style={{ color: s.color }}>{s.count}</p>
-              <p className="text-[9px] text-[#8a9aaa]">{s.label}</p>
+              <p className="text-[9px] text-[#8a9aaa] dark:text-slate-400">{s.label}</p>
             </div>
           ))}
         </div>
@@ -168,14 +178,14 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
               <button
                 key={pin.id}
                 onClick={() => setSelected(selected?.id === pin.id ? null : pin)}
-                className={`w-full flex items-center gap-2 px-2 py-2 rounded-[8px] text-left transition-colors ${selected?.id === pin.id ? "bg-[#e6f5f2] border border-[#0d7c6a]/20" : "bg-white dark:bg-slate-800 border border-[#e2e8ee] hover:border-[#0d7c6a]/20"}`}
+                className={`w-full flex items-center gap-2 px-2 py-2 rounded-[8px] text-left transition-colors ${selected?.id === pin.id ? "bg-[#e6f5f2] dark:bg-slate-700 border border-[#0d7c6a]/20" : "bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 hover:border-[#0d7c6a]/20"}`}
               >
                 <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold shrink-0" style={{ backgroundColor: pin.status === "offline" ? "#94a3b8" : pin.color }}>
                   {pin.initials}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-semibold text-[#18232e] truncate">{pin.name.split(" ")[0]}</p>
-                  <p className="text-[9px] text-[#8a9aaa] truncate">{pin.role}</p>
+                  <p className="text-[10px] font-semibold text-[#18232e] dark:text-white truncate">{pin.name.split(" ")[0]}</p>
+                  <p className="text-[9px] text-[#8a9aaa] dark:text-slate-400 truncate">{pin.role}</p>
                 </div>
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: meta.color }} />
               </button>
@@ -188,10 +198,15 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
 }
 
 export default function LiveMapSection() {
+  const [demoMode] = useState(() => {
+    const stored = localStorage.getItem("demo_mode");
+    return stored === null ? true : stored === "true";
+  });
+
   return (
     <div className="space-y-5 animate-fade-in">
       <div>
-        <h2 className="text-lg font-bold text-[#18232e]" style={{ fontFamily: "DM Sans, sans-serif" }}>Live Provider & Patient Map</h2>
+        <h2 className="text-lg font-bold text-[#18232e] dark:text-white" style={{ fontFamily: "DM Sans, sans-serif" }}>Live Provider & Patient Map</h2>
         <p className="text-sm text-[#8a9aaa] mt-0.5">Real-time tracking across Addis Ababa · WS events: provider_location_updated</p>
       </div>
 
@@ -203,7 +218,7 @@ export default function LiveMapSection() {
           { label: "Searching", value: "1", color: "#d97706", sub: "finding provider" },
           { label: "Coverage Area", value: "Addis Ababa", color: "#7c3aed", sub: "all sub-cities" },
         ].map(s => (
-          <div key={s.label} className="bg-white dark:bg-slate-800 border border-[#e2e8ee] rounded-[12px] p-4">
+          <div key={s.label} className="bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 rounded-[12px] p-4">
             <p className="text-xs text-[#8a9aaa] mb-1">{s.label}</p>
             <p className="text-xl font-bold" style={{ color: s.color, fontFamily: "DM Sans, sans-serif" }}>{s.value}</p>
             <p className="text-xs text-[#8a9aaa] mt-0.5">{s.sub}</p>
@@ -212,7 +227,7 @@ export default function LiveMapSection() {
       </div>
 
       {/* Full map */}
-      <div className="bg-white dark:bg-slate-800 border border-[#e2e8ee] rounded-[14px] p-5">
+      <div className="bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 rounded-[14px] p-5">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-4 text-xs text-[#4a5a6a]">
             <span className="flex items-center gap-1.5 font-medium"><span className="w-3 h-3 bg-[#0d7c6a] rounded-full inline-block" /> Provider</span>
@@ -222,8 +237,8 @@ export default function LiveMapSection() {
             <span className="flex items-center gap-1.5"><svg width="24" height="6" viewBox="0 0 24 6"><line x1="0" y1="3" x2="24" y2="3" stroke="#d97706" strokeWidth="2" strokeDasharray="4 2"/></svg> Route</span>
           </div>
           <div className="flex items-center gap-1.5 text-[11px] text-[#8a9aaa]">
-            <span className="w-1.5 h-1.5 bg-[#16a34a] rounded-full animate-pulse" />
-            Live · updates every 10s
+            <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${demoMode ? "bg-amber-500" : "bg-[#16a34a]"}`} />
+            {demoMode ? "Demo Sandbox mode" : "Connected to Live WebSocket Stream"}
           </div>
         </div>
         <AdminMapView />

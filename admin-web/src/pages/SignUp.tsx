@@ -35,9 +35,10 @@ export default function SignUp() {
         setLoading(false);
         toast("Account registered successfully! You can now log in.", "success");
         navigate("/login");
-      } catch (err) {
+      } catch (err: any) {
         setLoading(false);
-        toast("Failed to submit request", "error");
+        const message = err.response?.data?.message || err.message || "Failed to submit request";
+        toast(message, "error");
       }
     }, 1500);
   };

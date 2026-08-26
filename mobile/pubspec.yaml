@@ -1,0 +1,56 @@
+name: merihcare
+description: "A new Flutter mobile application for Merihcare services."
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Routing
+  go_router: ^14.0.0
+
+  # HTTP client
+  dio: ^5.4.0
+
+  # State management
+  flutter_riverpod: ^2.5.1
+
+  # Secure storage
+  flutter_secure_storage: ^9.0.0
+
+  # JSON serialization runtime
+  json_annotation: ^4.9.0
+
+  # WebSocket client
+  web_socket_channel: ^3.0.0
+
+  # Push notifications
+  firebase_messaging: ^14.8.0
+  flutter_local_notifications: ^17.0.0
+
+  # Maps
+  google_maps_flutter: ^2.5.3
+
+  # Payments
+  flutter_stripe: ^10.1.1
+
+  # Image/file picker
+  image_picker: ^1.0.7
+  file_picker: ^8.0.0
+
+  # Common UI/Icons
+  cupertino_icons: ^1.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  build_runner: ^2.4.8
+  json_serializable: ^6.8.0
+
+flutter:
+  uses-material-design: true

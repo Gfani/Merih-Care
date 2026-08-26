@@ -1,10 +1,13 @@
-import React, { useState } from "react";
-import { SearchBar, Card, DataTable, StatusBadge } from "../components/ui";
-import { appointments } from "../data/mock";
+import React, { useState, useEffect } from "react";
+import { SearchBar, Card, DataTable, StatusBadge, SkeletonCard } from "../components/ui";
+import { api } from "../services/api";
+import { toast } from "../components/ui/toast";
 
 export default function AppointmentsSection() {
   const [tab, setTab] = useState("list");
   const [search, setSearch] = useState("");
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // Dynamic monthly calendar state
   const [currentDate, setCurrentDate] = useState(new Date(2026, 7, 25)); // Initialize near mock data (Aug 25, 2026)
@@ -14,6 +17,22 @@ export default function AppointmentsSection() {
 
   const monthName = currentDate.toLocaleString("default", { month: "long" });
 
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const data = await api.getAppointments();
+      setAppointments(data);
+    } catch {
+      toast("Failed to load appointments", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
   const handlePrevMonth = () => {
     setCurrentDate(new Date(year, month - 1, 1));
   };
@@ -22,11 +41,14 @@ export default function AppointmentsSection() {
     setCurrentDate(new Date(year, month + 1, 1));
   };
 
-  const filteredAppointments = appointments.filter(apt =>
-    apt.patientName.toLowerCase().includes(search.toLowerCase()) ||
-    apt.providerName.toLowerCase().includes(search.toLowerCase()) ||
-    apt.service.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredAppointments = appointments.filter(apt => {
+    const pName = apt.patientName || "";
+    const prName = apt.providerName || "";
+    const sName = apt.service || "";
+    return pName.toLowerCase().includes(search.toLowerCase()) ||
+      prName.toLowerCase().includes(search.toLowerCase()) ||
+      sName.toLowerCase().includes(search.toLowerCase());
+  });
 
   // Generate calendar days
   const firstDayIndex = new Date(year, month, 1).getDay();
@@ -45,16 +67,19 @@ export default function AppointmentsSection() {
 
   const isToday = (dayNum: number | null) => {
     if (!dayNum) return false;
-    const today = new Date();
-    // In actual app, check against today. Here we highlight Aug 25, 2026 since it is mock date.
     return dayNum === 25 && month === 7 && year === 2026;
   };
 
   const hasApt = (dayNum: number | null) => {
     if (!dayNum) return false;
+    const formattedDay = dayNum.toString().padStart(2, "0");
+    const formattedMonth = (month + 1).toString().padStart(2, "0");
+    const yyyymmdd = `${year}-${formattedMonth}-${formattedDay}`;
+
     const monthAbbrev = monthName.slice(0, 3);
     const dateStr = `${monthAbbrev} ${dayNum}, ${year}`;
-    return appointments.some(apt => apt.date === dateStr);
+
+    return appointments.some(apt => apt.date === yyyymmdd || apt.date === dateStr);
   };
 
   return (
@@ -78,18 +103,25 @@ export default function AppointmentsSection() {
 
       {tab === "list" ? (
         <Card>
-          <DataTable
-            columns={[
-              { key: "id", header: "ID", render: (row) => <span className="text-xs font-mono text-[#8a9aaa]">{row.id as string}</span> },
-              { key: "patientName", header: "Patient" },
-              { key: "providerName", header: "Provider" },
-              { key: "service", header: "Service" },
-              { key: "date", header: "Date/Time", render: (row) => <span className="text-xs">{row.date as string} {row.time as string}</span> },
-              { key: "status", header: "Status", render: (row) => <StatusBadge status={row.status as any} /> },
-              { key: "paymentStatus", header: "Payment", render: (row) => <StatusBadge status={row.paymentStatus === "paid" ? "completed" : row.paymentStatus as any} /> },
-            ]}
-            data={filteredAppointments as any}
-          />
+          {loading ? (
+            <div className="p-6 space-y-4">
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
+          ) : (
+            <DataTable
+              columns={[
+                { key: "id", header: "ID", render: (row) => <span className="text-xs font-mono text-[#8a9aaa]">{row.id as string}</span> },
+                { key: "patientName", header: "Patient" },
+                { key: "providerName", header: "Provider" },
+                { key: "service", header: "Service" },
+                { key: "date", header: "Date/Time", render: (row) => <span className="text-xs">{row.date as string} {row.time as string}</span> },
+                { key: "status", header: "Status", render: (row) => <StatusBadge status={row.status as any} /> },
+                { key: "paymentStatus", header: "Payment", render: (row) => <StatusBadge status={row.paymentStatus === "paid" ? "completed" : row.paymentStatus as any} /> },
+              ]}
+              data={filteredAppointments as any}
+            />
+          )}
         </Card>
       ) : (
         <Card className="p-6">

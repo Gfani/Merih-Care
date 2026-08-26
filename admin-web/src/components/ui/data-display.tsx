@@ -14,32 +14,87 @@ export interface Column<T> {
 }
 
 export function DataTable<T extends Record<string, unknown>>({ columns, data, onRowClick }: { columns: Column<T>[]; data: T[]; onRowClick?: (row: T) => void }) {
+  const primaryCol = columns[0];
+  const otherCols = columns.slice(1).filter(c => c.key !== "actions");
+  const actionsCol = columns.find(c => c.key === "actions");
+
   return (
-    <div className="overflow-x-auto -mx-4 sm:mx-0">
-      <table className="w-full text-sm min-w-[480px]">
-        <thead>
-          <tr className="border-b border-[#e2e8ee] dark:border-slate-700">
-            {columns.map(col => (
-              <th key={col.key} className="text-left px-4 py-3 text-xs font-semibold text-[#8a9aaa] dark:text-slate-400 uppercase tracking-wide whitespace-nowrap" style={{ width: col.width }}>{col.header}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {data.length === 0 ? (
-            <tr><td colSpan={columns.length} className="text-center py-12 text-[#8a9aaa] text-sm">No data available</td></tr>
-          ) : (
-            data.map((row, i) => (
-              <tr key={i} onClick={() => onRowClick?.(row)} className={`border-b border-[#f0f4f7] dark:border-slate-800 transition-colors ${onRowClick ? "hover:bg-[#f8fafc] dark:hover:bg-slate-800/30 cursor-pointer" : ""}`}>
-                {columns.map(col => (
-                  <td key={col.key} className="px-4 py-3.5 text-[#18232e] dark:text-slate-150 whitespace-nowrap">
-                    {col.render ? col.render(row) : (row[col.key] as React.ReactNode)}
-                  </td>
-                ))}
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+    <div className="w-full">
+      {/* ── Desktop Table Layout ── */}
+      <div className="hidden sm:block overflow-x-auto -mx-4 sm:mx-0">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-[#e2e8ee] dark:border-slate-700">
+              {columns.map(col => (
+                <th key={col.key} className="text-left px-4 py-3 text-xs font-semibold text-[#8a9aaa] dark:text-slate-400 uppercase tracking-wide whitespace-nowrap" style={{ width: col.width }}>{col.header}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {data.length === 0 ? (
+              <tr><td colSpan={columns.length} className="text-center py-12 text-[#8a9aaa] text-sm">No data available</td></tr>
+            ) : (
+              data.map((row, i) => (
+                <tr key={i} onClick={() => onRowClick?.(row)} className={`border-b border-[#f0f4f7] dark:border-slate-800 transition-colors ${onRowClick ? "hover:bg-[#f8fafc] dark:hover:bg-slate-800/30 cursor-pointer" : ""}`}>
+                  {columns.map(col => {
+                    const isActions = col.key === "actions";
+                    return (
+                      <td key={col.key} className="px-4 py-3.5 text-[#18232e] dark:text-slate-150 whitespace-nowrap" onClick={isActions ? (e) => e.stopPropagation() : undefined}>
+                        {col.render ? col.render(row) : (row[col.key] as React.ReactNode)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── Mobile Stacked Cards Layout ── */}
+      <div className="block sm:hidden space-y-3">
+        {data.length === 0 ? (
+          <div className="text-center py-12 text-[#8a9aaa] text-sm bg-white dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700">No data available</div>
+        ) : (
+          data.map((row, i) => (
+            <div
+              key={i}
+              onClick={() => onRowClick?.(row)}
+              className={`bg-white dark:bg-slate-800 rounded-[12px] border border-[#e2e8ee] dark:border-slate-700 p-4 space-y-3 ${onRowClick ? "active:bg-[#f8fafc] dark:active:bg-slate-800/50 cursor-pointer" : ""}`}
+            >
+              {/* Primary Identity Header */}
+              {primaryCol && (
+                <div className="flex items-center justify-between gap-2 border-b border-[#f0f4f7] dark:border-slate-700 pb-2.5">
+                  <div className="min-w-0 flex-1">
+                    {primaryCol.render ? primaryCol.render(row) : <span className="font-semibold text-sm text-[#18232e] dark:text-white">{row[primaryCol.key] as React.ReactNode}</span>}
+                  </div>
+                </div>
+              )}
+
+              {/* Other Fields Stacked */}
+              {otherCols.length > 0 && (
+                <div className="grid grid-cols-2 gap-x-2 gap-y-2 text-xs">
+                  {otherCols.map(col => (
+                    <div key={col.key} className="space-y-0.5">
+                      <p className="text-[10px] font-semibold text-[#8a9aaa] dark:text-slate-400 uppercase tracking-wider">{col.header}</p>
+                      <div className="text-[#18232e] dark:text-slate-200">
+                        {col.render ? col.render(row) : (row[col.key] as React.ReactNode)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Actions Footer */}
+              {actionsCol && (
+                <div className="flex justify-end gap-1.5 pt-2 border-t border-[#f0f4f7] dark:border-slate-700" onClick={(e) => e.stopPropagation()}>
+                  {actionsCol.render ? actionsCol.render(row) : (row[actionsCol.key] as React.ReactNode)}
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

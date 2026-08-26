@@ -26,10 +26,19 @@ export class DatabaseSeedService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    await this.seed();
+    if (process.env.AUTO_SEED === "true") {
+      await this.seed();
+    } else {
+      console.log("AUTO_SEED is not true. Skipping automatic startup seeder.");
+    }
   }
 
   async seed() {
+    if (process.env.NODE_ENV === "production") {
+      console.warn("WARNING: Database seeding is disabled in production environments.");
+      return;
+    }
+
     const userCount = await this.userRepo.count();
     if (userCount > 0) {
       console.log("Database already seeded. Skipping seeder.");
