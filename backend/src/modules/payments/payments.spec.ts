@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { PaymentsController } from "./payments.controller";
 import { PaymentsService } from "./payments.service";
 import { JwtService } from "@nestjs/jwt";
+import { DataSource } from "typeorm";
 
 describe("PaymentsController", () => {
   let controller: PaymentsController;
@@ -15,6 +16,10 @@ describe("PaymentsController", () => {
         {
           provide: JwtService,
           useValue: { verifyAsync: jest.fn() },
+        },
+        {
+          provide: DataSource,
+          useValue: { transaction: jest.fn() },
         },
       ],
     }).compile();

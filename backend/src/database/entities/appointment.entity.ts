@@ -1,26 +1,58 @@
-import { Entity, Column, PrimaryColumn } from "typeorm";
+import { Entity, Column, PrimaryColumn, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, VersionColumn, Index } from "typeorm";
+import { UserEntity } from "./user.entity";
+import { ProviderEntity } from "./provider.entity";
+import { ServiceEntity } from "./service.entity";
 
 @Entity("appointments")
 export class AppointmentEntity {
   @PrimaryColumn()
   id: string;
 
-  @Column()
+  // Patient Relationship (Foreign Key)
+  @Column({ nullable: true })
+  @Index()
+  patientId: string;
+
+  @ManyToOne(() => UserEntity, { onDelete: "CASCADE", nullable: true })
+  @JoinColumn({ name: "patientId" })
+  patient: UserEntity;
+
+  // Provider Relationship (Foreign Key)
+  @Column({ nullable: true })
+  @Index()
+  providerId: string;
+
+  @ManyToOne(() => ProviderEntity, { onDelete: "CASCADE", nullable: true })
+  @JoinColumn({ name: "providerId" })
+  provider: ProviderEntity;
+
+  // Service Relationship (Foreign Key)
+  @Column({ nullable: true })
+  @Index()
+  serviceId: string;
+
+  @ManyToOne(() => ServiceEntity, { onDelete: "SET NULL", nullable: true })
+  @JoinColumn({ name: "serviceId" })
+  serviceRelation: ServiceEntity;
+
+  // Backward compatibility strings
+  @Column({ nullable: true })
   patientName: string;
 
   @Column({ nullable: true })
   patientAvatar: string;
 
-  @Column()
+  @Column({ nullable: true })
   providerName: string;
 
   @Column({ nullable: true })
   providerAvatar: string;
 
-  @Column()
+  @Column({ nullable: true })
   service: string;
 
   @Column()
+  @Index()
   date: string;
 
   @Column()
@@ -33,5 +65,21 @@ export class AppointmentEntity {
   amount: number;
 
   @Column({ default: "pending" })
+  @Index()
   status: string; // pending, completed, cancelled
+
+  // Audits
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+
+  // Soft Deletion
+  @DeleteDateColumn()
+  deletedAt: Date;
+
+  // Optimistic Locking version
+  @VersionColumn()
+  version: number;
 }

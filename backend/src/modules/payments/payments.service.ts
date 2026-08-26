@@ -1,7 +1,11 @@
 import { Injectable } from "@nestjs/common";
+import { DataSource } from "typeorm";
+import { PaymentEventEntity } from "../../database/entities/financial.entity";
 
 @Injectable()
 export class PaymentsService {
+  constructor(private readonly dataSource: DataSource) {}
+
   getTransactions() {
     return [
       { id: "txn001", patientName: "Tigist Bekele", providerName: "Dr. Meron Alemu", service: "Doctor Home Visit", amount: 1200, method: "Telebirr", status: "successful", date: "2026-08-25" },
@@ -13,5 +17,19 @@ export class PaymentsService {
       { id: "txn007", patientName: "Tigist Bekele", providerName: "Hiwot Girma", service: "Home Nursing", amount: 800, method: "Telebirr", status: "pending", date: "2026-08-25" },
       { id: "txn008", patientName: "Bereket Mengistu", providerName: "Dr. Meron Alemu", service: "Doctor Home Visit", amount: 1200, method: "CBE Birr", status: "failed", date: "2026-08-18" },
     ];
+  }
+
+  // Atomic database transactions for payments
+  async processPayment(paymentId: string, amount: number, status: string): Promise<any> {
+    return this.dataSource.transaction(async (manager) => {
+      const event = new PaymentEventEntity();
+      event.id = "evt-" + Date.now();
+      event.paymentId = paymentId;
+      event.eventType = "charge_succeeded";
+      event.payload = JSON.stringify({ amount, status });
+      event.createdAt = new Date().toISOString();
+
+      return manager.save(event);
+    });
   }
 }

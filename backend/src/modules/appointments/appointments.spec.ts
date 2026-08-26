@@ -29,7 +29,10 @@ describe("AppointmentsController", () => {
         },
         {
           provide: DataSource,
-          useValue: { getRepository: jest.fn() },
+          useValue: {
+            transaction: jest.fn(),
+            getRepository: jest.fn(),
+          },
         },
       ],
     }).compile();

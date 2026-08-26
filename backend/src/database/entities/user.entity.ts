@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryColumn } from "typeorm";
+import { Entity, Column, PrimaryColumn, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, VersionColumn, Index } from "typeorm";
 
 @Entity("users")
 export class UserEntity {
@@ -9,18 +9,21 @@ export class UserEntity {
   name: string;
 
   @Column({ unique: true })
+  @Index()
   email: string;
 
   @Column()
   password?: string;
 
   @Column({ nullable: true })
+  @Index()
   phone: string;
 
   @Column()
   role: string; // admin, provider, patient
 
   @Column({ default: "active" })
+  @Index()
   status: string; // active, suspended
 
   @Column({ nullable: true })
@@ -64,4 +67,19 @@ export class UserEntity {
 
   @Column({ nullable: true })
   lockoutUntil: string;
+
+  // Audits
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+
+  // Soft Deletion
+  @DeleteDateColumn()
+  deletedAt: Date;
+
+  // Optimistic Locking version tracker
+  @VersionColumn()
+  version: number;
 }

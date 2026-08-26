@@ -4,6 +4,7 @@ import { EmergencyService } from "./emergency.service";
 import { JwtService } from "@nestjs/jwt";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import { EmergencyEntity } from "../../database/entities/emergency.entity";
+import { DataSource } from "typeorm";
 
 describe("EmergencyController", () => {
   let controller: EmergencyController;
@@ -27,6 +28,13 @@ describe("EmergencyController", () => {
         {
           provide: JwtService,
           useValue: { verifyAsync: jest.fn() },
+        },
+        {
+          provide: DataSource,
+          useValue: {
+            transaction: jest.fn(),
+            getRepository: jest.fn(),
+          },
         },
       ],
     }).compile();

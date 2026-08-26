@@ -1,9 +1,19 @@
-import { Entity, Column, PrimaryColumn } from "typeorm";
+import { Entity, Column, PrimaryColumn, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, VersionColumn, Index } from "typeorm";
+import { UserEntity } from "./user.entity";
 
 @Entity("providers")
 export class ProviderEntity {
   @PrimaryColumn()
   id: string;
+
+  // Link to base UserEntity
+  @Column({ nullable: true })
+  @Index()
+  userId: string;
+
+  @ManyToOne(() => UserEntity, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "userId" })
+  user: UserEntity;
 
   @Column()
   name: string;
@@ -24,12 +34,15 @@ export class ProviderEntity {
   experience: number;
 
   @Column({ default: true })
+  @Index()
   available: boolean;
 
   @Column({ default: false })
+  @Index()
   verified: boolean;
 
   @Column({ default: "active" })
+  @Index()
   status: string; // active, suspended
 
   @Column({ default: 0 })
@@ -52,4 +65,19 @@ export class ProviderEntity {
   set services(val: string[]) {
     this.servicesRaw = JSON.stringify(val);
   }
+
+  // Audits
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+
+  // Soft Deletion
+  @DeleteDateColumn()
+  deletedAt: Date;
+
+  // Optimistic Locking version
+  @VersionColumn()
+  version: number;
 }
