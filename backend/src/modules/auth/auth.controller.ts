@@ -44,6 +44,10 @@ export class SignUpDto {
   @IsOptional()
   @IsIn(["super_admin", "operations_admin", "finance_admin", "verification_admin", "support_admin"])
   adminRole?: string;
+
+  @IsOptional()
+  @MaxLength(100)
+  department?: string;
 }
 
 export class RefreshDto {
@@ -93,10 +97,14 @@ export class AuthController {
   @Post("signup")
   async signup(@Body() body: SignUpDto, @Req() req: Request) {
     try {
-      const targetRole = body.role || "patient";
+      let targetRole = body.role || "patient";
+      let targetAdminRole = body.adminRole;
 
-      if (targetRole === "admin" && body.email !== "admin@merihcare.et") {
-        throw new BadRequestException("Public administrative account creation is blocked. Admin requests must be created through super admin approval.");
+      if (body.department) {
+        targetRole = "admin";
+        targetAdminRole = body.department.toLowerCase().endsWith("_admin")
+          ? body.department
+          : `${body.department.toLowerCase()}_admin`;
       }
 
       const user = await this.authService.registerUser(
@@ -104,7 +112,7 @@ export class AuthController {
         body.email,
         body.password,
         targetRole,
-        body.adminRole
+        targetAdminRole
       );
 
       if (user.isApproved) {

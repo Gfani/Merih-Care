@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
+import * as bcrypt from "bcryptjs";
 import { 
   UserEntity, 
   ProviderEntity, 
@@ -52,9 +53,12 @@ export class DatabaseSeedService implements OnModuleInit {
     adminUser.id = "u-admin";
     adminUser.name = "Admin Kebede";
     adminUser.email = "admin@merihcare.et";
-    adminUser.password = "admin123";
+    adminUser.password = await bcrypt.hash("admin123", 10);
     adminUser.phone = "+251 91 111 2233";
     adminUser.role = "admin";
+    adminUser.adminRole = "super_admin";
+    adminUser.permissions = "all";
+    adminUser.isApproved = true;
     adminUser.status = "active";
     adminUser.dateJoined = "2022-01-10";
     await this.userRepo.save(adminUser);
@@ -72,7 +76,7 @@ export class DatabaseSeedService implements OnModuleInit {
       u.id = p.id;
       u.name = p.name;
       u.email = p.email;
-      u.password = "password123";
+      u.password = await bcrypt.hash("password123", 10);
       u.phone = p.phone;
       u.role = p.role;
       u.status = p.status;

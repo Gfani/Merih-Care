@@ -154,6 +154,33 @@ export const api = {
     }
   },
 
+  async getPendingAdmins(): Promise<any[]> {
+    try {
+      const res = await axios.get(`${API_URL}/admin/users/pending`, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) {
+        return [
+          { id: "u-pending-1", name: "Operations Coordinator", email: "ops.coord@merihcare.et", adminRole: "operations_admin", dateJoined: "2026-08-27" },
+          { id: "u-pending-2", name: "Finance Officer", email: "finance.off@merihcare.et", adminRole: "finance_admin", dateJoined: "2026-08-27" }
+        ];
+      }
+      throw error;
+    }
+  },
+
+  async approveAdminAccount(id: string): Promise<any> {
+    try {
+      const res = await axios.post(`${API_URL}/admin/users/${id}/approve`, {}, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) {
+        return { id, isApproved: true };
+      }
+      throw error;
+    }
+  },
+
   // ─── SERVICES ──────────────────────────────────────────────────────────────
   async getServices(): Promise<any[]> {
     try {

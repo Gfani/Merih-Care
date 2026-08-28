@@ -7,21 +7,83 @@ import {
   ComplaintEntity, 
   ReviewEntity, 
   EmergencyEntity, 
-  LocationEntity 
+  LocationEntity,
+  SessionEntity,
+  RoleEntity,
+  PermissionEntity,
+  UserRoleEntity,
+  PatientProfileEntity,
+  ProviderProfileEntity,
+  ProviderQualificationEntity,
+  ProviderLicenseEntity,
+  CredentialDocumentEntity,
+  VerificationReviewEntity,
+  VerificationHistoryEntity,
+  ServiceCategoryEntity,
+  ProviderServiceEntity,
+  AppointmentStatusHistoryEntity,
+  CancellationReasonEntity,
+  PaymentEventEntity,
+  RefundEntity,
+  CommissionRecordEntity,
+  PayoutEntity,
+  ConversationEntity,
+  ConversationParticipantEntity,
+  MessageEntity,
+  MessageAttachmentEntity,
+  NotificationDeliveryAttemptEntity,
+  MedicalRecordAccessLogEntity,
+  AuditLogEntity,
+  FileMetadataEntity,
+  EmergencyResponderEntity,
+  EmergencyEscalationHistoryEntity,
+  LocationHistoryEntity,
+  TimeOffEntity
 } from "./entities";
 
 export const getDatabaseConfig = (configService: any): TypeOrmModuleOptions => {
   const dbType = process.env.DB_TYPE || "postgres";
 
   const entities = [
-    UserEntity,
-    ProviderEntity,
-    ServiceEntity,
-    AppointmentEntity,
-    ComplaintEntity,
-    ReviewEntity,
-    EmergencyEntity,
-    LocationEntity
+    UserEntity, 
+    ProviderEntity, 
+    ServiceEntity, 
+    AppointmentEntity, 
+    ComplaintEntity, 
+    ReviewEntity, 
+    EmergencyEntity, 
+    LocationEntity,
+    SessionEntity,
+    RoleEntity,
+    PermissionEntity,
+    UserRoleEntity,
+    PatientProfileEntity,
+    ProviderProfileEntity,
+    ProviderQualificationEntity,
+    ProviderLicenseEntity,
+    CredentialDocumentEntity,
+    VerificationReviewEntity,
+    VerificationHistoryEntity,
+    ServiceCategoryEntity,
+    ProviderServiceEntity,
+    AppointmentStatusHistoryEntity,
+    CancellationReasonEntity,
+    PaymentEventEntity,
+    RefundEntity,
+    CommissionRecordEntity,
+    PayoutEntity,
+    ConversationEntity,
+    ConversationParticipantEntity,
+    MessageEntity,
+    MessageAttachmentEntity,
+    NotificationDeliveryAttemptEntity,
+    MedicalRecordAccessLogEntity,
+    AuditLogEntity,
+    FileMetadataEntity,
+    EmergencyResponderEntity,
+    EmergencyEscalationHistoryEntity,
+    LocationHistoryEntity,
+    TimeOffEntity
   ];
 
   if (dbType === "sqlite") {
@@ -29,11 +91,10 @@ export const getDatabaseConfig = (configService: any): TypeOrmModuleOptions => {
       type: "sqlite",
       database: process.env.DB_DATABASE || "merihcare.sqlite",
       entities,
-      synchronize: true, // Automatically synchronize schema in development
+      synchronize: true,
     };
   }
 
-  // Fallback to PostgreSQL
   return {
     type: "postgres",
     host: process.env.DB_HOST || "localhost",

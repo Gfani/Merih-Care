@@ -28,9 +28,10 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
         setLoading(false);
         toast(`Welcome back, ${res.user?.name || "Admin"}!`, "success");
         onLogin?.();
-      } catch (err) {
+      } catch (err: any) {
         setLoading(false);
-        toast("Invalid credentials. Use admin@merihcare.et / admin123", "error");
+        const errMsg = err.response?.data?.message || err.message || "Invalid credentials. Use admin@merihcare.et / admin123";
+        toast(Array.isArray(errMsg) ? errMsg[0] : errMsg, "error");
       }
     }, 1200);
   };

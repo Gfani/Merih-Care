@@ -105,4 +105,8 @@ export class AdminService {
     targetUser.isApproved = true;
     return this.userRepo.save(targetUser);
   }
+
+  async getPendingAdmins(): Promise<UserEntity[]> {
+    return this.userRepo.find({ where: { role: "admin", isApproved: false } });
+  }
 }
