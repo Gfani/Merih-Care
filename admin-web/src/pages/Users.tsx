@@ -96,7 +96,7 @@ export default function UsersSection() {
             { key: "role", header: "Role", render: (row) => <span className="text-xs bg-[#f0f4f7] dark:bg-slate-700 text-[#4a5a6a] dark:text-slate-300 px-2 py-1 rounded-full font-medium">{row.role as string}</span> },
             { key: "status", header: "Status", render: (row) => <StatusBadge status={row.status as any} /> },
             { key: "phone", header: "Phone", render: (row) => <span className="text-[#8a9aaa] text-xs">{row.phone as string}</span> },
-            { key: "memberSince", header: "Joined", render: (row) => <span className="text-xs text-[#8a9aaa]">{(row.memberSince as string) || (row.joinedDate as string)}</span> },
+            { key: "memberSince", header: "Joined", render: (row) => <span className="text-xs text-[#8a9aaa]">{(row.memberSince as string) || (row.joinedDate as string) || (row.dateJoined as string)}</span> },
             { key: "actions", header: "Actions", render: (row) => (
               <div className="flex gap-1">
                 <Button size="sm" variant="ghost" className="text-xs !py-1 !px-2" onClick={() => { setSelectedDetails(row); setDetailsModal(true); }}>View</Button>

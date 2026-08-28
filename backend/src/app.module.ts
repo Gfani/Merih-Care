@@ -1,6 +1,8 @@
 import { Module, NestModule, MiddlewareConsumer } from "@nestjs/common";
 import { RequestIdMiddleware } from "./shared/middleware/request-id.middleware";
 import { ConfigModule } from "@nestjs/config";
+import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
+import { APP_GUARD } from "@nestjs/core";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { getDatabaseConfig } from "./database/database.config";
 import { DatabaseSeedService } from "./database/seed";
@@ -82,6 +84,12 @@ import { HealthModule } from "./modules/health/health.module";
       envFilePath: process.env.NODE_ENV ? `.env.${process.env.NODE_ENV}` : ".env",
     }),
     
+    // Global API Rate Limiter
+    ThrottlerModule.forRoot([{
+      ttl: 60000,
+      limit: 100,
+    }]),
+    
     // Database Connection options
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -159,6 +167,10 @@ import { HealthModule } from "./modules/health/health.module";
   ],
   providers: [
     DatabaseSeedService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
   ],
 })
 export class AppModule implements NestModule {

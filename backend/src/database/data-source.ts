@@ -1,0 +1,114 @@
+import { DataSource } from "typeorm";
+import * as dotenv from "dotenv";
+import * as path from "path";
+import { 
+  UserEntity, 
+  ProviderEntity, 
+  ServiceEntity, 
+  AppointmentEntity, 
+  ComplaintEntity, 
+  ReviewEntity, 
+  EmergencyEntity, 
+  LocationEntity,
+  SessionEntity,
+  RoleEntity,
+  PermissionEntity,
+  UserRoleEntity,
+  PatientProfileEntity,
+  ProviderProfileEntity,
+  ProviderQualificationEntity,
+  ProviderLicenseEntity,
+  CredentialDocumentEntity,
+  VerificationReviewEntity,
+  VerificationHistoryEntity,
+  ServiceCategoryEntity,
+  ProviderServiceEntity,
+  AppointmentStatusHistoryEntity,
+  CancellationReasonEntity,
+  PaymentEventEntity,
+  RefundEntity,
+  CommissionRecordEntity,
+  PayoutEntity,
+  ConversationEntity,
+  ConversationParticipantEntity,
+  MessageEntity,
+  MessageAttachmentEntity,
+  NotificationDeliveryAttemptEntity,
+  MedicalRecordAccessLogEntity,
+  AuditLogEntity,
+  FileMetadataEntity,
+  EmergencyResponderEntity,
+  EmergencyEscalationHistoryEntity,
+  LocationHistoryEntity,
+  TimeOffEntity
+} from "./entities";
+
+// Load configuration
+dotenv.config({ path: path.join(__dirname, "../../.env") });
+
+const dbType = process.env.DB_TYPE || "sqlite";
+
+const entities = [
+  UserEntity, 
+  ProviderEntity, 
+  ServiceEntity, 
+  AppointmentEntity, 
+  ComplaintEntity, 
+  ReviewEntity, 
+  EmergencyEntity, 
+  LocationEntity,
+  SessionEntity,
+  RoleEntity,
+  PermissionEntity,
+  UserRoleEntity,
+  PatientProfileEntity,
+  ProviderProfileEntity,
+  ProviderQualificationEntity,
+  ProviderLicenseEntity,
+  CredentialDocumentEntity,
+  VerificationReviewEntity,
+  VerificationHistoryEntity,
+  ServiceCategoryEntity,
+  ProviderServiceEntity,
+  AppointmentStatusHistoryEntity,
+  CancellationReasonEntity,
+  PaymentEventEntity,
+  RefundEntity,
+  CommissionRecordEntity,
+  PayoutEntity,
+  ConversationEntity,
+  ConversationParticipantEntity,
+  MessageEntity,
+  MessageAttachmentEntity,
+  NotificationDeliveryAttemptEntity,
+  MedicalRecordAccessLogEntity,
+  AuditLogEntity,
+  FileMetadataEntity,
+  EmergencyResponderEntity,
+  EmergencyEscalationHistoryEntity,
+  LocationHistoryEntity,
+  TimeOffEntity
+];
+
+export const AppDataSource = new DataSource(
+  dbType === "sqlite"
+    ? {
+        type: "sqlite",
+        database: process.env.DB_DATABASE || "merihcare_db",
+        entities,
+        migrations: [path.join(__dirname, "./migrations/*.ts")],
+        synchronize: false,
+      }
+    : {
+        type: "postgres",
+        host: process.env.DB_HOST || "localhost",
+        port: parseInt(process.env.DB_PORT || "5432", 10),
+        username: process.env.DB_USERNAME || "merihcare_user",
+        password: process.env.DB_PASSWORD || "merihcare_password",
+        database: process.env.DB_DATABASE || "merihcare_db",
+        entities,
+        migrations: [path.join(__dirname, "./migrations/*.ts")],
+        synchronize: false,
+        ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false,
+      }
+);

@@ -40,20 +40,18 @@ export class DatabaseSeedService implements OnModuleInit {
       return;
     }
 
-    const userCount = await this.userRepo.count();
-    if (userCount > 0) {
-      console.log("Database already seeded. Skipping seeder.");
-      return;
-    }
-
-    console.log("Seeding database initial mock datasets...");
+    console.log("Running idempotent database seeder...");
 
     // 1. Seed Users (Admins and Patients)
-    const adminUser = new UserEntity();
-    adminUser.id = "u-admin";
+    const adminEmail = "admin@merihcare.et";
+    let adminUser = await this.userRepo.findOne({ where: { email: adminEmail } });
+    if (!adminUser) {
+      adminUser = new UserEntity();
+      adminUser.id = "u-admin";
+      adminUser.email = adminEmail;
+    }
     adminUser.name = "Admin Kebede";
-    adminUser.email = "admin@merihcare.et";
-    adminUser.password = await bcrypt.hash("admin123", 10);
+    adminUser.password = await bcrypt.hash(process.env.SEED_ADMIN_PASSWORD || "admin123", 10);
     adminUser.phone = "+251 91 111 2233";
     adminUser.role = "admin";
     adminUser.adminRole = "super_admin";
@@ -72,8 +70,11 @@ export class DatabaseSeedService implements OnModuleInit {
     ];
 
     for (const p of mockPatients) {
-      const u = new UserEntity();
-      u.id = p.id;
+      let u = await this.userRepo.findOne({ where: { id: p.id } });
+      if (!u) {
+        u = new UserEntity();
+        u.id = p.id;
+      }
       u.name = p.name;
       u.email = p.email;
       u.password = await bcrypt.hash("password123", 10);
@@ -99,8 +100,11 @@ export class DatabaseSeedService implements OnModuleInit {
     ];
 
     for (const s of mockServices) {
-      const se = new ServiceEntity();
-      se.id = s.id;
+      let se = await this.serviceRepo.findOne({ where: { id: s.id } });
+      if (!se) {
+        se = new ServiceEntity();
+        se.id = s.id;
+      }
       se.name = s.name;
       se.icon = s.icon;
       se.description = s.description;
@@ -190,8 +194,11 @@ export class DatabaseSeedService implements OnModuleInit {
     ];
 
     for (const p of mockProviders) {
-      const pr = new ProviderEntity();
-      pr.id = p.id;
+      let pr = await this.providerRepo.findOne({ where: { id: p.id } });
+      if (!pr) {
+        pr = new ProviderEntity();
+        pr.id = p.id;
+      }
       pr.name = p.name;
       pr.title = p.title;
       pr.avatar = p.avatar;
@@ -217,8 +224,11 @@ export class DatabaseSeedService implements OnModuleInit {
     ];
 
     for (const a of mockAppointments) {
-      const ap = new AppointmentEntity();
-      ap.id = a.id;
+      let ap = await this.appointmentRepo.findOne({ where: { id: a.id } });
+      if (!ap) {
+        ap = new AppointmentEntity();
+        ap.id = a.id;
+      }
       ap.patientName = a.patientName;
       ap.patientAvatar = a.patientAvatar;
       ap.providerName = a.providerName;
@@ -241,8 +251,11 @@ export class DatabaseSeedService implements OnModuleInit {
     ];
 
     for (const c of mockComplaints) {
-      const ce = new ComplaintEntity();
-      ce.id = c.id;
+      let ce = await this.complaintRepo.findOne({ where: { id: c.id } });
+      if (!ce) {
+        ce = new ComplaintEntity();
+        ce.id = c.id;
+      }
       ce.reporterName = c.reporterName;
       ce.reporterRole = c.reporterRole;
       ce.subject = c.subject;
@@ -262,8 +275,11 @@ export class DatabaseSeedService implements OnModuleInit {
     ];
 
     for (const r of mockReviews) {
-      const re = new ReviewEntity();
-      re.id = r.id;
+      let re = await this.reviewRepo.findOne({ where: { id: r.id } });
+      if (!re) {
+        re = new ReviewEntity();
+        re.id = r.id;
+      }
       re.reviewerName = r.reviewerName;
       re.providerName = r.providerName;
       re.rating = r.rating;
@@ -282,8 +298,11 @@ export class DatabaseSeedService implements OnModuleInit {
     ];
 
     for (const e of mockEmergencies) {
-      const ee = new EmergencyEntity();
-      ee.id = e.id;
+      let ee = await this.emergencyRepo.findOne({ where: { id: e.id } });
+      if (!ee) {
+        ee = new EmergencyEntity();
+        ee.id = e.id;
+      }
       ee.patient = e.patient;
       ee.location = e.location;
       ee.phone = e.phone;
@@ -304,8 +323,11 @@ export class DatabaseSeedService implements OnModuleInit {
     ];
 
     for (const l of mockLocations) {
-      const le = new LocationEntity();
-      le.id = l.id;
+      let le = await this.locationRepo.findOne({ where: { id: l.id } });
+      if (!le) {
+        le = new LocationEntity();
+        le.id = l.id;
+      }
       le.name = l.name;
       le.role = l.role;
       le.x = l.x;

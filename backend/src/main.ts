@@ -2,11 +2,31 @@ import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
 import { ValidationPipe } from "@nestjs/common";
 import { HttpExceptionFilter } from "./shared/filters/http-exception.filter";
+import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
+import * as fs from "fs";
+import * as path from "path";
+import { IdempotencyInterceptor } from "./shared/interceptors/idempotency.interceptor";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.setGlobalPrefix("api/v1");
+
+  // Setup Swagger API Contract Documentation
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle("Merihcare API Specification")
+    .setDescription("Comprehensive API contract documentation for Merihcare clinics, users, and administrative portals.")
+    .setVersion("1.0")
+    .addBearerAuth()
+    .build();
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup("api/docs", app, document);
+
+  // Export OpenAPI Contract Spec for client generation
+  fs.writeFileSync(
+    path.join(__dirname, "../swagger-spec.json"),
+    JSON.stringify(document, null, 2)
+  );
 
   app.enableCors({
     origin: true,
@@ -21,6 +41,7 @@ async function bootstrap() {
   }));
 
   app.useGlobalFilters(new HttpExceptionFilter());
+  app.useGlobalInterceptors(new IdempotencyInterceptor());
 
   const port = process.env.PORT || 3000;
   await app.listen(port);

@@ -75,8 +75,8 @@ export default function SettingsSection() {
         emailNotifs,
         smsNotifs,
         maintenanceMode,
-        commissionRate: parseFloat(commissionRate),
-        minPayout: parseFloat(minPayout)
+        commissionRate,
+        minPayout
       });
       setIsDirty(false);
       toast("Platform settings saved successfully!", "success");
@@ -95,8 +95,8 @@ export default function SettingsSection() {
           emailNotifs,
           smsNotifs,
           maintenanceMode: false,
-          commissionRate: parseFloat(commissionRate),
-          minPayout: parseFloat(minPayout)
+          commissionRate,
+          minPayout
         });
         setMaintenanceMode(false);
         setIsDirty(false);
@@ -114,8 +114,8 @@ export default function SettingsSection() {
           emailNotifs,
           smsNotifs,
           maintenanceMode: true,
-          commissionRate: parseFloat(commissionRate),
-          minPayout: parseFloat(minPayout)
+          commissionRate,
+          minPayout
         });
         setMaintenanceMode(true);
         setIsDirty(false);

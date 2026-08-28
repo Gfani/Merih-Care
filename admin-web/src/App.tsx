@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import logo from "./assets/logo.png";
 import { Avatar, ToastContainer, toast, SkeletonCard, Skeleton } from "./components/ui";
-import { HashRouter as Router, Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
+import { createHashRouter, RouterProvider, Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Users, HeartPulse, ShieldCheck, ClipboardList, Inbox,
   Calendar, CreditCard, AlertTriangle, Star, Activity, Map, BarChart3,
@@ -78,11 +78,16 @@ const NAVIGATION_SECTIONS: {
   },
 ];
 
+const router = createHashRouter([
+  {
+    path: "*",
+    element: <AppContent />
+  }
+]);
+
 export default function App() {
   return (
-    <Router>
-      <AppContent />
-    </Router>
+    <RouterProvider router={router} />
   );
 }
 

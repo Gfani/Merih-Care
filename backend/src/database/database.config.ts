@@ -86,12 +86,15 @@ export const getDatabaseConfig = (configService: any): TypeOrmModuleOptions => {
     TimeOffEntity
   ];
 
+  const isDev = process.env.NODE_ENV === "development";
+
   if (dbType === "sqlite") {
     return {
       type: "sqlite",
       database: process.env.DB_DATABASE || "merihcare.sqlite",
       entities,
-      synchronize: true,
+      migrations: ["dist/database/migrations/*.js"],
+      synchronize: isDev,
     };
   }
 
@@ -103,7 +106,8 @@ export const getDatabaseConfig = (configService: any): TypeOrmModuleOptions => {
     password: process.env.DB_PASSWORD || "merihcare_password",
     database: process.env.DB_DATABASE || "merihcare_db",
     entities,
-    synchronize: true,
+    migrations: ["dist/database/migrations/*.js"],
+    synchronize: isDev,
     ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false,
   };
 };

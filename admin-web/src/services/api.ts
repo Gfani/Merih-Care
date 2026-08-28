@@ -27,7 +27,7 @@ const getHeaders = () => {
 
 const isDemoMode = () => {
   const stored = localStorage.getItem("demo_mode");
-  return stored === null ? false : stored === "true";
+  return stored === null ? true : stored === "true";
 };
 
 export const api = {

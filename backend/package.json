@@ -13,6 +13,10 @@
     "start:prod": "node dist/main",
     "db:reset": "ts-node src/db-control.ts reset",
     "db:seed": "ts-node src/db-control.ts seed",
+    "typeorm": "typeorm-ts-node-commonjs -d src/database/data-source.ts",
+    "migration:generate": "npm run typeorm -- migration:generate",
+    "migration:run": "npm run typeorm -- migration:run",
+    "migration:revert": "npm run typeorm -- migration:revert",
     "test": "jest"
   },
   "dependencies": {
@@ -22,6 +26,8 @@
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.0.0",
+    "@nestjs/swagger": "^7.4.0",
+    "@nestjs/throttler": "^6.5.0",
     "@nestjs/typeorm": "^10.0.1",
     "bcryptjs": "^3.0.3",
     "class-transformer": "^0.5.1",
@@ -32,6 +38,7 @@
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1",
     "sqlite3": "^5.1.7",
+    "swagger-ui-express": "^5.0.1",
     "typeorm": "^0.3.17"
   },
   "devDependencies": {
