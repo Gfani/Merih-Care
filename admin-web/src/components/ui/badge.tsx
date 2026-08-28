@@ -1,6 +1,6 @@
 import React from "react";
 
-export type StatusType = "pending" | "searching" | "accepted" | "scheduled" | "on_the_way" | "arrived" | "in_progress" | "completed" | "cancelled" | "rejected" | "expired" | "failed" | "disputed" | "verified" | "suspended" | "active" | "open" | "under_review" | "resolved" | "closed";
+export type StatusType = "pending" | "searching" | "accepted" | "scheduled" | "on_the_way" | "arrived" | "in_progress" | "completed" | "cancelled" | "rejected" | "expired" | "failed" | "disputed" | "verified" | "suspended" | "active" | "open" | "under_review" | "resolved" | "closed" | "needs_fix";
 
 const statusConfig: Record<StatusType, { label: string; bg: string; text: string; dot: string }> = {
   pending: { label: "Pending", bg: "#fef3c7", text: "#92400e", dot: "#d97706" },
@@ -23,6 +23,7 @@ const statusConfig: Record<StatusType, { label: string; bg: string; text: string
   under_review: { label: "Under Review", bg: "#dbeafe", text: "#1e40af", dot: "#3b82f6" },
   resolved: { label: "Resolved", bg: "#dcfce7", text: "#166534", dot: "#16a34a" },
   closed: { label: "Closed", bg: "#f3f4f6", text: "#4b5563", dot: "#9ca3af" },
+  needs_fix: { label: "Needs Correction", bg: "#fee2e2", text: "#991b1b", dot: "#dc2626" },
 };
 
 export function StatusBadge({ status }: { status: StatusType }) {

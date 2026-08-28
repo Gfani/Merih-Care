@@ -22,14 +22,23 @@ export class LocationEntity {
   role: string; // provider, patient
 
   @Column("float")
-  x: number;
+  x: number; // longitude
 
   @Column("float")
-  y: number;
+  y: number; // latitude
 
   @Column({ default: "available" })
   @Index()
-  status: string; // available, busy, critical
+  status: string; // available, busy, critical, offline
+
+  @Column("float", { nullable: true, default: 0 })
+  accuracy: number; // location accuracy in meters
+
+  @Column({ default: false })
+  privacyMode: boolean; // hide/mask exact location for privacy
+
+  @Column({ nullable: true })
+  locationTimestamp: string; // ISO timestamp of location update
 
   // Audits
   @CreateDateColumn()

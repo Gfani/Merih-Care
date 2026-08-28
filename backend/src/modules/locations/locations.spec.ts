@@ -4,6 +4,7 @@ import { LocationsService } from "./locations.service";
 import { JwtService } from "@nestjs/jwt";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import { LocationEntity } from "../../database/entities/location.entity";
+import { LocationHistoryEntity } from "../../database/entities/emergency-relation.entity";
 
 describe("LocationsController", () => {
   let controller: LocationsController;
@@ -22,6 +23,10 @@ describe("LocationsController", () => {
         LocationsService,
         {
           provide: getRepositoryToken(LocationEntity),
+          useValue: mockLocRepo,
+        },
+        {
+          provide: getRepositoryToken(LocationHistoryEntity),
           useValue: mockLocRepo,
         },
         {

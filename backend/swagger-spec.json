@@ -1061,6 +1061,48 @@
         }
       }
     },
+    "/api/v1/locations/privacy": {
+      "put": {
+        "operationId": "LocationsController_updatePrivacy",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePrivacyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/locations/status": {
+      "put": {
+        "operationId": "LocationsController_updateStatus",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/locations/{id}/move": {
       "put": {
         "operationId": "LocationsController_move",
@@ -1084,6 +1126,50 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/locations/route": {
+      "get": {
+        "operationId": "LocationsController_getRoute",
+        "parameters": [
+          {
+            "name": "lat1",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lon1",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lat2",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lon2",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1477,16 +1563,7 @@
         "type": "object",
         "properties": {
           "status": {
-            "type": "string",
-            "description": "Target lifecycle status"
-          },
-          "visitNotes": {
-            "type": "string",
-            "description": "Visit summary/completion notes"
-          },
-          "disputeReason": {
-            "type": "string",
-            "description": "Dispute reason"
+            "type": "string"
           }
         },
         "required": [
@@ -1656,9 +1733,37 @@
         "type": "object",
         "properties": {}
       },
+      "UpdatePrivacyDto": {
+        "type": "object",
+        "properties": {
+          "privacyMode": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "privacyMode"
+        ]
+      },
       "MoveLocationDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "description": "Latitude coordinate from -90 to 90 degrees"
+          },
+          "longitude": {
+            "type": "number",
+            "description": "Longitude coordinate from -180 to 180 degrees"
+          },
+          "accuracy": {
+            "type": "number",
+            "description": "Location accuracy range in meters"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude"
+        ]
       },
       "ModerateReviewDto": {
         "type": "object",
