@@ -1,0 +1,127 @@
+name: Merihcare CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # 1. Backend Linting, Testing, and Build verification
+  backend-ci:
+    name: Backend CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-size: 18
+          cache: 'npm'
+          cache-dependency-path: merihcare/backend/package-lock.json
+
+      - name: Install Dependencies
+        run: |
+          cd merihcare/backend
+          npm ci
+
+      - name: Lint Code
+        run: |
+          cd merihcare/backend
+          npm run format
+
+      - name: Run Tests
+        run: |
+          cd merihcare/backend
+          npm run test -- --passWithNoTests
+
+      - name: Build Application
+        run: |
+          cd merihcare/backend
+          npm run build
+
+  # 2. Admin Web Linting, Testing, and Build verification
+  admin-web-ci:
+    name: Admin Web CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-size: 18
+          cache: 'npm'
+          cache-dependency-path: merihcare/admin-web/package-lock.json
+
+      - name: Install Dependencies
+        run: |
+          cd merihcare/admin-web
+          npm ci
+
+      - name: Build Application
+        run: |
+          cd merihcare/admin-web
+          npm run build
+
+  # 3. Flutter Mobile App static analysis and testing
+  mobile-ci:
+    name: Mobile Client CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup Java Environment
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.6'
+          channel: 'stable'
+          cache: true
+
+      - name: Install Flutter Dependencies
+        run: |
+          cd merihcare/mobile
+          flutter pub get
+
+      - name: Generate Localizations
+        run: |
+          cd merihcare/mobile
+          flutter gen-l10n
+
+      - name: Run Static Analysis
+        run: |
+          cd merihcare/mobile
+          flutter analyze
+
+      - name: Run Mobile Unit/Widget Tests
+        run: |
+          cd merihcare/mobile
+          flutter test
+
+  # 4. Docker Build Verification
+  docker-build:
+    name: Docker Build Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Build Backend Docker Image
+        run: |
+          cd merihcare/backend
+          docker build -t merihcare-backend:latest .
+
+      - name: Build Admin Web Docker Image
+        run: |
+          cd merihcare/admin-web
+          docker build -t merihcare-admin-web:latest .

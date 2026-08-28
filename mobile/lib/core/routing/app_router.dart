@@ -39,16 +39,19 @@ final appRouter = Provider<GoRouter>((ref) {
       final isAuthPage = location == '/login' || location == '/signup';
       final isOnboarding = location == '/onboarding';
 
+      print('[ROUTER] redirect: location=$location, isAuth=$isAuth, status=${auth.status}, role=${auth.user?['role']}');
+
       if (!isAuth && !isAuthPage && !isOnboarding) {
+        print('[ROUTER] Redirecting to /login (not authenticated)');
         return '/login';
       }
       if (isAuth && (isAuthPage || isOnboarding)) {
         final role = auth.user?['role'];
-        if (role == 'provider') {
-          return '/provider-dashboard';
-        }
-        return '/dashboard';
+        final target = role == 'provider' ? '/provider-dashboard' : '/dashboard';
+        print('[ROUTER] Redirecting to $target (authenticated, role=$role)');
+        return target;
       }
+      print('[ROUTER] Allowing navigation to: $location');
       return null;
     },
     routes: [
