@@ -12,6 +12,14 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 export function Input({ label, error, hint, leftIcon, rightIcon, className = "", id, ...props }: InputProps) {
   const generatedId = React.useId();
   const inputId = id || generatedId;
+  const errorId = `${inputId}-error`;
+  const hintId = `${inputId}-hint`;
+  
+  const describedBy = [
+    error ? errorId : null,
+    hint ? hintId : null
+  ].filter(Boolean).join(" ") || undefined;
+
   return (
     <div className="flex flex-col gap-1.5">
       {label && (
@@ -23,13 +31,15 @@ export function Input({ label, error, hint, leftIcon, rightIcon, className = "",
         {leftIcon && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a9aaa]">{leftIcon}</span>}
         <input
           id={inputId}
-          className={`w-full bg-white dark:bg-slate-800 border rounded-[10px] px-3 py-2.5 text-sm text-[#18232e] dark:text-slate-100 placeholder:text-[#8a9aaa] transition-colors ${leftIcon ? "pl-9" : ""} ${rightIcon ? "pr-9" : ""} ${error ? "border-[#dc2626] focus:border-[#dc2626]" : "border-[#e2e8ee] dark:border-slate-700 hover:border-[#cdd6df] dark:hover:border-slate-600 focus:border-[#0d7c6a] dark:focus:border-cyan-400"} ${className}`}
+          aria-invalid={!!error}
+          aria-describedby={describedBy}
+          className={`w-full bg-white dark:bg-slate-800 border rounded-[10px] px-3 py-2.5 text-sm text-[#18232e] dark:text-slate-100 placeholder:text-[#8a9aaa] transition-colors focus:outline-none focus:ring-2 focus:ring-[#0d7c6a] dark:focus:ring-cyan-400 ${leftIcon ? "pl-9" : ""} ${rightIcon ? "pr-9" : ""} ${error ? "border-[#dc2626] focus:border-[#dc2626]" : "border-[#e2e8ee] dark:border-slate-700 hover:border-[#cdd6df] dark:hover:border-slate-600 focus:border-[#0d7c6a] dark:focus:border-cyan-400"} ${className}`}
           {...props}
         />
         {rightIcon && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8a9aaa]">{rightIcon}</span>}
       </div>
-      {error && <p className="text-xs text-[#dc2626]">{error}</p>}
-      {hint && !error && <p className="text-xs text-[#8a9aaa]">{hint}</p>}
+      {error && <p id={errorId} className="text-xs text-[#dc2626]" role="alert">{error}</p>}
+      {hint && !error && <p id={hintId} className="text-xs text-[#8a9aaa]">{hint}</p>}
     </div>
   );
 }
@@ -43,6 +53,8 @@ export interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextArea
 export function Textarea({ label, error, className = "", id, ...props }: TextareaProps) {
   const generatedId = React.useId();
   const textareaId = id || generatedId;
+  const errorId = `${textareaId}-error`;
+
   return (
     <div className="flex flex-col gap-1.5">
       {label && (
@@ -52,10 +64,12 @@ export function Textarea({ label, error, className = "", id, ...props }: Textare
       )}
       <textarea
         id={textareaId}
-        className={`w-full bg-white dark:bg-slate-800 border rounded-[10px] px-3 py-2.5 text-sm text-[#18232e] dark:text-slate-100 placeholder:text-[#8a9aaa] resize-none transition-colors min-h-[80px] ${error ? "border-[#dc2626]" : "border-[#e2e8ee] dark:border-slate-700 hover:border-[#cdd6df] dark:hover:border-slate-600 focus:border-[#0d7c6a] dark:focus:border-cyan-400"} ${className}`}
+        aria-invalid={!!error}
+        aria-describedby={error ? errorId : undefined}
+        className={`w-full bg-white dark:bg-slate-800 border rounded-[10px] px-3 py-2.5 text-sm text-[#18232e] dark:text-slate-100 placeholder:text-[#8a9aaa] resize-none transition-colors min-h-[80px] focus:outline-none focus:ring-2 focus:ring-[#0d7c6a] dark:focus:ring-cyan-400 ${error ? "border-[#dc2626]" : "border-[#e2e8ee] dark:border-slate-700 hover:border-[#cdd6df] dark:hover:border-slate-600 focus:border-[#0d7c6a] dark:focus:border-cyan-400"} ${className}`}
         {...props}
       />
-      {error && <p className="text-xs text-[#dc2626]">{error}</p>}
+      {error && <p id={errorId} className="text-xs text-[#dc2626]" role="alert">{error}</p>}
     </div>
   );
 }
@@ -78,7 +92,7 @@ export function Select({ label, options, className = "", id, ...props }: SelectP
       )}
       <select
         id={selectId}
-        className={`w-full bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 rounded-[10px] px-3 py-2.5 text-sm text-[#18232e] dark:text-slate-100 hover:border-[#cdd6df] dark:hover:border-slate-600 focus:border-[#0d7c6a] dark:focus:border-cyan-400 cursor-pointer ${className}`}
+        className={`w-full bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 rounded-[10px] px-3 py-2.5 text-sm text-[#18232e] dark:text-slate-100 hover:border-[#cdd6df] dark:hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-[#0d7c6a] dark:focus:ring-cyan-400 cursor-pointer ${className}`}
         {...props}
       >
         {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}

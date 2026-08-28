@@ -7,7 +7,7 @@ import {
   Calendar, CreditCard, AlertTriangle, Star, Activity, Map, BarChart3,
   FileText, Settings as SettingsIcon, Sun, Moon, Menu
 } from "lucide-react";
-
+import { api } from "./services/api";
 // Route-level lazy loading
 const DashboardSection = React.lazy(() => import("./pages/Dashboard"));
 const UsersSection = React.lazy(() => import("./pages/Users"));
@@ -103,8 +103,51 @@ function AppContent() {
 
   const [demoMode, setDemoModeState] = useState(() => {
     const stored = localStorage.getItem("demo_mode");
-    return stored === null ? true : stored === "true";
+    return stored === null ? false : stored === "true";
   });
+
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifPopoverOpen, setNotifPopoverOpen] = useState(false);
+
+  const loadNotifications = async () => {
+    if (!isLoggedIn) return;
+    try {
+      const count = await api.getUnreadCount();
+      setUnreadCount(count);
+      const list = await api.getNotifications(1, 10);
+      setNotifications(list);
+    } catch (err) {
+      console.warn("Failed to load notifications in topbar:", err);
+    }
+  };
+
+  const handleMarkRead = async (id: string) => {
+    try {
+      await api.markNotificationRead(id);
+      toast("Notification marked read", "success");
+      loadNotifications();
+    } catch (err: any) {
+      toast(err.message || "Failed to mark read", "error");
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await api.markAllNotificationsRead();
+      toast("All notifications marked read", "success");
+      loadNotifications();
+    } catch (err: any) {
+      toast(err.message || "Failed to mark all read", "error");
+    }
+  };
+
+  React.useEffect(() => {
+    loadNotifications();
+    // Poll notifications every 60s
+    const timer = setInterval(loadNotifications, 60000);
+    return () => clearInterval(timer);
+  }, [isLoggedIn]);
 
   const toggleDemoMode = () => {
     const newVal = !demoMode;
@@ -261,7 +304,7 @@ function AppContent() {
         <div className="bg-amber-500 text-white px-4 py-1.5 text-xs font-semibold flex items-center justify-between shadow-inner shrink-0 z-50">
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-white shrink-0 animate-ping" />
-            Sandbox Sandbox — Viewing simulated offline mock data.
+            Sandbox Mode — Viewing simulated offline mock data.
           </span>
           <button
             onClick={toggleDemoMode}
@@ -349,17 +392,59 @@ function AppContent() {
               </button>
 
               {/* Notifications */}
-              <button
-                className="relative w-8 h-8 flex items-center justify-center rounded-full hover:bg-[#f0f4f7] dark:hover:bg-slate-700"
-                title="View Notifications"
-                aria-label="View notifications"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-[#4a5a6a] dark:text-slate-300" strokeWidth="2">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                </svg>
-                <span className="absolute top-1 right-1 w-2 h-2 bg-[#dc2626] rounded-full" />
-              </button>
+              <div className="relative">
+                <button
+                  onClick={() => setNotifPopoverOpen(!notifPopoverOpen)}
+                  className="relative w-8 h-8 flex items-center justify-center rounded-full hover:bg-[#f0f4f7] dark:hover:bg-slate-700 cursor-pointer"
+                  title="View Notifications"
+                  aria-label="View notifications"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-[#4a5a6a] dark:text-slate-300" strokeWidth="2">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                  </svg>
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-[#dc2626] text-white text-[8px] font-bold rounded-full flex items-center justify-center">
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
+
+                {notifPopoverOpen && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-750 rounded-xl shadow-xl z-50 overflow-hidden animate-fade-in">
+                    <div className="flex justify-between items-center px-4 py-3 bg-[#f8fafc] dark:bg-slate-700/50 border-b border-[#e2e8ee] dark:border-slate-700">
+                      <h4 className="font-bold text-xs text-[#18232e] dark:text-white">Notifications</h4>
+                      {unreadCount > 0 && (
+                        <button onClick={handleMarkAllRead} className="text-[10px] text-[#0d7c6a] dark:text-cyan-400 hover:underline font-semibold cursor-pointer">
+                          Mark all read
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-64 overflow-y-auto divide-y divide-[#f0f4f7] dark:divide-slate-700">
+                      {notifications.length === 0 ? (
+                        <div className="p-4 text-center text-xs text-[#8a9aaa]">
+                          No notifications found.
+                        </div>
+                      ) : (
+                        notifications.map(n => (
+                          <div 
+                            key={n.id} 
+                            onClick={() => handleMarkRead(n.id)}
+                            className={`p-3 text-left hover:bg-[#f8fafc] dark:hover:bg-slate-750 transition-colors cursor-pointer flex gap-2.5 items-start ${!n.read ? "bg-[#e6f5f2]/40 dark:bg-cyan-950/20" : ""}`}
+                          >
+                            {!n.read && <span className="w-1.5 h-1.5 bg-[#dc2626] rounded-full mt-1.5 shrink-0" />}
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-xs text-[#18232e] dark:text-white truncate ${!n.read ? "font-bold" : "font-medium"}`}>{n.title}</p>
+                              <p className="text-[11px] text-[#4a5a6a] dark:text-slate-400 mt-0.5 leading-tight">{n.body}</p>
+                              <p className="text-[9px] text-[#8a9aaa] mt-1">{new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Admin profile */}
               <div className="flex items-center gap-2 border-l border-[#e2e8ee] dark:border-slate-700 pl-2 md:pl-3">

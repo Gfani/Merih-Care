@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Card, Input, Button, Avatar, ConfirmDialog, Modal, toast, SkeletonCard } from "../components/ui";
 import { api } from "../services/api";
 import { useBlocker } from "react-router-dom";
+import { AlertTriangle } from "lucide-react";
 
 export default function SettingsSection() {
   const [emailNotifs, setEmailNotifs] = useState(true);
@@ -196,7 +197,10 @@ export default function SettingsSection() {
           <div className="flex items-center justify-between pt-2 border-t border-[#f0f4f7] dark:border-slate-700">
             <div>
               <p className="text-sm font-medium text-[#18232e] dark:text-white">Maintenance Mode</p>
-              <p className="text-xs text-[#dc2626] font-semibold">⚠ Disables patient access to the platform</p>
+              <p className="text-xs text-[#dc2626] font-semibold flex items-center gap-1">
+                <AlertTriangle size={12} className="text-red-500 shrink-0" aria-hidden="true" />
+                <span>Disables patient access to the platform</span>
+              </p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" checked={maintenanceMode} onChange={e => handleMaintenanceToggle(e.target.checked)} className="sr-only" />
@@ -216,7 +220,12 @@ export default function SettingsSection() {
         </div>
         <div className="flex items-center gap-3 mt-4">
           <Button size="sm" onClick={handleSave}>Save Changes</Button>
-          {isDirty && <span className="text-xs text-[#dc2626] font-semibold animate-pulse">⚠ You have unsaved changes!</span>}
+          {isDirty && (
+            <span className="text-xs text-[#dc2626] font-semibold animate-pulse flex items-center gap-1">
+              <AlertTriangle size={12} className="text-red-500 shrink-0" aria-hidden="true" />
+              <span>You have unsaved changes!</span>
+            </span>
+          )}
         </div>
       </Card>
 

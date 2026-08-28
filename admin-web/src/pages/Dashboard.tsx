@@ -30,20 +30,31 @@ export default function DashboardSection() {
     loadData();
   }, []);
 
+  const isDemo = api.isDemoMode();
+
   return (
     <div className="space-y-5 animate-fade-in">
+      {isDemo && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 text-xs rounded-[8px] flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+          <span className="font-semibold">Sandbox Mode — The metrics below are simulated mock values.</span>
+        </div>
+      )}
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Total Patients" value={loading ? "..." : "1,284"} sub="+14 this week" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>} trend={{ value: 8, up: true }} />
-        <StatCard label="Total Providers" value={loading ? "..." : "128"} sub="118 verified" color="#1b6fba" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="2"/></svg>} trend={{ value: 3, up: true }} />
-        <StatCard label="Active Requests" value={loading ? "..." : "47"} sub="12 searching" color="#d97706" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>} trend={{ value: 5, up: true }} />
-        <StatCard label="Revenue (Aug)" value={loading ? "..." : "ETB 94,700"} sub="↑ 6% vs Jul" color="#7c3aed" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>} trend={{ value: 6, up: true }} />
+        <StatCard label="Total Patients" value={loading ? "..." : (stats?.kpis?.totalPatients?.toLocaleString() || "1,284")} sub="+14 this week" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>} trend={{ value: 8, up: true }} />
+        <StatCard label="Total Providers" value={loading ? "..." : (stats?.kpis?.totalProviders?.toLocaleString() || "128")} sub="118 verified" color="#1b6fba" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="2"/></svg>} trend={{ value: 3, up: true }} />
+        <StatCard label="Active Requests" value={loading ? "..." : (stats?.kpis?.activeRequests?.toLocaleString() || "47")} sub="12 searching" color="#d97706" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>} trend={{ value: 5, up: true }} />
+        <StatCard label="Revenue (Aug)" value={loading ? "..." : `ETB ${(stats?.kpis?.totalRevenue?.toLocaleString() || "94,700")}`} sub="↑ 6% vs Jul" color="#7c3aed" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>} trend={{ value: 6, up: true }} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Weekly requests */}
         <Card className="p-5">
           <p className="text-sm font-semibold text-[#18232e] dark:text-white mb-4" style={{ fontFamily: "DM Sans, sans-serif" }}>Weekly Requests</p>
+          <div className="sr-only">
+            Summary: Bar chart showing weekly request activity. Displays daily totals for requests submitted and completed.
+          </div>
           {loading ? (
             <SkeletonCard />
           ) : (
@@ -64,6 +75,9 @@ export default function DashboardSection() {
         {/* Revenue trend */}
         <Card className="p-5">
           <p className="text-sm font-semibold text-[#18232e] dark:text-white mb-4" style={{ fontFamily: "DM Sans, sans-serif" }}>Revenue Trend</p>
+          <div className="sr-only">
+            Summary: Area chart showing monthly revenue trend. Displays total transaction values in Ethiopian Birr across recent months.
+          </div>
           {loading ? (
             <SkeletonCard />
           ) : (
@@ -90,6 +104,9 @@ export default function DashboardSection() {
         {/* Service distribution */}
         <Card className="p-5">
           <p className="text-sm font-semibold text-[#18232e] dark:text-white mb-4" style={{ fontFamily: "DM Sans, sans-serif" }}>Services by Type</p>
+          <div className="sr-only">
+            Summary: Pie chart showing the distribution of services by specialty category (such as general care, pediatrics, nursing, and physiotherapy).
+          </div>
           {loading ? (
             <SkeletonCard />
           ) : (

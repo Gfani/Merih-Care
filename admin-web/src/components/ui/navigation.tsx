@@ -10,16 +10,19 @@ export interface SearchBarProps {
 }
 
 export function SearchBar({ placeholder = "Search...", value, onChange, className = "", id }: SearchBarProps) {
+  const generatedId = React.useId();
+  const searchId = id || generatedId;
   return (
     <div className={`relative ${className}`}>
-      <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a9aaa]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8a9aaa]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       <input
         type="text"
-        id={id}
+        id={searchId}
+        aria-label={placeholder}
         placeholder={placeholder}
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 rounded-[10px] text-sm text-[#18232e] dark:text-slate-100 placeholder:text-[#8a9aaa] hover:border-[#cdd6df] dark:hover:border-slate-600 focus:border-[#0d7c6a] dark:focus:border-cyan-400 transition-colors"
+        className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 rounded-[10px] text-sm text-[#18232e] dark:text-slate-100 placeholder:text-[#8a9aaa] hover:border-[#cdd6df] dark:hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-[#0d7c6a] dark:focus:ring-cyan-400 transition-colors"
       />
     </div>
   );

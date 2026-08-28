@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { StatCard, SearchBar, Card, DataTable, StatusBadge, SkeletonCard } from "../components/ui";
+import { StatCard, SearchBar, Card, DataTable, StatusBadge, SkeletonCard, Button } from "../components/ui";
 import { api } from "../services/api";
 
 export default function PaymentsSection() {
@@ -39,6 +39,36 @@ export default function PaymentsSection() {
     revenue: transactions.filter(t => t.status === "successful").reduce((sum, t) => sum + t.amount, 0)
   };
 
+  const handleExportCSV = () => {
+    if (!filtered.length) return;
+    const headers = ["Transaction ID", "Patient", "Provider", "Service", "Amount", "Method", "Status", "Date"].join(",");
+    const rows = filtered.map(t => [
+      t.id,
+      t.patientName,
+      t.providerName,
+      t.service,
+      t.amount,
+      t.method,
+      t.status,
+      t.date
+    ].map(val => {
+      const str = String(val ?? "").replace(/"/g, '""');
+      return str.includes(",") || str.includes("\n") ? `"${str}"` : str;
+    }).join(","));
+    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `payments_export_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportPDF = () => {
+    window.print();
+  };
+
   return (
     <div className="space-y-4 animate-fade-in">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -47,8 +77,10 @@ export default function PaymentsSection() {
         <StatCard label="Failed" value={loading ? "..." : stats.failed} color="#dc2626" />
         <StatCard label="Revenue" value={loading ? "..." : `ETB ${stats.revenue.toLocaleString()}`} color="#1b6fba" />
       </div>
-      <div className="flex gap-3">
-        <SearchBar placeholder="Search transactions..." value={search} onChange={setSearch} className="flex-1" />
+      <div className="flex gap-3 items-center flex-wrap">
+        <SearchBar placeholder="Search transactions..." value={search} onChange={setSearch} className="flex-1 min-w-[200px]" />
+        <Button variant="outline" size="sm" onClick={handleExportCSV}>Export CSV</Button>
+        <Button variant="outline" size="sm" onClick={handleExportPDF}>Export PDF</Button>
       </div>
       <Card>
         {loading ? (

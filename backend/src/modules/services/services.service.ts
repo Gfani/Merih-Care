@@ -22,4 +22,29 @@ export class ServicesService {
     }
     return null;
   }
+
+  async createService(data: any): Promise<ServiceEntity> {
+    const service = new ServiceEntity();
+    service.id = data.id || `srv-${Date.now()}`;
+    service.name = data.name;
+    service.description = data.description || "";
+    service.icon = data.icon || "Activity";
+    service.priceFrom = Number(data.priceFrom) || 0;
+    service.providerCount = 0;
+    service.status = "active";
+    return this.serviceRepo.save(service);
+  }
+
+  async updateService(id: string, data: any): Promise<ServiceEntity> {
+    const service = await this.serviceRepo.findOne({ where: { id } });
+    if (service) {
+      if (data.name !== undefined) service.name = data.name;
+      if (data.description !== undefined) service.description = data.description;
+      if (data.icon !== undefined) service.icon = data.icon;
+      if (data.priceFrom !== undefined) service.priceFrom = Number(data.priceFrom);
+      if (data.status !== undefined) service.status = data.status;
+      return this.serviceRepo.save(service);
+    }
+    return null;
+  }
 }

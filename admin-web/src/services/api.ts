@@ -27,10 +27,11 @@ const getHeaders = () => {
 
 const isDemoMode = () => {
   const stored = localStorage.getItem("demo_mode");
-  return stored === null ? true : stored === "true";
+  return stored === null ? false : stored === "true";
 };
 
 export const api = {
+  isDemoMode,
   // ─── AUTH ──────────────────────────────────────────────────────────────────
   async login(email: string, pass: string): Promise<any> {
     try {
@@ -189,6 +190,78 @@ export const api = {
     }
   },
 
+  async getServices(): Promise<any[]> {
+    try {
+      const res = await axios.get(`${API_URL}/services`, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) {
+        return mockServices.map(s => ({ ...s, status: "active" }));
+      }
+      throw error;
+    }
+  },
+
+  async createService(data: any): Promise<any> {
+    try {
+      const res = await axios.post(`${API_URL}/services`, data, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) {
+        return { id: `srv-${Date.now()}`, ...data, providerCount: 0, status: "active" };
+      }
+      throw error;
+    }
+  },
+
+  async updateService(id: string, data: any): Promise<any> {
+    try {
+      const res = await axios.put(`${API_URL}/services/${id}`, data, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) {
+        return { id, ...data };
+      }
+      throw error;
+    }
+  },
+
+  async toggleService(id: string): Promise<any> {
+    try {
+      const res = await axios.put(`${API_URL}/services/${id}/toggle`, {}, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) {
+        return { id, status: "toggled" };
+      }
+      throw error;
+    }
+  },
+
+  async getReviews(): Promise<any[]> {
+    try {
+      const res = await axios.get(`${API_URL}/reviews`, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) {
+        return mockReviews;
+      }
+      throw error;
+    }
+  },
+
+  async moderateReview(id: string, status: "published" | "hidden" | "flagged"): Promise<any> {
+    try {
+      const res = await axios.put(`${API_URL}/reviews/${id}/moderate`, { status }, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) {
+        return { id, status };
+      }
+      throw error;
+    }
+  },
+
   // ─── VERIFICATIONS ─────────────────────────────────────────────────────────────
   async getVerificationQueue(): Promise<any[]> {
     try {
@@ -265,30 +338,7 @@ export const api = {
     }
   },
 
-  // ─── SERVICES ──────────────────────────────────────────────────────────────
-  async getServices(): Promise<any[]> {
-    try {
-      const res = await axios.get(`${API_URL}/services`, { headers: getHeaders() });
-      return res.data;
-    } catch (error) {
-      if (isDemoMode()) {
-        return mockServices;
-      }
-      throw error;
-    }
-  },
 
-  async toggleService(id: string, currentStatus: string): Promise<any> {
-    try {
-      const res = await axios.put(`${API_URL}/services/${id}/toggle`, {}, { headers: getHeaders() });
-      return res.data;
-    } catch (error) {
-      if (isDemoMode()) {
-        return { id, status: currentStatus === "active" ? "closed" : "active" };
-      }
-      throw error;
-    }
-  },
 
   // ─── APPOINTMENTS ──────────────────────────────────────────────────────────
   async getAppointments(): Promise<any[]> {
@@ -303,55 +353,7 @@ export const api = {
     }
   },
 
-  // ─── COMPLAINTS ────────────────────────────────────────────────────────────
-  async getComplaints(): Promise<any[]> {
-    try {
-      const res = await axios.get(`${API_URL}/complaints`, { headers: getHeaders() });
-      return res.data;
-    } catch (error) {
-      if (isDemoMode()) {
-        return mockComplaints;
-      }
-      throw error;
-    }
-  },
 
-  async resolveComplaint(id: string): Promise<any> {
-    try {
-      const res = await axios.put(`${API_URL}/complaints/${id}/resolve`, {}, { headers: getHeaders() });
-      return res.data;
-    } catch (error) {
-      if (isDemoMode()) {
-        return { id, status: "resolved" };
-      }
-      throw error;
-    }
-  },
-
-  // ─── REVIEWS ───────────────────────────────────────────────────────────────
-  async getReviews(): Promise<any[]> {
-    try {
-      const res = await axios.get(`${API_URL}/reviews`, { headers: getHeaders() });
-      return res.data;
-    } catch (error) {
-      if (isDemoMode()) {
-        return mockReviews;
-      }
-      throw error;
-    }
-  },
-
-  async moderateReview(id: string, status: "published" | "hidden" | "flagged"): Promise<any> {
-    try {
-      const res = await axios.put(`${API_URL}/reviews/${id}/moderate`, { status }, { headers: getHeaders() });
-      return res.data;
-    } catch (error) {
-      if (isDemoMode()) {
-        return { id, status };
-      }
-      throw error;
-    }
-  },
 
   // ─── EMERGENCY ─────────────────────────────────────────────────────────────
   async getEmergencies(): Promise<any[]> {
@@ -401,6 +403,8 @@ export const api = {
       throw error;
     }
   },
+
+
 
   async updateSettings(data: any): Promise<any> {
     try {
@@ -488,6 +492,58 @@ export const api = {
     }
   },
 
+  async getNotifications(page = 1, limit = 20): Promise<any[]> {
+    try {
+      const res = await axios.get(`${API_URL}/notifications`, { params: { page, limit }, headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) {
+        return [
+          { id: "n1", title: "New Service Request", body: "Patient Selamawit Solomon requested General Care visit.", createdAt: new Date().toISOString(), read: false },
+          { id: "n2", title: "Provider Registration", body: "Dr. Meron Alemu submitted verification documents.", createdAt: new Date().toISOString(), read: false },
+          { id: "n3", title: "System Backup", body: "Automatic SQLite encrypted backup completed successfully.", createdAt: new Date().toISOString(), read: true },
+        ];
+      }
+      throw error;
+    }
+  },
+
+  async getUnreadCount(): Promise<number> {
+    try {
+      const res = await axios.get(`${API_URL}/notifications/unread-count`, { headers: getHeaders() });
+      return res.data.unread;
+    } catch (error) {
+      if (isDemoMode()) {
+        return 2;
+      }
+      throw error;
+    }
+  },
+
+  async markNotificationRead(id: string): Promise<any> {
+    try {
+      const res = await axios.patch(`${API_URL}/notifications/${id}/read`, {}, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) {
+        return { success: true };
+      }
+      throw error;
+    }
+  },
+
+  async markAllNotificationsRead(): Promise<any> {
+    try {
+      const res = await axios.patch(`${API_URL}/notifications/read-all`, {}, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) {
+        return { success: true };
+      }
+      throw error;
+    }
+  },
+
   async getDashboardStats(): Promise<any> {
     try {
       const res = await axios.get(`${API_URL}/dashboard/stats`, { headers: getHeaders() });
@@ -500,6 +556,30 @@ export const api = {
           serviceDistribution,
           providerEarningsData
         };
+      }
+      throw error;
+    }
+  },
+
+  async getComplaints(): Promise<any[]> {
+    try {
+      const res = await axios.get(`${API_URL}/complaints`, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) {
+        return mockComplaints;
+      }
+      throw error;
+    }
+  },
+
+  async resolveComplaint(id: string): Promise<any> {
+    try {
+      const res = await axios.put(`${API_URL}/complaints/${id}/resolve`, {}, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) {
+        return { id, status: "resolved" };
       }
       throw error;
     }

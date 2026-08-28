@@ -42,7 +42,11 @@ import {
   EmergencyResponderEntity,
   EmergencyEscalationHistoryEntity,
   LocationHistoryEntity,
-  TimeOffEntity
+  TimeOffEntity,
+  MedicalRecordEntity,
+  PatientConsentEntity,
+  PrivacyPolicyAcceptanceEntity,
+  IncidentReportEntity
 } from "./entities";
 
 export const getDatabaseConfig = (configService: any): TypeOrmModuleOptions => {
@@ -91,7 +95,11 @@ export const getDatabaseConfig = (configService: any): TypeOrmModuleOptions => {
     EmergencyResponderEntity,
     EmergencyEscalationHistoryEntity,
     LocationHistoryEntity,
-    TimeOffEntity
+    TimeOffEntity,
+    MedicalRecordEntity,
+    PatientConsentEntity,
+    PrivacyPolicyAcceptanceEntity,
+    IncidentReportEntity
   ];
 
   const isDev = process.env.NODE_ENV === "development";

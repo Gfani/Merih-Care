@@ -17,3 +17,4 @@ export * from "./chat-chat.entity";
 export * from "./notification.entity";
 export * from "./logs-delivery.entity";
 export * from "./emergency-relation.entity";
+export * from "./medical.entity";

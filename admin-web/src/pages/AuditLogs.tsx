@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { SearchBar, Card, DataTable, SkeletonCard } from "../components/ui";
+import { SearchBar, Card, DataTable, SkeletonCard, Button } from "../components/ui";
 import { api } from "../services/api";
 
 export default function AuditLogsSection() {
@@ -32,9 +32,41 @@ export default function AuditLogsSection() {
       res.toLowerCase().includes(search.toLowerCase());
   });
 
+  const handleExportCSV = () => {
+    if (!filtered.length) return;
+    const headers = ["Log ID", "Actor", "Action", "Resource", "Timestamp", "Status"].join(",");
+    const rows = filtered.map(l => [
+      l.id,
+      l.actor,
+      l.action,
+      l.resource,
+      l.timestamp,
+      l.status
+    ].map(val => {
+      const str = String(val ?? "").replace(/"/g, '""');
+      return str.includes(",") || str.includes("\n") ? `"${str}"` : str;
+    }).join(","));
+    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `audit_logs_export_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportPDF = () => {
+    window.print();
+  };
+
   return (
     <div className="space-y-4 animate-fade-in">
-      <SearchBar placeholder="Search audit logs..." value={search} onChange={setSearch} />
+      <div className="flex gap-3 items-center flex-wrap">
+        <SearchBar placeholder="Search audit logs..." value={search} onChange={setSearch} className="flex-1 min-w-[200px]" />
+        <Button variant="outline" size="sm" onClick={handleExportCSV}>Export CSV</Button>
+        <Button variant="outline" size="sm" onClick={handleExportPDF}>Export PDF</Button>
+      </div>
       <Card>
         {loading ? (
           <div className="p-6 space-y-4">

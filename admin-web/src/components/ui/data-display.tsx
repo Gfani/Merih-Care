@@ -8,7 +8,7 @@ import { Provider, Appointment } from "../../data/mock";
 // ─── DATA TABLE ────────────────────────────────────────────────────────────────
 export interface Column<T> {
   key: string;
-  header: string;
+  header: React.ReactNode;
   render?: (row: T) => React.ReactNode;
   width?: string;
 }
@@ -17,6 +17,13 @@ export function DataTable<T extends Record<string, unknown>>({ columns, data, on
   const primaryCol = columns[0];
   const otherCols = columns.slice(1).filter(c => c.key !== "actions");
   const actionsCol = columns.find(c => c.key === "actions");
+
+  const handleKeyDown = (e: React.KeyboardEvent, row: T) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onRowClick?.(row);
+    }
+  };
 
   return (
     <div className="w-full">
@@ -35,7 +42,14 @@ export function DataTable<T extends Record<string, unknown>>({ columns, data, on
               <tr><td colSpan={columns.length} className="text-center py-12 text-[#8a9aaa] text-sm">No data available</td></tr>
             ) : (
               data.map((row, i) => (
-                <tr key={i} onClick={() => onRowClick?.(row)} className={`border-b border-[#f0f4f7] dark:border-slate-800 transition-colors ${onRowClick ? "hover:bg-[#f8fafc] dark:hover:bg-slate-800/30 cursor-pointer" : ""}`}>
+                <tr 
+                  key={i} 
+                  tabIndex={onRowClick ? 0 : undefined}
+                  role={onRowClick ? "button" : undefined}
+                  onKeyDown={onRowClick ? (e) => handleKeyDown(e, row) : undefined}
+                  onClick={() => onRowClick?.(row)} 
+                  className={`border-b border-[#f0f4f7] dark:border-slate-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d7c6a] dark:focus-visible:ring-cyan-400 ${onRowClick ? "hover:bg-[#f8fafc] dark:hover:bg-slate-800/30 cursor-pointer" : ""}`}
+                >
                   {columns.map(col => {
                     const isActions = col.key === "actions";
                     return (
@@ -59,8 +73,11 @@ export function DataTable<T extends Record<string, unknown>>({ columns, data, on
           data.map((row, i) => (
             <div
               key={i}
+              tabIndex={onRowClick ? 0 : undefined}
+              role={onRowClick ? "button" : undefined}
+              onKeyDown={onRowClick ? (e) => handleKeyDown(e, row) : undefined}
               onClick={() => onRowClick?.(row)}
-              className={`bg-white dark:bg-slate-800 rounded-[12px] border border-[#e2e8ee] dark:border-slate-700 p-4 space-y-3 ${onRowClick ? "active:bg-[#f8fafc] dark:active:bg-slate-800/50 cursor-pointer" : ""}`}
+              className={`bg-white dark:bg-slate-800 rounded-[12px] border border-[#e2e8ee] dark:border-slate-700 p-4 space-y-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0d7c6a] dark:focus-visible:ring-cyan-400 ${onRowClick ? "active:bg-[#f8fafc] dark:active:bg-slate-800/50 cursor-pointer" : ""}`}
             >
               {/* Primary Identity Header */}
               {primaryCol && (

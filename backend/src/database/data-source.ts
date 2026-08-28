@@ -44,7 +44,11 @@ import {
   EmergencyResponderEntity,
   EmergencyEscalationHistoryEntity,
   LocationHistoryEntity,
-  TimeOffEntity
+  TimeOffEntity,
+  MedicalRecordEntity,
+  PatientConsentEntity,
+  PrivacyPolicyAcceptanceEntity,
+  IncidentReportEntity
 } from "./entities";
 
 // Load configuration
@@ -95,7 +99,11 @@ const entities = [
   EmergencyResponderEntity,
   EmergencyEscalationHistoryEntity,
   LocationHistoryEntity,
-  TimeOffEntity
+  TimeOffEntity,
+  MedicalRecordEntity,
+  PatientConsentEntity,
+  PrivacyPolicyAcceptanceEntity,
+  IncidentReportEntity
 ];
 
 export const AppDataSource = new DataSource(

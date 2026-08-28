@@ -289,6 +289,55 @@
             "description": ""
           }
         }
+      },
+      "post": {
+        "operationId": "ServicesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateServiceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/services/{id}": {
+      "put": {
+        "operationId": "ServicesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateServiceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
       }
     },
     "/api/v1/services/{id}/toggle": {
@@ -1007,6 +1056,179 @@
             "description": ""
           }
         }
+      },
+      "post": {
+        "operationId": "MedicalRecordsController_createRecord",
+        "parameters": [
+          {
+            "name": "patientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRecordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/medical-records/consent/grant": {
+      "post": {
+        "operationId": "MedicalRecordsController_grantConsent",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantConsentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/medical-records/consent/revoke/{providerId}": {
+      "delete": {
+        "operationId": "MedicalRecordsController_revokeConsent",
+        "parameters": [
+          {
+            "name": "providerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/medical-records/policy/accept": {
+      "post": {
+        "operationId": "MedicalRecordsController_acceptPolicy",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptPolicyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/medical-records/incidents": {
+      "post": {
+        "operationId": "MedicalRecordsController_reportIncident",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportIncidentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/medical-records/{patientId}/export": {
+      "get": {
+        "operationId": "MedicalRecordsController_exportData",
+        "parameters": [
+          {
+            "name": "patientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/medical-records/{patientId}/delete-account": {
+      "delete": {
+        "operationId": "MedicalRecordsController_deleteAccount",
+        "parameters": [
+          {
+            "name": "patientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/medical-records/admin/backup": {
+      "post": {
+        "operationId": "MedicalRecordsController_backupDatabase",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/medical-records/upload/medical-file": {
+      "post": {
+        "operationId": "MedicalRecordsController_uploadMedicalFile",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
       }
     },
     "/api/v1/emergency": {
@@ -1495,6 +1717,27 @@
           "comments"
         ]
       },
+      "CreateServiceDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string"
+          },
+          "priceFrom": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "priceFrom"
+        ]
+      },
       "CreateAppointmentDto": {
         "type": "object",
         "properties": {
@@ -1727,6 +1970,64 @@
           "userId",
           "title",
           "body"
+        ]
+      },
+      "CreateRecordDto": {
+        "type": "object",
+        "properties": {
+          "diagnosis": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "attachments": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "diagnosis",
+          "notes"
+        ]
+      },
+      "GrantConsentDto": {
+        "type": "object",
+        "properties": {
+          "providerId": {
+            "type": "string"
+          },
+          "durationDays": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "providerId"
+        ]
+      },
+      "AcceptPolicyDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ]
+      },
+      "ReportIncidentDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "description"
         ]
       },
       "DispatchEmergencyDto": {
