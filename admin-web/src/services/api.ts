@@ -142,13 +142,25 @@ export const api = {
     }
   },
 
-  async rejectProvider(id: string): Promise<any> {
+  async rejectProvider(id: string, reason: string): Promise<any> {
     try {
-      const res = await axios.post(`${API_URL}/verification/${id}/reject`, {}, { headers: getHeaders() });
+      const res = await axios.post(`${API_URL}/verification/${id}/reject`, { reason }, { headers: getHeaders() });
       return res.data;
     } catch (error) {
       if (isDemoMode()) {
         return { id, verified: false, status: "rejected" };
+      }
+      throw error;
+    }
+  },
+
+  async requestCorrections(id: string, comments: string): Promise<any> {
+    try {
+      const res = await axios.post(`${API_URL}/verification/${id}/request-corrections`, { comments }, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) {
+        return { id, verified: false, status: "needs_fix" };
       }
       throw error;
     }

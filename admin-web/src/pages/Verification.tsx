@@ -6,6 +6,7 @@ export default function VerificationSection() {
   const [selectedProvider, setSelectedProvider] = useState<any>(null);
   const [approveModal, setApproveModal] = useState(false);
   const [rejectModal, setRejectModal] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
 
   const [docModal, setDocModal] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
@@ -76,13 +77,26 @@ export default function VerificationSection() {
   const handleReject = async () => {
     if (!selectedProvider) return;
     try {
-      await api.rejectProvider(selectedProvider.id);
+      await api.rejectProvider(selectedProvider.id, rejectReason || "Documents did not pass checks");
       toast(`Verification rejected for ${selectedProvider?.name}`, "warning");
       loadData();
     } catch {
       toast("Failed to reject provider", "error");
     } finally {
       setRejectModal(false);
+    }
+  };
+
+  const handleRequestCorrections = async () => {
+    if (!selectedFixProvider || !fixComment) return;
+    try {
+      await api.requestCorrections(selectedFixProvider.id, fixComment);
+      toast(`Correction request sent to ${selectedFixProvider?.name}`, "info");
+      loadData();
+    } catch {
+      toast("Failed to request corrections", "error");
+    } finally {
+      setFixModal(false);
     }
   };
 
@@ -154,7 +168,7 @@ export default function VerificationSection() {
                       <p className="font-semibold text-[#18232e] dark:text-white">{provider.name}</p>
                       <p className="text-sm text-[#8a9aaa] dark:text-slate-400">{provider.title}</p>
                       <div className="mt-1">
-                        <StatusBadge status="pending" />
+                        <StatusBadge status={provider.status === "needs_fix" ? "needs_fix" : "pending"} />
                       </div>
                     </div>
                   </div>
@@ -176,7 +190,7 @@ export default function VerificationSection() {
                     ))}
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="danger" size="sm" className="flex-1" onClick={() => { setSelectedProvider(provider); setRejectModal(true); }}>Reject</Button>
+                    <Button variant="danger" size="sm" className="flex-1" onClick={() => { setSelectedProvider(provider); setRejectReason(""); setRejectModal(true); }}>Reject</Button>
                     <Button variant="outline" size="sm" className="flex-1" onClick={() => { setSelectedFixProvider(provider); setFixComment(""); setFixModal(true); }}>Request Fix</Button>
                     <Button size="sm" className="flex-1" onClick={() => { setSelectedProvider(provider); setApproveModal(true); }}>
                       <svg width="12" height="10" viewBox="0 0 12 10" fill="none" className="inline-block mr-1"><path d="M1 5l3 3.5L11 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -252,8 +266,28 @@ export default function VerificationSection() {
       )}
 
       <ConfirmDialog open={approveModal} onClose={() => setApproveModal(false)} onConfirm={handleApprove} title="Approve Provider" message={`You are approving ${selectedProvider?.name} as a verified Merihcare provider. They will be able to accept service requests immediately.`} confirmLabel="Approve" confirmVariant="success" />
-      <ConfirmDialog open={rejectModal} onClose={() => setRejectModal(false)} onConfirm={handleReject} title="Reject Verification" message={`You are rejecting the verification for ${selectedProvider?.name}. Please ensure you have reviewed all submitted documents carefully.`} confirmLabel="Reject" confirmVariant="danger" />
       <ConfirmDialog open={adminApproveModal} onClose={() => setAdminApproveModal(false)} onConfirm={handleApproveAdmin} title="Approve Administrator Account" message={`You are approving the administrative signup request for ${selectedAdmin?.name} (${selectedAdmin?.email}) with the role of ${selectedAdmin?.adminRole?.replace("_", " ")}. They will immediately gain access to corresponding dashboard features.`} confirmLabel="Approve" confirmVariant="success" />
+
+      {/* Reject Verification Modal */}
+      <Modal open={rejectModal} onClose={() => setRejectModal(false)} title="Reject Verification" footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setRejectModal(false)}>Cancel</Button>
+          <Button variant="danger" onClick={handleReject}>Reject Verification</Button>
+        </div>
+      }>
+        <div className="space-y-3">
+          <p className="text-sm text-[#4a5a6a] dark:text-slate-350">
+            You are rejecting the verification for <span className="font-semibold">{selectedProvider?.name}</span>. Please specify the reason for rejection:
+          </p>
+          <textarea
+            rows={3}
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            placeholder="e.g. The submitted national ID card appears expired and the professional registration number cannot be validated."
+            className="w-full border border-[#e2e8ee] dark:border-slate-700 rounded-lg p-2.5 text-sm bg-white dark:bg-slate-800 text-[#18232e] dark:text-slate-100 focus:outline-none focus:border-[#0d7c6a] resize-none"
+          />
+        </div>
+      </Modal>
 
       {/* Document View Modal */}
       <Modal open={docModal} onClose={() => setDocModal(false)} title="Document View">
@@ -276,14 +310,11 @@ export default function VerificationSection() {
       <Modal open={fixModal} onClose={() => setFixModal(false)} title="Request Document Corrections" footer={
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setFixModal(false)}>Cancel</Button>
-          <Button onClick={() => {
-            toast(`Correction requests sent to ${selectedFixProvider?.name}`, "info");
-            setFixModal(false);
-          }}>Send Request</Button>
+          <Button onClick={handleRequestCorrections}>Send Request</Button>
         </div>
       }>
         <div className="space-y-3">
-          <p className="text-xs text-[#4a5a6a] dark:text-slate-300">Provide concrete instructions for the fields or documents that need to be re-uploaded or corrected.</p>
+          <p className="text-xs text-[#4a5a6a] dark:text-slate-350">Provide concrete instructions for the fields or documents that need to be re-uploaded or corrected.</p>
           <textarea
             rows={4}
             value={fixComment}
