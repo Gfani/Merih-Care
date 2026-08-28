@@ -1,5 +1,5 @@
 name: merihcare
-description: "A new Flutter mobile application for Merihcare services."
+description: "Merihcare - Premium Home Healthcare Services"
 publish_to: "none"
 version: 1.0.0+1
 
@@ -8,6 +8,8 @@ environment:
 
 dependencies:
   flutter:
+    sdk: flutter
+  flutter_localizations:
     sdk: flutter
 
   # Routing
@@ -25,10 +27,17 @@ dependencies:
   # JSON serialization runtime
   json_annotation: ^4.9.0
 
+  # Offline connectivity detection
+  connectivity_plus: ^6.0.0
+
+  # Internationalization
+  intl: ^0.20.2
+
   # WebSocket client
   web_socket_channel: ^3.0.0
 
   # Push notifications
+  firebase_core: ^2.27.0
   firebase_messaging: ^14.8.0
   flutter_local_notifications: ^17.0.0
 
@@ -54,3 +63,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  generate: true
+
+  assets:
+    - assets/images/
