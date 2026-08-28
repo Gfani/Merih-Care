@@ -68,7 +68,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         'email': email,
         'password': password,
       });
-      final token = response.data['token'] as String;
+      final token = (response.data['access_token'] ?? response.data['token']) as String;
       final user = response.data['user'] as Map<String, dynamic>;
       
       await SecureStorage.instance.writeToken(token);
@@ -92,14 +92,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(errorMessage: null);
     try {
       final client = _ref.read(apiClientProvider);
-      final response = await client.dio.post('/auth/register', data: {
+      final response = await client.dio.post('/auth/signup', data: {
         'name': name,
         'email': email,
         'password': password,
         'phone': phone,
         'role': role,
       });
-      final token = response.data['token'] as String;
+      final token = (response.data['access_token'] ?? response.data['token']) as String;
       final user = response.data['user'] as Map<String, dynamic>;
       
       await SecureStorage.instance.writeToken(token);

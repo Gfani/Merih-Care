@@ -154,6 +154,13 @@ export class AuthController {
   @Get("sessions")
   @UseGuards(JwtAuthGuard)
   async getSessions(@Req() req: any) {
-    return this.authService.getActiveSessions(req.user.id);
+    return this.authService.getActiveSessions(req.user.id || req.user.sub);
+  }
+
+  @Get("profile")
+  @UseGuards(JwtAuthGuard)
+  async getProfile(@Req() req: any) {
+    const userId = req.user.id || req.user.sub;
+    return this.authService.getUserById(userId);
   }
 }

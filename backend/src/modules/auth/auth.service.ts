@@ -186,6 +186,13 @@ export class AuthService {
     return this.sessionRepo.find({ where: { userId, isRevoked: false } });
   }
 
+  async getUserById(id: string): Promise<any> {
+    const user = await this.userRepo.findOne({ where: { id } });
+    if (!user) return null;
+    const { password, ...result } = user;
+    return result;
+  }
+
   async completeMfaSetup(userId: string, secret: string): Promise<void> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (user) {
