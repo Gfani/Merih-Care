@@ -14,16 +14,22 @@ export class NotificationDeliveryAttemptEntity {
   userId: string;
 
   @Column()
-  channel: string;
+  channel: string; // in_app | push | email | sms
 
   @Column()
-  status: string;
+  status: string; // pending | sent | failed
 
   @Column({ default: 0 })
   retryCount: number;
 
   @Column({ nullable: true })
   errorMessage: string;
+
+  @Column({ nullable: true })
+  provider: string; // fcm | ses | twilio | africastalking
+
+  @Column({ nullable: true })
+  nextRetryAt: string; // ISO timestamp for exponential backoff retry
 
   @Column()
   createdAt: string;

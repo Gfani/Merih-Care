@@ -1,6 +1,8 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { PayoutsController } from "./payouts.controller";
 import { PayoutsService } from "./payouts.service";
+import { getRepositoryToken } from "@nestjs/typeorm";
+import { PayoutEntity, ProviderEarningsEntity } from "../../database/entities/financial.entity";
 import { JwtService } from "@nestjs/jwt";
 import { DataSource } from "typeorm";
 
@@ -13,6 +15,14 @@ describe("PayoutsController", () => {
       controllers: [PayoutsController],
       providers: [
         PayoutsService,
+        {
+          provide: getRepositoryToken(PayoutEntity),
+          useValue: { find: jest.fn(), save: jest.fn() },
+        },
+        {
+          provide: getRepositoryToken(ProviderEarningsEntity),
+          useValue: { findOne: jest.fn(), save: jest.fn() },
+        },
         {
           provide: JwtService,
           useValue: { verifyAsync: jest.fn() },

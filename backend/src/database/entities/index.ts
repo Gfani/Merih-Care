@@ -14,5 +14,6 @@ export * from "./service-relation.entity";
 export * from "./appointment-history.entity";
 export * from "./financial.entity";
 export * from "./chat-chat.entity";
+export * from "./notification.entity";
 export * from "./logs-delivery.entity";
 export * from "./emergency-relation.entity";

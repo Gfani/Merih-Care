@@ -68,6 +68,18 @@ export class AppointmentEntity {
   @Index()
   status: string; // pending, completed, cancelled
 
+  @Column({ nullable: true })
+  visitNotes: string;
+
+  @Column({ nullable: true })
+  disputeReason: string;
+
+  @Column({ nullable: true })
+  cancelledBy: string;
+
+  @Column({ nullable: true })
+  cancellationReason: string;
+
   // Audits
   @CreateDateColumn()
   createdAt: Date;

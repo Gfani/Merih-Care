@@ -6,7 +6,17 @@ export class ConversationEntity {
   id: string;
 
   @Column({ default: "direct" })
-  type: string;
+  type: string; // direct | group | appointment
+
+  @Column({ nullable: true })
+  @Index()
+  appointmentId: string; // links chat to appointment context
+
+  @Column({ default: false })
+  isProtected: boolean; // medical info protection flag
+
+  @Column({ nullable: true })
+  lastMessageAt: string;
 
   @Column()
   createdAt: string;
@@ -25,6 +35,21 @@ export class ConversationParticipantEntity {
   @Index()
   userId: string;
 
+  @Column({ default: "member" })
+  role: string; // owner | member
+
+  @Column({ nullable: true })
+  lastReadMessageId: string; // for read receipts
+
+  @Column({ default: false })
+  isBlocked: boolean;
+
+  @Column({ nullable: true })
+  blockedAt: string;
+
+  @Column({ nullable: true })
+  blockedBy: string;
+
   @Column()
   joinedAt: string;
 }
@@ -42,8 +67,23 @@ export class MessageEntity {
   @Index()
   senderId: string;
 
-  @Column()
+  @Column({ type: "text" })
   text: string;
+
+  @Column({ default: "sent" })
+  deliveryState: string; // sent | delivered | read
+
+  @Column({ default: false })
+  isDeleted: boolean;
+
+  @Column({ default: false })
+  isSystemMessage: boolean; // medical-system generated messages
+
+  @Column({ nullable: true })
+  replyToId: string; // thread reference
+
+  @Column({ nullable: true })
+  editedAt: string;
 
   @Column()
   createdAt: string;
@@ -66,4 +106,30 @@ export class MessageAttachmentEntity {
 
   @Column({ default: 0 })
   fileSize: number;
+
+  @Column({ nullable: true })
+  fileName: string;
+}
+
+@Entity("message_reports")
+export class MessageReportEntity {
+  @PrimaryColumn()
+  id: string;
+
+  @Column()
+  @Index()
+  messageId: string;
+
+  @Column()
+  @Index()
+  reporterId: string;
+
+  @Column({ nullable: true })
+  reason: string;
+
+  @Column({ default: "pending" })
+  status: string; // pending | reviewed | dismissed
+
+  @Column()
+  createdAt: string;
 }

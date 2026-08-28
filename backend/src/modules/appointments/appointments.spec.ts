@@ -4,6 +4,7 @@ import { AppointmentsService } from "./appointments.service";
 import { JwtService } from "@nestjs/jwt";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import { AppointmentEntity } from "../../database/entities/appointment.entity";
+import { AppointmentStatusHistoryEntity, CancellationReasonEntity } from "../../database/entities/appointment-history.entity";
 import { DataSource } from "typeorm";
 
 describe("AppointmentsController", () => {
@@ -11,6 +12,11 @@ describe("AppointmentsController", () => {
   let service: AppointmentsService;
 
   const mockAptRepo = {
+    find: jest.fn(),
+  };
+
+  const mockHistoryRepo = {
+    save: jest.fn(),
     find: jest.fn(),
   };
 
@@ -22,6 +28,14 @@ describe("AppointmentsController", () => {
         {
           provide: getRepositoryToken(AppointmentEntity),
           useValue: mockAptRepo,
+        },
+        {
+          provide: getRepositoryToken(AppointmentStatusHistoryEntity),
+          useValue: mockHistoryRepo,
+        },
+        {
+          provide: getRepositoryToken(CancellationReasonEntity),
+          useValue: mockHistoryRepo,
         },
         {
           provide: JwtService,

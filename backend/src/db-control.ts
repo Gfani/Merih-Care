@@ -20,10 +20,10 @@ async function bootstrap() {
 
   try {
     if (action === "reset") {
-      console.log("Dropping and synchronizing database tables...");
+      console.log("Dropping database and running migrations...");
       const dataSource = app.get(DataSource);
       await dataSource.dropDatabase();
-      await dataSource.synchronize();
+      await dataSource.runMigrations();
       console.log("Database reset completed successfully!");
     } else if (action === "seed") {
       if (process.env.NODE_ENV === "production") {

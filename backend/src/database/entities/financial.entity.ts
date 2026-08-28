@@ -87,3 +87,21 @@ export class PayoutEntity {
   @Column()
   createdAt: string;
 }
+
+@Entity("provider_earnings")
+export class ProviderEarningsEntity {
+  @PrimaryColumn()
+  providerId: string;
+
+  @Column({ default: 0 })
+  balance: number;
+
+  @Column({ default: 0 })
+  totalEarned: number;
+
+  @Column({ default: 0 })
+  totalWithdrawn: number;
+
+  @Column()
+  updatedAt: string;
+}

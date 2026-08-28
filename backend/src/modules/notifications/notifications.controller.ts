@@ -1,20 +1,58 @@
-import { Controller, Post, Body, UseGuards } from "@nestjs/common";
+import {
+  Controller, Get, Post, Put, Patch, Body, Param, Query,
+  UseGuards, Req
+} from "@nestjs/common";
 import { NotificationsService } from "./notifications.service";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
-import { IsNotEmpty, MaxLength, Length } from "class-validator";
+import { IsNotEmpty, IsString, MaxLength, IsOptional, IsBoolean } from "class-validator";
+import { ApiProperty } from "@nestjs/swagger";
 
 export class SendNotificationDto {
+  @ApiProperty()
   @IsNotEmpty()
-  @Length(4, 50)
   userId: string;
 
+  @ApiProperty()
   @IsNotEmpty()
   @MaxLength(100)
   title: string;
 
+  @ApiProperty()
   @IsNotEmpty()
   @MaxLength(500)
   body: string;
+}
+
+export class UpdatePreferencesDto {
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsBoolean()
+  push?: boolean;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsBoolean()
+  email?: boolean;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsBoolean()
+  sms?: boolean;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsBoolean()
+  appointmentReminders?: boolean;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsBoolean()
+  chatMessages?: boolean;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsBoolean()
+  paymentUpdates?: boolean;
 }
 
 @Controller("notifications")
@@ -22,8 +60,50 @@ export class SendNotificationDto {
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
+  @Get()
+  async getNotifications(
+    @Req() req: any,
+    @Query("page") page: string,
+    @Query("limit") limit: string,
+  ) {
+    return this.notificationsService.getUserNotifications(
+      req.user?.id,
+      parseInt(page) || 1,
+      parseInt(limit) || 20,
+    );
+  }
+
+  @Get("unread-count")
+  async getUnreadCount(@Req() req: any) {
+    const count = await this.notificationsService.getUnreadCount(req.user?.id);
+    return { unread: count };
+  }
+
+  @Patch(":id/read")
+  async markRead(@Param("id") id: string, @Req() req: any) {
+    await this.notificationsService.markRead(req.user?.id, id);
+    return { success: true };
+  }
+
+  @Patch("read-all")
+  async markAllRead(@Req() req: any) {
+    await this.notificationsService.markAllRead(req.user?.id);
+    return { success: true };
+  }
+
+  @Get("preferences")
+  async getPreferences(@Req() req: any) {
+    return this.notificationsService.getPreferences(req.user?.id);
+  }
+
+  @Put("preferences")
+  async updatePreferences(@Body() body: UpdatePreferencesDto, @Req() req: any) {
+    return this.notificationsService.updatePreferences(req.user?.id, body);
+  }
+
+  // Admin send endpoint (legacy)
   @Post("send")
   async send(@Body() body: SendNotificationDto) {
-    return this.notificationsService.sendNotification(body.userId, body.title, body.body);
+    return this.notificationsService.sendNotificationLegacy(body.userId, body.title, body.body);
   }
 }
