@@ -3,6 +3,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, DataSource, In } from "typeorm";
 import { AppointmentEntity } from "../../database/entities/appointment.entity";
 import { AppointmentStatusHistoryEntity, CancellationReasonEntity } from "../../database/entities/appointment-history.entity";
+import { RealtimeService } from "../realtime/realtime.service";
 
 @Injectable()
 export class AppointmentsService {
@@ -14,6 +15,7 @@ export class AppointmentsService {
     @InjectRepository(CancellationReasonEntity)
     private readonly cancellationRepo: Repository<CancellationReasonEntity>,
     private readonly dataSource: DataSource,
+    private readonly realtimeService: RealtimeService,
   ) {}
 
   async getAllAppointments(): Promise<AppointmentEntity[]> {
@@ -130,6 +132,13 @@ export class AppointmentsService {
     history.notes = visitNotes || disputeReason || `Status transitioned to ${newStatus}.`;
     history.createdAt = new Date().toISOString();
     await this.historyRepo.save(history);
+
+    // Emit realtime status update to appointment room
+    this.realtimeService.emitAppointmentUpdate(id, newStatus, {
+      patientId: savedApt.patientId,
+      providerId: savedApt.providerId,
+      visitNotes,
+    });
 
     return savedApt;
   }

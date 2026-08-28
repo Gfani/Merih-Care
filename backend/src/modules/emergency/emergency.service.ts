@@ -3,6 +3,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, DataSource } from "typeorm";
 import { EmergencyEntity } from "../../database/entities/emergency.entity";
 import { EmergencyResponderEntity } from "../../database/entities/emergency-relation.entity";
+import { RealtimeService } from "../realtime/realtime.service";
 
 @Injectable()
 export class EmergencyService {
@@ -10,6 +11,7 @@ export class EmergencyService {
     @InjectRepository(EmergencyEntity)
     private readonly emergencyRepo: Repository<EmergencyEntity>,
     private readonly dataSource: DataSource,
+    private readonly realtimeService: RealtimeService,
   ) {}
 
   async getAllEmergencies(): Promise<EmergencyEntity[]> {
@@ -31,6 +33,14 @@ export class EmergencyService {
         dispatchLog.providerId = "provider-temp-id";
         dispatchLog.dispatchedAt = new Date().toISOString();
         await manager.save(dispatchLog);
+
+        // Broadcast emergency alert to emergency room and admin
+        this.realtimeService.emitEmergencyAlert(id, {
+          emergencyId: id,
+          status: "dispatched",
+          responder,
+          dispatchedAt: dispatchLog.dispatchedAt,
+        });
 
         return savedAlert;
       }

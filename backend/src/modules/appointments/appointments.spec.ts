@@ -6,6 +6,7 @@ import { getRepositoryToken } from "@nestjs/typeorm";
 import { AppointmentEntity } from "../../database/entities/appointment.entity";
 import { AppointmentStatusHistoryEntity, CancellationReasonEntity } from "../../database/entities/appointment-history.entity";
 import { DataSource } from "typeorm";
+import { RealtimeService } from "../realtime/realtime.service";
 
 describe("AppointmentsController", () => {
   let controller: AppointmentsController;
@@ -47,6 +48,10 @@ describe("AppointmentsController", () => {
             transaction: jest.fn(),
             getRepository: jest.fn(),
           },
+        },
+        {
+          provide: RealtimeService,
+          useValue: { emitAppointmentUpdate: jest.fn(), emitToRoom: jest.fn() },
         },
       ],
     }).compile();

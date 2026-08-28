@@ -3,6 +3,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, LessThanOrEqual } from "typeorm";
 import { NotificationEntity, NotificationPreferenceEntity } from "../../database/entities/notification.entity";
 import { NotificationDeliveryAttemptEntity } from "../../database/entities/logs-delivery.entity";
+import { RealtimeService } from "../realtime/realtime.service";
 
 export type NotificationType =
   | "appointment_reminder"
@@ -65,6 +66,7 @@ export class NotificationsService {
     private readonly preferenceRepo: Repository<NotificationPreferenceEntity>,
     @InjectRepository(NotificationDeliveryAttemptEntity)
     private readonly deliveryRepo: Repository<NotificationDeliveryAttemptEntity>,
+    private readonly realtimeService: RealtimeService,
   ) {}
 
   // ─── Core Dispatcher ──────────────────────────────────────────────
@@ -92,6 +94,11 @@ export class NotificationsService {
     notification.idempotencyKey = opts.idempotencyKey || null;
     notification.createdAt = new Date().toISOString();
     await this.notificationRepo.save(notification);
+
+    // Push instant in-app notification via WebSocket to user's personal room
+    // Role is unknown here; RealtimeService checks both patient and provider rooms
+    this.realtimeService.emitToRoom(`patient:${userId}`, "notification", notification);
+    this.realtimeService.emitToRoom(`provider:${userId}`, "notification", notification);
 
     // 2. Load user preferences (critical alerts bypass prefs)
     const isCritical = opts.priority === "critical";

@@ -4,11 +4,13 @@ import { EmergencyService } from "./emergency.service";
 import { EmergencyController } from "./emergency.controller";
 import { EmergencyEntity } from "../../database/entities/emergency.entity";
 import { AuthModule } from "../auth/auth.module";
+import { RealtimeModule } from "../realtime/realtime.module";
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([EmergencyEntity]),
     AuthModule,
+    RealtimeModule,
   ],
   controllers: [EmergencyController],
   providers: [EmergencyService],

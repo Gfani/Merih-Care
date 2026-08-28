@@ -6,6 +6,7 @@ import { AppointmentEntity } from "../../database/entities/appointment.entity";
 import { AppointmentStatusHistoryEntity } from "../../database/entities/appointment-history.entity";
 import { CancellationReasonEntity } from "../../database/entities/appointment-history.entity";
 import { AuthModule } from "../auth/auth.module";
+import { RealtimeModule } from "../realtime/realtime.module";
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { AuthModule } from "../auth/auth.module";
       CancellationReasonEntity
     ]),
     AuthModule,
+    RealtimeModule,
   ],
   controllers: [AppointmentsController],
   providers: [AppointmentsService],

@@ -5,6 +5,7 @@ import { getRepositoryToken } from "@nestjs/typeorm";
 import { NotificationEntity, NotificationPreferenceEntity } from "../../database/entities/notification.entity";
 import { NotificationDeliveryAttemptEntity } from "../../database/entities/logs-delivery.entity";
 import { JwtService } from "@nestjs/jwt";
+import { RealtimeService } from "../realtime/realtime.service";
 
 const mockRepo = () => ({
   find: jest.fn(),
@@ -34,6 +35,7 @@ describe("NotificationsController", () => {
         { provide: getRepositoryToken(NotificationPreferenceEntity), useValue: mockRepo() },
         { provide: getRepositoryToken(NotificationDeliveryAttemptEntity), useValue: mockRepo() },
         { provide: JwtService, useValue: { verifyAsync: jest.fn() } },
+        { provide: RealtimeService, useValue: { emitToRoom: jest.fn(), emitNotification: jest.fn() } },
       ],
     }).compile();
 

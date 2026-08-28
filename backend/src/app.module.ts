@@ -75,6 +75,7 @@ import { AuditModule } from "./modules/audit/audit.module";
 import { ReportsModule } from "./modules/reports/reports.module";
 import { UploadsModule } from "./modules/uploads/uploads.module";
 import { HealthModule } from "./modules/health/health.module";
+import { RealtimeModule } from "./modules/realtime/realtime.module";
 
 @Module({
   imports: [
@@ -164,6 +165,7 @@ import { HealthModule } from "./modules/health/health.module";
     ReportsModule,
     UploadsModule,
     HealthModule,
+    RealtimeModule,
   ],
   providers: [
     DatabaseSeedService,

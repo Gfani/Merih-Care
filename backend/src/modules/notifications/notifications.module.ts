@@ -5,6 +5,7 @@ import { NotificationsController } from "./notifications.controller";
 import { NotificationEntity, NotificationPreferenceEntity } from "../../database/entities/notification.entity";
 import { NotificationDeliveryAttemptEntity } from "../../database/entities/logs-delivery.entity";
 import { AuthModule } from "../auth/auth.module";
+import { RealtimeModule } from "../realtime/realtime.module";
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { AuthModule } from "../auth/auth.module";
       NotificationDeliveryAttemptEntity,
     ]),
     AuthModule,
+    RealtimeModule,
   ],
   controllers: [NotificationsController],
   providers: [NotificationsService],
