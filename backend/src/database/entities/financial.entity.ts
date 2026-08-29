@@ -88,6 +88,30 @@ export class PayoutEntity {
   createdAt: string;
 }
 
+@Entity("payout_batches")
+export class PayoutBatchEntity {
+  @PrimaryColumn()
+  id: string;
+
+  @Column()
+  batchReference: string;
+
+  @Column({ default: 0 })
+  totalPayouts: number;
+
+  @Column({ default: 0 })
+  totalAmount: number;
+
+  @Column({ default: "processing" })
+  status: "pending" | "processing" | "completed" | "failed";
+
+  @Column({ nullable: true })
+  processedBy: string;
+
+  @Column()
+  createdAt: string;
+}
+
 @Entity("provider_earnings")
 export class ProviderEarningsEntity {
   @PrimaryColumn()
@@ -105,3 +129,4 @@ export class ProviderEarningsEntity {
   @Column()
   updatedAt: string;
 }
+

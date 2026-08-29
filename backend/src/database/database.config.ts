@@ -46,7 +46,9 @@ import {
   MedicalRecordEntity,
   PatientConsentEntity,
   PrivacyPolicyAcceptanceEntity,
-  IncidentReportEntity
+  IncidentReportEntity,
+  PayoutBatchEntity,
+  WebhookLogEntity
 } from "./entities";
 
 export const getDatabaseConfig = (configService: any): TypeOrmModuleOptions => {
