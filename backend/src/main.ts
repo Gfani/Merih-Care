@@ -6,11 +6,20 @@ import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import * as fs from "fs";
 import * as path from "path";
 import { IdempotencyInterceptor } from "./shared/interceptors/idempotency.interceptor";
+import { TransformInterceptor } from "./shared/interceptors/transform.interceptor";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.setGlobalPrefix("api/v1");
+
+  // Production Secrets Isolation Check
+  if (process.env.NODE_ENV === "production") {
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret || jwtSecret === "default_secret" || jwtSecret === "secret_key") {
+      throw new Error("[SECURITY FATAL] Default placeholder JWT_SECRET detected in production environment!");
+    }
+  }
 
   // Setup Swagger API Contract Documentation
   const swaggerConfig = new DocumentBuilder()
@@ -29,7 +38,7 @@ async function bootstrap() {
   );
 
   app.enableCors({
-    origin: true,
+    origin: process.env.NODE_ENV === "production" ? ["https://admin.merihcare.et", "https://app.merihcare.et"] : true,
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
     credentials: true,
   });
@@ -41,7 +50,7 @@ async function bootstrap() {
   }));
 
   app.useGlobalFilters(new HttpExceptionFilter());
-  app.useGlobalInterceptors(new IdempotencyInterceptor());
+  app.useGlobalInterceptors(new IdempotencyInterceptor(), new TransformInterceptor());
 
   const port = process.env.PORT || 3000;
   await app.listen(port);

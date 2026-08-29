@@ -10,15 +10,26 @@ export class ProvidersService {
     private readonly providerRepo: Repository<ProviderEntity>,
   ) {}
 
-  async getAllProviders(): Promise<any[]> {
-    const providers = await this.providerRepo.find();
-    return providers.map(p => ({
-      ...p,
-      services: p.services
-    }));
+  /**
+   * Fuzz coordinate to approximately 500m radius to preserve privacy before booking
+   */
+  fuzzCoordinate(coord: number): number {
+    return Math.round(coord * 200) / 200;
   }
 
-  async toggleProviderSuspension(id: string): Promise<ProviderEntity> {
+  async getAllProviders(fuzzLocation = true): Promise<any[]> {
+    const providers = await this.providerRepo.find();
+    return providers.map((p) => {
+      const copy: any = { ...p, services: p.services };
+      if (fuzzLocation && copy.latitude && copy.longitude) {
+        copy.latitude = this.fuzzCoordinate(copy.latitude);
+        copy.longitude = this.fuzzCoordinate(copy.longitude);
+      }
+      return copy;
+    });
+  }
+
+  async toggleProviderSuspension(id: string): Promise<ProviderEntity | null> {
     const provider = await this.providerRepo.findOne({ where: { id } });
     if (provider) {
       provider.status = provider.status === "active" ? "suspended" : "active";
