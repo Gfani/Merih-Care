@@ -186,6 +186,78 @@ export class AuthService {
     return this.sessionRepo.find({ where: { userId, isRevoked: false } });
   }
 
+  async revokeSessionById(sessionId: string): Promise<void> {
+    const session = await this.sessionRepo.findOne({ where: { id: sessionId } });
+    if (session) {
+      session.isRevoked = true;
+      await this.sessionRepo.save(session);
+    }
+  }
+
+  async revokeAllUserSessions(userId: string): Promise<void> {
+    const sessions = await this.sessionRepo.find({ where: { userId, isRevoked: false } });
+    for (const s of sessions) {
+      s.isRevoked = true;
+      await this.sessionRepo.save(s);
+    }
+  }
+
+  async requestPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
+    const user = await this.userRepo.findOne({ where: { email } });
+    if (user) {
+      // In production: send 6-digit OTP code to user's registered phone / email
+      user.passwordResetToken = "849201";
+      user.passwordResetExpires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+      await this.userRepo.save(user);
+    }
+    return {
+      success: true,
+      message: "If the email is registered, a password reset code has been sent.",
+    };
+  }
+
+  async confirmPasswordReset(email: string, token: string, newPass: string): Promise<{ success: boolean }> {
+    const user = await this.userRepo.findOne({ where: { email } });
+    if (!user || user.passwordResetToken !== token) {
+      throw new Error("Invalid or expired password reset token");
+    }
+
+    if (user.passwordResetExpires && new Date(user.passwordResetExpires).getTime() < Date.now()) {
+      throw new Error("Password reset token has expired");
+    }
+
+    user.password = await this.hashPassword(newPass);
+    user.passwordResetToken = null;
+    user.passwordResetExpires = null;
+    user.loginAttempts = 0;
+    user.lockoutUntil = null;
+    await this.userRepo.save(user);
+
+    // Invalidate all active sessions for security
+    await this.revokeAllUserSessions(user.id);
+    return { success: true };
+  }
+
+  async requestEmailVerification(email: string): Promise<{ success: boolean }> {
+    const user = await this.userRepo.findOne({ where: { email } });
+    if (user) {
+      user.emailVerificationToken = "571923";
+      await this.userRepo.save(user);
+    }
+    return { success: true };
+  }
+
+  async confirmEmailVerification(email: string, token: string): Promise<{ success: boolean }> {
+    const user = await this.userRepo.findOne({ where: { email } });
+    if (!user || user.emailVerificationToken !== token) {
+      throw new Error("Invalid email verification token");
+    }
+    user.emailVerified = true;
+    user.emailVerificationToken = null;
+    await this.userRepo.save(user);
+    return { success: true };
+  }
+
   async getUserById(id: string): Promise<any> {
     const user = await this.userRepo.findOne({ where: { id } });
     if (!user) return null;

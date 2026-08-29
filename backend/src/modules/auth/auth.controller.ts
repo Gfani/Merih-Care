@@ -1,6 +1,6 @@
-import { Controller, Post, Get, Body, Req, UnauthorizedException, BadRequestException, UseGuards } from "@nestjs/common";
+import { Controller, Post, Get, Delete, Put, Body, Param, Req, UnauthorizedException, BadRequestException, UseGuards } from "@nestjs/common";
 import { AuthService } from "./auth.service";
-import { IsEmail, IsNotEmpty, MinLength, MaxLength, IsOptional, Matches, IsIn, Length } from "class-validator";
+import { IsEmail, IsNotEmpty, MinLength, MaxLength, IsOptional, Matches, IsIn, Length, IsString } from "class-validator";
 import { Request } from "express";
 import { verifyTOTP } from "../../shared/utils/totp";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
@@ -64,6 +64,46 @@ export class LogoutDto {
   @IsNotEmpty()
   @MaxLength(500)
   refresh_token: string;
+}
+
+export class PasswordResetRequestDto {
+  @IsEmail()
+  @MaxLength(100)
+  email: string;
+}
+
+export class PasswordResetConfirmDto {
+  @IsEmail()
+  @MaxLength(100)
+  email: string;
+
+  @IsNotEmpty()
+  @Length(6, 6)
+  token: string;
+
+  @IsNotEmpty()
+  @MinLength(8, { message: "Password must be at least 8 characters long" })
+  @MaxLength(100)
+  @Matches(/((?=.*\d)|(?=.*\W+))(?![.\n])(?=.*[A-Z])(?=.*[a-z]).*$/, { 
+    message: "Password must contain at least 1 uppercase letter, 1 lowercase letter, and 1 number or special character" 
+  })
+  newPassword: string;
+}
+
+export class EmailVerificationRequestDto {
+  @IsEmail()
+  @MaxLength(100)
+  email: string;
+}
+
+export class EmailVerificationConfirmDto {
+  @IsEmail()
+  @MaxLength(100)
+  email: string;
+
+  @IsNotEmpty()
+  @Length(6, 6)
+  token: string;
 }
 
 @Controller("auth")
@@ -156,10 +196,45 @@ export class AuthController {
     return { success: true };
   }
 
+  @Post("password-reset/request")
+  async requestPasswordReset(@Body() body: PasswordResetRequestDto) {
+    return this.authService.requestPasswordReset(body.email);
+  }
+
+  @Post("password-reset/confirm")
+  async confirmPasswordReset(@Body() body: PasswordResetConfirmDto) {
+    return this.authService.confirmPasswordReset(body.email, body.token, body.newPassword);
+  }
+
+  @Post("email-verification/request")
+  async requestEmailVerification(@Body() body: EmailVerificationRequestDto) {
+    return this.authService.requestEmailVerification(body.email);
+  }
+
+  @Post("email-verification/confirm")
+  async confirmEmailVerification(@Body() body: EmailVerificationConfirmDto) {
+    return this.authService.confirmEmailVerification(body.email, body.token);
+  }
+
   @Get("sessions")
   @UseGuards(JwtAuthGuard)
   async getSessions(@Req() req: any) {
     return this.authService.getActiveSessions(req.user.id || req.user.sub);
+  }
+
+  @Delete("sessions/:id")
+  @UseGuards(JwtAuthGuard)
+  async revokeSessionById(@Param("id") sessionId: string) {
+    await this.authService.revokeSessionById(sessionId);
+    return { success: true };
+  }
+
+  @Delete("sessions/all")
+  @UseGuards(JwtAuthGuard)
+  async revokeAllSessions(@Req() req: any) {
+    const userId = req.user.id || req.user.sub;
+    await this.authService.revokeAllUserSessions(userId);
+    return { success: true };
   }
 
   @Get("profile")
