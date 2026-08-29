@@ -112,6 +112,40 @@ export class RescheduleDto {
   time: string;
 }
 
+export class CheckInDto {
+  @ApiPropertyOptional({ description: "Provider live arrival coordinates" })
+  @IsOptional()
+  coordinates?: { latitude: number; longitude: number };
+}
+
+export class CheckOutDto {
+  @ApiPropertyOptional({ description: "Clinical vitals summary" })
+  @IsOptional()
+  vitals?: {
+    bloodPressure?: string;
+    heartRate?: number;
+    temperature?: number;
+    bloodSugar?: string;
+    clinicalNotes?: string;
+  };
+
+  @ApiPropertyOptional({ description: "Prescribed medications" })
+  @IsOptional()
+  prescriptions?: string[];
+}
+
+export class NoShowDto {
+  @ApiProperty({ description: "No-show party" })
+  @IsNotEmpty()
+  @IsString()
+  party: "patient" | "provider";
+
+  @ApiPropertyOptional({ description: "Wait duration notes" })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
 export class OverrideDto {
   @ApiProperty({ description: "Forced status override" })
   @IsNotEmpty()
@@ -159,6 +193,36 @@ export class AppointmentsController {
       body.visitNotes,
       body.disputeReason
     );
+  }
+
+  @Post(":id/check-in")
+  async checkIn(
+    @Param("id") id: string,
+    @Body() body: CheckInDto,
+    @Req() req: any
+  ) {
+    const actorId = req.user?.id || "provider";
+    return this.appointmentsService.checkInProvider(id, actorId, body.coordinates);
+  }
+
+  @Post(":id/check-out")
+  async checkOut(
+    @Param("id") id: string,
+    @Body() body: CheckOutDto,
+    @Req() req: any
+  ) {
+    const actorId = req.user?.id || "provider";
+    return this.appointmentsService.checkOutProvider(id, actorId, body.vitals, body.prescriptions);
+  }
+
+  @Post(":id/no-show")
+  async markNoShow(
+    @Param("id") id: string,
+    @Body() body: NoShowDto,
+    @Req() req: any
+  ) {
+    const actorId = req.user?.id || "unknown";
+    return this.appointmentsService.markNoShow(id, body.party, actorId, body.notes);
   }
 
   @Post(":id/cancel")

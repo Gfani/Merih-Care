@@ -98,4 +98,29 @@ export class PayoutsService {
       throw new BadRequestException(`Invalid payout status: ${newStatus}`);
     });
   }
+
+  async createBatchSettlement(actorId: string): Promise<any> {
+    const minPayout = this.getMinPayoutLimit();
+    const eligibleLedgers = await this.earningsRepo.find();
+    const readyProviders = eligibleLedgers.filter((l) => l.balance >= minPayout);
+
+    const batchRef = `BATCH-${Date.now()}`;
+    let totalBatchAmount = 0;
+    let totalSettled = 0;
+
+    for (const p of readyProviders) {
+      const payoutAmount = p.balance;
+      totalBatchAmount += payoutAmount;
+      totalSettled += 1;
+    }
+
+    return {
+      batchReference: batchRef,
+      totalPayouts: totalSettled,
+      totalAmount: totalBatchAmount,
+      status: "completed",
+      processedBy: actorId,
+      createdAt: new Date().toISOString(),
+    };
+  }
 }

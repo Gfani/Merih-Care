@@ -46,4 +46,16 @@ export class ProviderEarningsService {
       }))
     };
   }
+
+  async exportEarningsCsv(providerId: string): Promise<string> {
+    const data = await this.getEarnings(providerId);
+    let csv = "Transaction ID,Date,Amount (ETB),Status,Description\n";
+    for (const h of data.history) {
+      csv += `"${h.id}","${h.date}",${h.amount},"${h.status}","${h.description}"\n`;
+    }
+    csv += `\n"Summary Total Earned",,${data.totalEarnings},,\n`;
+    csv += `"Summary Available Balance",,${data.balance},,\n`;
+    csv += `"Summary Pending Payouts",,${data.payoutsPending},,\n`;
+    return csv;
+  }
 }

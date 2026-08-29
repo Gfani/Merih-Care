@@ -152,19 +152,19 @@ export class PaymentsService {
       .update(rawBody)
       .digest("hex");
 
-    if (computedSignature !== chapaSignature && this.chapaWebhookSecret !== "CHAPA_WEBHOOK_TEST_SECRET") {
-      throw new BadRequestException("Invalid webhook signature");
+    if (computedSignature !== chapaSignature) {
+      throw new BadRequestException("Webhook signature verification failed");
     }
 
     const txRef = body.tx_ref;
     if (!txRef) throw new BadRequestException("Missing tx_ref in webhook body");
 
-    if (body.status === "success") {
+    if (body.status === "success" || body.status === "successful") {
       await this.processSuccessfulPayment(txRef, body);
-      return { status: "processed" };
+      return { success: true, status: "processed" };
     }
 
-    return { status: "ignored" };
+    return { success: true, status: "ignored" };
   }
 
   // Atomic database ledger crediting & status updates

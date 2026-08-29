@@ -237,6 +237,77 @@ export class AppointmentsService {
     return savedApt;
   }
 
+  // Provider Arrival Check-in
+  async checkInProvider(id: string, actorId: string, coordinates?: { latitude: number; longitude: number }): Promise<AppointmentEntity> {
+    const apt = await this.appointmentRepo.findOne({ where: { id } });
+    if (!apt) throw new BadRequestException("Appointment not found");
+
+    apt.status = "arrived";
+    const savedApt = await this.appointmentRepo.save(apt);
+
+    const history = new AppointmentStatusHistoryEntity();
+    history.id = `apth-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    history.appointmentId = id;
+    history.status = "arrived";
+    history.changedBy = actorId;
+    history.notes = coordinates
+      ? `Provider arrived at patient location (lat: ${coordinates.latitude}, lng: ${coordinates.longitude})`
+      : "Provider arrived at patient location.";
+    history.createdAt = new Date().toISOString();
+    await this.historyRepo.save(history);
+
+    return savedApt;
+  }
+
+  // Provider Visit Check-out and Clinical Summary
+  async checkOutProvider(
+    id: string,
+    actorId: string,
+    vitals?: any,
+    prescriptions?: string[]
+  ): Promise<AppointmentEntity> {
+    const apt = await this.appointmentRepo.findOne({ where: { id } });
+    if (!apt) throw new BadRequestException("Appointment not found");
+
+    apt.status = "completed";
+    const savedApt = await this.appointmentRepo.save(apt);
+
+    const summaryNotes = vitals
+      ? `Visit completed. Clinical Summary: BP=${vitals.bloodPressure || "N/A"}, HR=${vitals.heartRate || "N/A"}. Prescriptions: ${(prescriptions || []).join(", ") || "None"}`
+      : "Visit completed by provider.";
+
+    const history = new AppointmentStatusHistoryEntity();
+    history.id = `apth-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    history.appointmentId = id;
+    history.status = "completed";
+    history.changedBy = actorId;
+    history.notes = summaryNotes;
+    history.createdAt = new Date().toISOString();
+    await this.historyRepo.save(history);
+
+    return savedApt;
+  }
+
+  // No-Show Detection & Escalation
+  async markNoShow(id: string, party: "patient" | "provider", actorId: string, notes?: string): Promise<AppointmentEntity> {
+    const apt = await this.appointmentRepo.findOne({ where: { id } });
+    if (!apt) throw new BadRequestException("Appointment not found");
+
+    apt.status = "cancelled";
+    const savedApt = await this.appointmentRepo.save(apt);
+
+    const history = new AppointmentStatusHistoryEntity();
+    history.id = `apth-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    history.appointmentId = id;
+    history.status = "cancelled";
+    history.changedBy = actorId;
+    history.notes = `No-show recorded for ${party}. Notes: ${notes || "No response after 15-minute wait."}`;
+    history.createdAt = new Date().toISOString();
+    await this.historyRepo.save(history);
+
+    return savedApt;
+  }
+
   // Sweeper for requests matching timeout (1 hour request expiration)
   async expirePendingRequests(): Promise<number> {
     const cutoffTime = new Date(Date.now() - 60 * 60 * 1000); // 1 hour ago

@@ -647,6 +647,96 @@
         }
       }
     },
+    "/api/v1/appointments/{id}/check-in": {
+      "post": {
+        "operationId": "AppointmentsController_checkIn",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckInDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/appointments/{id}/check-out": {
+      "post": {
+        "operationId": "AppointmentsController_checkOut",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckOutDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/appointments/{id}/no-show": {
+      "post": {
+        "operationId": "AppointmentsController_markNoShow",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoShowDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/appointments/{id}/cancel": {
       "post": {
         "operationId": "AppointmentsController_cancelAppointment",
@@ -850,6 +940,26 @@
         }
       }
     },
+    "/api/v1/earnings/export/{providerId}": {
+      "get": {
+        "operationId": "ProviderEarningsController_exportEarnings",
+        "parameters": [
+          {
+            "name": "providerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/earnings/{providerId}": {
       "get": {
         "operationId": "ProviderEarningsController_getEarnings",
@@ -876,6 +986,17 @@
         "parameters": [],
         "responses": {
           "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/payouts/batches": {
+      "post": {
+        "operationId": "PayoutsController_createBatchSettlement",
+        "parameters": [],
+        "responses": {
+          "201": {
             "description": ""
           }
         }
@@ -2029,6 +2150,47 @@
         },
         "required": [
           "status"
+        ]
+      },
+      "CheckInDto": {
+        "type": "object",
+        "properties": {
+          "coordinates": {
+            "type": "object",
+            "description": "Provider live arrival coordinates"
+          }
+        }
+      },
+      "CheckOutDto": {
+        "type": "object",
+        "properties": {
+          "vitals": {
+            "type": "object",
+            "description": "Clinical vitals summary"
+          },
+          "prescriptions": {
+            "description": "Prescribed medications",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "NoShowDto": {
+        "type": "object",
+        "properties": {
+          "party": {
+            "type": "string",
+            "description": "No-show party"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Wait duration notes"
+          }
+        },
+        "required": [
+          "party"
         ]
       },
       "CancelAppointmentDto": {
