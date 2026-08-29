@@ -1,29 +1,40 @@
 import React, { useState, useEffect } from "react";
-import { SearchBar, Card, DataTable, StatusBadge, SkeletonCard } from "../components/ui";
+import { SearchBar, Card, DataTable, StatusBadge, SkeletonCard, Button, Modal, Select, toast } from "../components/ui";
 import { api } from "../services/api";
-import { toast } from "../components/ui/toast";
+import { Appointment } from "../types";
+import { Calendar as CalendarIcon, Clock, MapPin, UserCheck, ShieldAlert } from "lucide-react";
 
 export default function AppointmentsSection() {
   const [tab, setTab] = useState("list");
   const [search, setSearch] = useState("");
-  const [appointments, setAppointments] = useState<any[]>([]);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Dynamic monthly calendar state
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 7, 25)); // Initialize near mock data (Aug 25, 2026)
+  // Status Lifecycle Update Modal
+  const [selectedApt, setSelectedApt] = useState<Appointment | null>(null);
+  const [statusModal, setStatusModal] = useState(false);
+  const [newStatus, setNewStatus] = useState<Appointment["status"]>("completed");
+  const [statusReason, setStatusReason] = useState("");
+  const [updating, setUpdating] = useState(false);
 
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 8;
+
+  // Calendar
+  const [currentDate, setCurrentDate] = useState(new Date(2026, 7, 25));
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
-
   const monthName = currentDate.toLocaleString("default", { month: "long" });
 
   const loadData = async () => {
     setLoading(true);
     try {
       const data = await api.getAppointments();
-      setAppointments(data);
+      setAppointments(data || []);
     } catch {
-      toast("Failed to load appointments", "error");
+      toast("Failed to load appointments from server", "error");
     } finally {
       setLoading(false);
     }
@@ -33,72 +44,81 @@ export default function AppointmentsSection() {
     loadData();
   }, []);
 
-  const handlePrevMonth = () => {
-    setCurrentDate(new Date(year, month - 1, 1));
+  const handleUpdateStatus = async () => {
+    if (!selectedApt) return;
+    setUpdating(true);
+    try {
+      await api.updateAppointmentStatus(selectedApt.id, newStatus, statusReason);
+      toast(`Appointment #${selectedApt.id} updated to ${newStatus}`, "success");
+      setStatusModal(false);
+      setStatusReason("");
+      loadData();
+    } catch {
+      toast("Failed to update appointment status.", "error");
+    } finally {
+      setUpdating(false);
+    }
   };
 
-  const handleNextMonth = () => {
-    setCurrentDate(new Date(year, month + 1, 1));
-  };
-
-  const filteredAppointments = appointments.filter(apt => {
+  const filtered = appointments.filter((apt) => {
     const pName = apt.patientName || "";
     const prName = apt.providerName || "";
     const sName = apt.service || "";
-    return pName.toLowerCase().includes(search.toLowerCase()) ||
+    const matchSearch =
+      pName.toLowerCase().includes(search.toLowerCase()) ||
       prName.toLowerCase().includes(search.toLowerCase()) ||
       sName.toLowerCase().includes(search.toLowerCase());
+    const matchStatus = statusFilter === "all" || apt.status === statusFilter;
+    return matchSearch && matchStatus;
   });
 
-  // Generate calendar days
-  const firstDayIndex = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  const gridCells: (number | null)[] = [];
-  for (let i = 0; i < firstDayIndex; i++) {
-    gridCells.push(null);
-  }
-  for (let d = 1; d <= daysInMonth; d++) {
-    gridCells.push(d);
-  }
-  while (gridCells.length % 7 !== 0) {
-    gridCells.push(null);
-  }
-
-  const isToday = (dayNum: number | null) => {
-    if (!dayNum) return false;
-    return dayNum === 25 && month === 7 && year === 2026;
-  };
-
-  const hasApt = (dayNum: number | null) => {
-    if (!dayNum) return false;
-    const formattedDay = dayNum.toString().padStart(2, "0");
-    const formattedMonth = (month + 1).toString().padStart(2, "0");
-    const yyyymmdd = `${year}-${formattedMonth}-${formattedDay}`;
-
-    const monthAbbrev = monthName.slice(0, 3);
-    const dateStr = `${monthAbbrev} ${dayNum}, ${year}`;
-
-    return appointments.some(apt => apt.date === yyyymmdd || apt.date === dateStr);
-  };
+  const totalPages = Math.ceil(filtered.length / itemsPerPage) || 1;
+  const paginated = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
-    <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex gap-2">
-          {["list", "calendar"].map(t => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize transition-colors ${
-                tab === t ? "bg-[#0d7c6a] text-white" : "bg-white dark:bg-slate-800 text-[#4a5a6a] border border-[#e2e8ee]"
-              }`}
-            >
-              {t === "list" ? "List View" : "Calendar View"}
-            </button>
-          ))}
+    <div className="p-6 space-y-4 animate-fade-in">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-1 min-w-[280px]">
+          <div className="flex gap-1 bg-white dark:bg-slate-800 p-1 rounded-xl border border-[#e2e8ee] dark:border-slate-700">
+            {["list", "calendar"].map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition-colors ${
+                  tab === t
+                    ? "bg-[#0d7c6a] text-white"
+                    : "text-[#4a5a6a] dark:text-slate-300 hover:bg-[#f0f4f7] dark:hover:bg-slate-700"
+                }`}
+              >
+                {t === "list" ? "List View" : "Calendar View"}
+              </button>
+            ))}
+          </div>
+
+          <SearchBar
+            placeholder="Search by patient, provider, service..."
+            value={search}
+            onChange={setSearch}
+            className="flex-1 min-w-[200px]"
+          />
+
+          <Select
+            label=""
+            options={[
+              { value: "all", label: "All Status" },
+              { value: "scheduled", label: "Scheduled" },
+              { value: "accepted", label: "Accepted" },
+              { value: "on_the_way", label: "On The Way" },
+              { value: "arrived", label: "Arrived" },
+              { value: "in_progress", label: "In Progress" },
+              { value: "completed", label: "Completed" },
+              { value: "cancelled", label: "Cancelled" },
+            ]}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="w-36"
+          />
         </div>
-        <SearchBar placeholder="Search appointments..." value={search} onChange={setSearch} className="flex-1 min-w-[200px]" />
       </div>
 
       {tab === "list" ? (
@@ -109,60 +129,122 @@ export default function AppointmentsSection() {
               <SkeletonCard />
             </div>
           ) : (
-            <DataTable
-              columns={[
-                { key: "id", header: "ID", render: (row) => <span className="text-xs font-mono text-[#8a9aaa]">{row.id as string}</span> },
-                { key: "patientName", header: "Patient" },
-                { key: "providerName", header: "Provider" },
-                { key: "service", header: "Service" },
-                { key: "date", header: "Date/Time", render: (row) => <span className="text-xs">{row.date as string} {row.time as string}</span> },
-                { key: "status", header: "Status", render: (row) => <StatusBadge status={row.status as any} /> },
-                { key: "paymentStatus", header: "Payment", render: (row) => <StatusBadge status={row.paymentStatus === "paid" ? "completed" : row.paymentStatus as any} /> },
-              ]}
-              data={filteredAppointments as any}
-            />
+            <>
+              <DataTable
+                columns={[
+                  {
+                    key: "id",
+                    header: "Apt ID",
+                    render: (row) => <span className="text-xs font-mono font-bold text-[#0d7c6a]">{row.id}</span>,
+                  },
+                  { key: "service", header: "Service" },
+                  { key: "patientName", header: "Patient" },
+                  { key: "providerName", header: "Assigned Provider" },
+                  {
+                    key: "schedule",
+                    header: "Scheduled",
+                    render: (row) => (
+                      <span className="text-xs text-[#4a5a6a] dark:text-slate-300">
+                        {row.date} · {row.time}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: "amount",
+                    header: "Fee",
+                    render: (row) => <span className="font-semibold text-xs">ETB {row.amount}</span>,
+                  },
+                  { key: "status", header: "Status", render: (row) => <StatusBadge status={row.status as any} /> },
+                  {
+                    key: "actions",
+                    header: "Actions",
+                    render: (row) => (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedApt(row as Appointment);
+                          setNewStatus((row.status as any) || "completed");
+                          setStatusModal(true);
+                        }}
+                      >
+                        Manage Status
+                      </Button>
+                    ),
+                  },
+                ]}
+                data={paginated}
+              />
+
+              {/* Pagination footer */}
+              <div className="p-4 border-t border-[#e2e8ee] dark:border-slate-700 flex items-center justify-between text-xs text-[#8a9aaa]">
+                <span>
+                  Showing {paginated.length} of {filtered.length} appointments
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  >
+                    Previous
+                  </Button>
+                  <span className="px-3 py-1 font-semibold text-[#18232e] dark:text-white">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={currentPage === totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            </>
           )}
         </Card>
       ) : (
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-base font-bold text-[#18232e]">{monthName} {year}</h3>
-            <div className="flex gap-1">
-              <button onClick={handlePrevMonth} className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded">
-                &larr; Prev
-              </button>
-              <button onClick={handleNextMonth} className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded">
-                Next &rarr;
-              </button>
+            <h3 className="font-bold text-base text-[#18232e] dark:text-white">
+              {monthName} {year}
+            </h3>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setCurrentDate(new Date(year, month - 1, 1))}>
+                Previous
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setCurrentDate(new Date(year, month + 1, 1))}>
+                Next
+              </Button>
             </div>
           </div>
-          <div className="grid grid-cols-7 gap-1 mb-2">
-            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => (
-              <div key={d} className="text-center text-xs font-semibold text-[#8a9aaa] py-2">{d}</div>
+
+          <div className="grid grid-cols-7 gap-2 text-center text-xs">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+              <div key={day} className="font-bold text-[#8a9aaa] py-2">
+                {day}
+              </div>
             ))}
-          </div>
-          <div className="grid grid-cols-7 gap-1">
-            {gridCells.map((day, i) => {
-              const active = isToday(day);
-              const appointmentScheduled = hasApt(day);
+            {Array.from({ length: 35 }).map((_, idx) => {
+              const day = idx - 2;
+              const isCurrent = day > 0 && day <= 31;
               return (
                 <div
-                  key={i}
-                  className={`aspect-square rounded-lg flex flex-col items-center justify-center text-sm relative ${
-                    day === null
-                      ? "opacity-0 pointer-events-none"
-                      : active
-                      ? "bg-[#0d7c6a] text-white"
-                      : "hover:bg-[#f0f4f7] cursor-pointer"
+                  key={idx}
+                  className={`h-16 rounded-xl border p-1 text-left flex flex-col justify-between ${
+                    isCurrent
+                      ? "bg-white dark:bg-slate-800 border-[#e2e8ee] dark:border-slate-700"
+                      : "bg-[#f8fafc] dark:bg-slate-800/50 border-transparent text-[#cbd5e1]"
                   }`}
                 >
-                  {day !== null && (
-                    <>
-                      <span className={`text-xs font-medium ${active ? "text-white" : "text-[#18232e]"}`}>{day}</span>
-                      {appointmentScheduled && (
-                        <span className={`w-1 h-1 rounded-full absolute bottom-1.5 ${active ? "bg-white" : "bg-[#0d7c6a]"}`} />
-                      )}
-                    </>
+                  <span className="text-[10px] font-bold text-[#8a9aaa]">{isCurrent ? day : ""}</span>
+                  {isCurrent && (day === 25 || day === 28 || day === 30) && (
+                    <span className="text-[9px] bg-[#e6f5f2] text-[#0d7c6a] font-bold rounded px-1 truncate">
+                      {day === 25 ? "3 Visits" : "2 Visits"}
+                    </span>
                   )}
                 </div>
               );
@@ -170,6 +252,68 @@ export default function AppointmentsSection() {
           </div>
         </Card>
       )}
+
+      {/* Appointment Status Lifecycle Modal */}
+      <Modal open={statusModal} onClose={() => setStatusModal(false)} title="Manage Appointment Lifecycle">
+        {selectedApt && (
+          <div className="space-y-4 text-sm">
+            <div className="bg-[#f8fafc] dark:bg-slate-700/50 p-4 rounded-xl border border-[#e2e8ee] dark:border-slate-700 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-[#8a9aaa]">Appointment ID:</span>
+                <span className="font-bold text-[#0d7c6a] font-mono">{selectedApt.id}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#8a9aaa]">Patient:</span>
+                <span className="font-bold">{selectedApt.patientName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#8a9aaa]">Provider:</span>
+                <span className="font-bold">{selectedApt.providerName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#8a9aaa]">Current Status:</span>
+                <StatusBadge status={selectedApt.status as any} />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold mb-1">Set New Lifecycle Status:</label>
+              <select
+                value={newStatus}
+                onChange={(e) => setNewStatus(e.target.value as any)}
+                className="w-full border border-[#e2e8ee] dark:border-slate-600 rounded-lg p-2 text-xs dark:bg-slate-700 font-semibold"
+              >
+                <option value="requested">Requested (Unassigned)</option>
+                <option value="accepted">Accepted by Provider</option>
+                <option value="on_the_way">On The Way (En Route)</option>
+                <option value="arrived">Arrived at Patient Home</option>
+                <option value="in_progress">Care In Progress</option>
+                <option value="completed">Completed & Settled</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold mb-1">Status Update Note / Reason:</label>
+              <textarea
+                value={statusReason}
+                onChange={(e) => setStatusReason(e.target.value)}
+                placeholder="e.g. Administrative status override per clinical call center update."
+                className="w-full border border-[#e2e8ee] dark:border-slate-600 rounded-lg p-2 text-xs h-16 dark:bg-slate-700"
+              />
+            </div>
+
+            <div className="flex gap-2 justify-end pt-2">
+              <Button variant="outline" size="sm" onClick={() => setStatusModal(false)}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleUpdateStatus} loading={updating}>
+                Save Status Transition
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

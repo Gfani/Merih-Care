@@ -1,0 +1,77 @@
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { api } from "../services/api";
+import { User, UserRole } from "../types";
+
+interface AuthContextType {
+  user: User | null;
+  role: UserRole | null;
+  token: string | null;
+  isAuthenticated: boolean;
+  login: (email: string, pass: string) => Promise<void>;
+  logout: () => void;
+  hasPermission: (allowedRoles: UserRole[]) => boolean;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem("admin_token"));
+  const [user, setUser] = useState<User | null>(() => {
+    const raw = localStorage.getItem("admin_user");
+    return raw ? JSON.parse(raw) : null;
+  });
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      setToken(null);
+      setUser(null);
+    };
+
+    window.addEventListener("merihcare:session_expired", handleSessionExpired);
+    return () => window.removeEventListener("merihcare:session_expired", handleSessionExpired);
+  }, []);
+
+  const login = async (email: string, pass: string) => {
+    const res = await api.login(email, pass);
+    setToken(res.access_token);
+    setUser(res.user);
+  };
+
+  const logout = () => {
+    api.logout();
+    setToken(null);
+    setUser(null);
+  };
+
+  const role: UserRole = (user?.role as UserRole) || "admin";
+
+  const hasPermission = (allowedRoles: UserRole[]): boolean => {
+    if (!role) return false;
+    if (role === "super_admin") return true;
+    return allowedRoles.includes(role);
+  };
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        role,
+        token,
+        isAuthenticated: !!token,
+        login,
+        logout,
+        hasPermission,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth(): AuthContextType {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
+}
