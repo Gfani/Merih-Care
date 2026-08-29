@@ -102,7 +102,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   _emailController.text.trim(),
                                   _passwordController.text,
                                 );
-                            setState(() => _loading = false);
+                            if (mounted) {
+                              setState(() => _loading = false);
+                            }
                             if (ok && mounted) {
                               final user = ref.read(authProvider).user;
                               final role = user?['role'];

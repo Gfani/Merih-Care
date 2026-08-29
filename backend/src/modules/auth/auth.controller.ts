@@ -38,6 +38,10 @@ export class SignUpDto {
   password: string;
 
   @IsOptional()
+  @MaxLength(30)
+  phone?: string;
+
+  @IsOptional()
   @IsIn(["admin", "provider", "patient"])
   role?: string;
 
@@ -112,7 +116,8 @@ export class AuthController {
         body.email,
         body.password,
         targetRole,
-        targetAdminRole
+        targetAdminRole,
+        body.phone
       );
 
       if (user.isApproved) {

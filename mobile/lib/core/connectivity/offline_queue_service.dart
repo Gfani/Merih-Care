@@ -65,6 +65,10 @@ class OfflineQueueService {
     await _storage.write(key: _storageKey, value: jsonStr);
   }
 
+  Future<void> clearQueue() async {
+    await _storage.delete(key: _storageKey);
+  }
+
   Future<void> syncQueue(ApiClient client) async {
     final list = await getQueue();
     if (list.isEmpty) return;

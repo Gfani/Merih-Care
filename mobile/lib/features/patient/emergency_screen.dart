@@ -1,14 +1,16 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/location/location_service.dart';
 
-class EmergencyScreen extends StatefulWidget {
+class EmergencyScreen extends ConsumerStatefulWidget {
   const EmergencyScreen({super.key});
 
   @override
-  State<EmergencyScreen> createState() => _EmergencyScreenState();
+  ConsumerState<EmergencyScreen> createState() => _EmergencyScreenState();
 }
 
-class _EmergencyScreenState extends State<EmergencyScreen> with SingleTickerProviderStateMixin {
+class _EmergencyScreenState extends ConsumerState<EmergencyScreen> with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
   bool _activated = false;
   bool _searching = false;
@@ -25,6 +27,10 @@ class _EmergencyScreenState extends State<EmergencyScreen> with SingleTickerProv
       lowerBound: 0.8,
       upperBound: 1.2,
     )..repeat(reverse: true);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(locationProvider.notifier).autoDetectCurrentLocation();
+    });
   }
 
   @override
@@ -36,10 +42,13 @@ class _EmergencyScreenState extends State<EmergencyScreen> with SingleTickerProv
 
   void _triggerEmergency() {
     if (_activated) return;
+    final loc = ref.read(locationProvider).location;
+    final locDesc = loc != null ? 'at ${loc.shortAddress}' : '';
+
     setState(() {
       _activated = true;
       _searching = true;
-      _status = 'Uploading coordinates & searching nearest responder...';
+      _status = 'Uploading coordinates $locDesc & searching nearest responder...';
     });
 
     // Simulate GPS upload and search
@@ -47,7 +56,7 @@ class _EmergencyScreenState extends State<EmergencyScreen> with SingleTickerProv
       if (mounted) {
         setState(() {
           _searching = false;
-          _status = 'Emergency Unit Dispatched! Dr. Meron Alemu is on the way.';
+          _status = 'Emergency Unit Dispatched to $locDesc! Dr. Meron Alemu is on the way.';
         });
         _startEtaCountdown();
       }
@@ -72,6 +81,9 @@ class _EmergencyScreenState extends State<EmergencyScreen> with SingleTickerProv
 
   @override
   Widget build(BuildContext context) {
+    final locationState = ref.watch(locationProvider);
+    final location = locationState.location;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Emergency Assistance')),
       body: Padding(
@@ -79,8 +91,31 @@ class _EmergencyScreenState extends State<EmergencyScreen> with SingleTickerProv
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // Live GPS Status Banner
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFCA5A5)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.gps_fixed, color: Colors.red, size: 16),
+                  const SizedBox(width: 8),
+                  Text(
+                    locationState.isDetecting
+                        ? 'Acquiring high-accuracy GPS fix...'
+                        : '📍 GPS: ${location?.shortAddress ?? "Addis Ababa"} (${location?.latitude.toStringAsFixed(4)}, ${location?.longitude.toStringAsFixed(4)})',
+                    style: const TextStyle(color: Color(0xFF991B1B), fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
             const Icon(Icons.emergency, color: Colors.red, size: 64),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             Text(
               _status,
               textAlign: TextAlign.center,

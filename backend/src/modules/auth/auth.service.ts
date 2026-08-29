@@ -63,7 +63,7 @@ export class AuthService {
     }
   }
 
-  async registerUser(name: string, email: string, pass: string, role: string, adminRole?: string): Promise<UserEntity> {
+  async registerUser(name: string, email: string, pass: string, role: string, adminRole?: string, phone?: string): Promise<UserEntity> {
     const existing = await this.userRepo.findOne({ where: { email } });
     if (existing) {
       throw new Error("User already exists");
@@ -79,7 +79,7 @@ export class AuthService {
     user.name = name;
     user.email = email;
     user.password = hashed;
-    user.phone = "";
+    user.phone = phone || "";
     user.role = role;
     user.status = "active";
     user.dateJoined = new Date().toISOString().split("T")[0];

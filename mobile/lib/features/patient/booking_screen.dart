@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/network/network_providers.dart';
+import '../../core/location/location_service.dart';
 
 class BookingScreen extends ConsumerStatefulWidget {
   final String providerId;
@@ -20,6 +21,17 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
   DateTime _selectedDate = DateTime.now().add(const Duration(days: 1));
   String _selectedTime = '10:00 AM';
   bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final loc = ref.read(locationProvider).location;
+      if (loc != null && _addressController.text.isEmpty) {
+        _addressController.text = loc.fullAddress;
+      }
+    });
+  }
 
   final List<String> _timeSlots = [
     '08:00 AM',
@@ -91,11 +103,41 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                 }).toList(),
               ),
               const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Care Location Address', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  TextButton.icon(
+                    onPressed: () async {
+                      final detected = await ref.read(locationProvider.notifier).autoDetectCurrentLocation();
+                      if (detected != null && mounted) {
+                        setState(() {
+                          _addressController.text = detected.fullAddress;
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('📍 Location auto-detected: ${detected.shortAddress}'),
+                            backgroundColor: theme.primaryColor,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.my_location, size: 16),
+                    label: const Text('Auto-Detect GPS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
               TextFormField(
                 controller: _addressController,
                 decoration: const InputDecoration(
-                  labelText: 'Care Location Address',
-                  hintText: 'Enter subcity, house number, etc.',
+                  labelText: 'Address details',
+                  hintText: 'Enter subcity, house number, landmark, etc.',
                   prefixIcon: Icon(Icons.map_outlined),
                 ),
                 validator: (val) {

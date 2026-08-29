@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../auth/auth_provider.dart';
 import '../../core/network/network_providers.dart';
+import '../../core/location/location_service.dart';
+import '../../core/theme/app_theme.dart';
+import '../../shared/widgets/create_design_widgets.dart';
 import '../../shared/widgets/offline_banner.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -13,23 +16,38 @@ class DashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
-  int _currentIndex = 0;
+  int _currentNavIndex = 0;
   List<dynamic> _upcoming = [];
+  List<dynamic> _providers = [];
   bool _loading = true;
+
+  final List<Map<String, dynamic>> _serviceCategories = [
+    {'id': 'cat-1', 'name': 'Doctor Visit', 'icon': Icons.medical_services_outlined, 'color': Color(0xFFE6F5F2), 'priceFrom': 800, 'count': 45},
+    {'id': 'cat-2', 'name': 'Nursing Care', 'icon': Icons.favorite_border, 'color': Color(0xFFFEF3C7), 'priceFrom': 450, 'count': 62},
+    {'id': 'cat-3', 'name': 'Physiotherapy', 'icon': Icons.directions_run, 'color': Color(0xFFE8F1FB), 'priceFrom': 600, 'count': 28},
+    {'id': 'cat-4', 'name': 'Elderly Care', 'icon': Icons.elderly_outlined, 'color': Color(0xFFF5E6FF), 'priceFrom': 500, 'count': 34},
+    {'id': 'cat-5', 'name': 'Lab Tests', 'icon': Icons.science_outlined, 'color': Color(0xFFFEE2E2), 'priceFrom': 350, 'count': 19},
+    {'id': 'cat-6', 'name': 'Maternal Care', 'icon': Icons.child_care_outlined, 'color': Color(0xFFFCE7F3), 'priceFrom': 550, 'count': 22},
+    {'id': 'cat-7', 'name': 'Medication', 'icon': Icons.medication_outlined, 'color': Color(0xFFECFDF5), 'priceFrom': 200, 'count': 40},
+    {'id': 'cat-8', 'name': 'Post-Op Care', 'icon': Icons.healing_outlined, 'color': Color(0xFFE0E7FF), 'priceFrom': 700, 'count': 15},
+  ];
 
   @override
   void initState() {
     super.initState();
-    _loadAppointments();
+    _loadDashboardData();
   }
 
-  Future<void> _loadAppointments() async {
+  Future<void> _loadDashboardData() async {
     try {
       final client = ref.read(apiClientProvider);
       final response = await client.dio.get('/appointments/patient');
+      final provRes = await client.dio.get('/providers');
+
       if (mounted) {
         setState(() {
           _upcoming = (response.data as List).where((a) => a['status'] != 'completed' && a['status'] != 'cancelled').toList();
+          _providers = provRes.data as List;
           _loading = false;
         });
       }
@@ -39,11 +57,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           _upcoming = [
             {
               'id': 'appt-101',
-              'provider': {'name': 'Dr. Meron Alemu', 'specialty': 'General Practitioner'},
-              'date': '2026-08-30',
+              'service': 'Doctor Home Visit',
+              'provider': {'name': 'Dr. Meron Alemu', 'title': 'General Physician', 'rating': 4.9, 'verified': true},
+              'date': 'Today',
               'time': '10:00 AM',
-              'status': 'scheduled',
+              'status': 'on_the_way',
             }
+          ];
+          _providers = [
+            {'id': 'p1', 'name': 'Dr. Meron Alemu', 'title': 'General Practitioner', 'rating': 4.9, 'reviewCount': 34, 'price': 800, 'distance': '1.8 km', 'verified': true},
+            {'id': 'p2', 'name': 'Hiwot Girma', 'title': 'Registered Nurse', 'rating': 4.8, 'reviewCount': 52, 'price': 450, 'distance': '2.4 km', 'verified': true},
+            {'id': 'p3', 'name': 'Yohannes Tadesse', 'title': 'Physiotherapist', 'rating': 5.0, 'reviewCount': 19, 'price': 600, 'distance': '3.1 km', 'verified': true},
           ];
           _loading = false;
         });
@@ -54,227 +78,402 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
-    final theme = Theme.of(context);
+    final locationState = ref.watch(locationProvider);
     final user = auth.user;
-    final userName = user?['name'] ?? 'Patient';
+    final fullName = user?['name'] ?? 'Tigist Bekele';
+    final firstName = fullName.split(' ')[0];
+
+    final hour = DateTime.now().hour;
+    final greeting = hour < 12 ? 'Good morning' : (hour < 17 ? 'Good afternoon' : 'Good evening');
 
     return Scaffold(
-      appBar: AppBar(
-        title: Row(
+      backgroundColor: AppTheme.surfaceColor,
+      body: SafeArea(
+        child: Column(
           children: [
-            CircleAvatar(
-              backgroundColor: theme.primaryColor.withOpacity(0.1),
-              child: Text(userName[0].toUpperCase(), style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold)),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Hello,', style: TextStyle(fontSize: 11, color: Color(0xFF8A9AAA))),
-                Text(userName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          Semantics(
-            button: true,
-            label: 'View notifications',
-            child: IconButton(
-              icon: const Icon(Icons.notifications_outlined),
-              onPressed: () => context.push('/notifications'),
-            ),
-          ),
-          Semantics(
-            button: true,
-            label: 'Sign out',
-            child: IconButton(
-              icon: const Icon(Icons.logout),
-              onPressed: () async {
-                await ref.read(authProvider.notifier).logout();
-                if (mounted) context.go('/login');
-              },
-            ),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          const OfflineBanner(),
-          Expanded(
-            child: _currentIndex == 0 ? _buildHome(theme) : _buildPlaceholderTab(),
-          ),
-        ],
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (idx) {
-          if (idx == 1) {
-            context.push('/appointments');
-          } else if (idx == 2) {
-            context.push('/profile-settings');
-          } else {
-            setState(() => _currentIndex = idx);
-          }
-        },
-        selectedItemColor: theme.primaryColor,
-        unselectedItemColor: const Color(0xFF8A9AAA),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.calendar_month_outlined), label: 'Bookings'),
-          BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Settings'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHome(ThemeData theme) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Banner
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [theme.primaryColor, const Color(0xFF0A5C4E)]),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Urgent Care Required?', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                const Text('Initiate emergency siren to dispatch the nearest medical responder immediately.', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  onPressed: () => context.push('/emergency'),
-                  icon: const Icon(Icons.notifications_active_outlined, color: Colors.red),
-                  label: const Text('ACTIVATE EMERGENCY', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    minimumSize: const Size(180, 40),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          // Action grid
-          const Text('Services', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF18232E))),
-          const SizedBox(height: 12),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 2,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 1.4,
-            children: [
-              _buildGridCard(theme, Icons.local_hospital_outlined, 'Book Care', 'Consult professionals', () => context.push('/services')),
-              _buildGridCard(theme, Icons.folder_shared_outlined, 'Medical File', 'View records', () => context.push('/medical-records')),
-              _buildGridCard(theme, Icons.chat_bubble_outline, 'Chats', 'Contact provider', () => context.push('/chat/general')),
-              _buildGridCard(theme, Icons.settings_outlined, 'Settings', 'Preferences', () => context.push('/profile-settings')),
-            ],
-          ),
-          const SizedBox(height: 24),
-          // Upcoming appointments
-          const Text('Upcoming Visits', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF18232E))),
-          const SizedBox(height: 12),
-          if (_loading)
-            const Center(child: CircularProgressIndicator())
-          else if (_upcoming.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(20),
-              width: double.infinity,
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-              child: const Column(
-                children: [
-                  Icon(Icons.calendar_today, size: 40, color: Color(0xFF8A9AAA)),
-                  SizedBox(height: 8),
-                  Text('No upcoming visits.', style: TextStyle(color: Color(0xFF8A9AAA), fontSize: 13)),
-                ],
-              ),
-            )
-          else
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _upcoming.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (context, idx) {
-                final appt = _upcoming[idx];
-                final provider = appt['provider'] ?? {};
-                return InkWell(
-                  onTap: () => context.push('/appointment/${appt['id']}'),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-                    child: Row(
+            const OfflineBanner(),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ─── Header: Greeting & Notifications & Avatar ─────────────────────────
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(color: theme.primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                          child: Icon(Icons.person, color: theme.primaryColor),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '$greeting,',
+                              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted, fontWeight: FontWeight.w500),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '$firstName 👋',
+                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.textPrimary, letterSpacing: -0.5),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(provider['name'] ?? 'Provider', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                              Text(provider['specialty'] ?? 'Specialist', style: const TextStyle(color: Color(0xFF8A9AAA), fontSize: 12)),
-                              const SizedBox(height: 4),
-                              Row(
+                        Row(
+                          children: [
+                            // Notifications bell
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: AppTheme.borderColor),
+                              ),
+                              child: Stack(
                                 children: [
-                                  const Icon(Icons.access_time, size: 12, color: Color(0xFF8A9AAA)),
-                                  const SizedBox(width: 4),
-                                  Text('${appt['date']} @ ${appt['time']}', style: const TextStyle(color: Color(0xFF8A9AAA), fontSize: 11)),
+                                  IconButton(
+                                    icon: const Icon(Icons.notifications_outlined, size: 20, color: AppTheme.textSecondary),
+                                    onPressed: () => context.push('/notifications'),
+                                  ),
+                                  Positioned(
+                                    top: 10,
+                                    right: 10,
+                                    child: Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: const BoxDecoration(
+                                        color: AppTheme.errorColor,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                  ),
                                 ],
                               ),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(width: 8),
+                            AvatarWidget(name: fullName, radius: 20),
+                          ],
                         ),
-                        const Icon(Icons.chevron_right, color: Color(0xFF8A9AAA)),
                       ],
                     ),
-                  ),
-                );
-              },
-            ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildGridCard(ThemeData theme, IconData icon, String title, String sub, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE2E8EE)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: theme.primaryColor, size: 24),
-            const SizedBox(height: 8),
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF18232E))),
-            Text(sub, style: const TextStyle(color: Color(0xFF8A9AAA), fontSize: 10)),
+                    const SizedBox(height: 14),
+
+                    // ─── Auto-Detect GPS Location Banner ──────────────────────────────────
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                        border: Border.all(color: AppTheme.borderColor),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.my_location, size: 16, color: AppTheme.primaryColor),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              locationState.location?.fullAddress ?? 'Bole, Addis Ababa (9.0054, 38.7845)',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+                            ),
+                          ),
+                          InkWell(
+                            onTap: () => ref.read(locationProvider.notifier).autoDetectCurrentLocation(),
+                            child: Text(
+                              locationState.isDetecting ? 'Detecting...' : 'Refresh GPS',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primaryColor),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // ─── Emergency 907 Banner ─────────────────────────────────────────────
+                    InkWell(
+                      onTap: () => context.push('/emergency'),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.errorLight,
+                          borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                          border: Border.all(color: const Color(0xFFFCA5A5)),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: const BoxDecoration(
+                                color: AppTheme.errorColor,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.bolt, color: Colors.white, size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'For life-threatening emergencies',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF991B1B)),
+                                  ),
+                                  Text(
+                                    'Call 907 (Ambulance) immediately',
+                                    style: TextStyle(fontSize: 11, color: Color(0xFF991B1B)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Text(
+                              'Call 907',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.errorColor),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // ─── Primary CTAs Card: Request Care Now & Schedule ───────────────────
+                    CardWidget(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'How can we help you today?',
+                            style: TextStyle(fontSize: 12, color: AppTheme.textMuted, fontWeight: FontWeight.w500),
+                          ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            'Get professional healthcare at home',
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                          ),
+                          const SizedBox(height: 14),
+                          ElevatedButton(
+                            onPressed: () => context.push('/patient/on-demand'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primaryColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.radiusMd)),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.schedule, size: 18),
+                                SizedBox(width: 8),
+                                Text('Request Care Now', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          OutlinedButton(
+                            onPressed: () => context.push('/services'),
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(44),
+                              side: const BorderSide(color: AppTheme.primaryColor, width: 1.5),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.radiusMd)),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.calendar_today_outlined, size: 16, color: AppTheme.primaryColor),
+                                SizedBox(width: 8),
+                                Text('Schedule for Later', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.primaryColor)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // ─── Active Service Card (Pulsing live status) ────────────────────────
+                    InkWell(
+                      onTap: () => context.push('/appointment/appt-101'),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor,
+                          borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFF4ADE80),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    const Text('Active Service', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                const Text('Doctor Home Visit · Today 10:00', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                                const SizedBox(height: 2),
+                                const Text('Dr. Meron Alemu · On the way (ETA 12 min)', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                              ],
+                            ),
+                            const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 16),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // ─── Services 4-Column Grid ───────────────────────────────────────────
+                    SectionHeaderWidget(
+                      title: 'Services',
+                      actionLabel: 'See all',
+                      onAction: () => context.push('/services'),
+                    ),
+                    const SizedBox(height: 10),
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 4,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                        childAspectRatio: 0.85,
+                      ),
+                      itemCount: _serviceCategories.length,
+                      itemBuilder: (context, index) {
+                        final cat = _serviceCategories[index];
+                        return InkWell(
+                          onTap: () => context.push('/search-provider?specialty=${Uri.encodeComponent(cat['name'])}'),
+                          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                              border: Border.all(color: AppTheme.borderColor),
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  width: 38,
+                                  height: 38,
+                                  decoration: BoxDecoration(
+                                    color: cat['color'] as Color,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(cat['icon'] as IconData, size: 20, color: AppTheme.textPrimary),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  cat['name'] as String,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.textSecondary, height: 1.1),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // ─── Upcoming Appointment ─────────────────────────────────────────────
+                    if (_upcoming.isNotEmpty) ...[
+                      SectionHeaderWidget(
+                        title: 'Upcoming',
+                        actionLabel: 'All',
+                        onAction: () => context.push('/appointments'),
+                      ),
+                      const SizedBox(height: 10),
+                      AppointmentCardWidget(
+                        appointment: _upcoming[0],
+                        onTap: () => context.push('/appointment/${_upcoming[0]['id']}'),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+
+                    // ─── Available Providers Carousel ─────────────────────────────────────
+                    SectionHeaderWidget(
+                      title: 'Available Providers',
+                      actionLabel: 'See all',
+                      onAction: () => context.push('/search-provider'),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 130,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _providers.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 10),
+                        itemBuilder: (context, index) {
+                          final provider = _providers[index];
+                          return SizedBox(
+                            width: 220,
+                            child: ProviderCardWidget(
+                              provider: provider,
+                              compact: true,
+                              onTap: () => context.push('/provider/${provider['id']}'),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _currentNavIndex,
+        onDestinationSelected: (index) {
+          setState(() => _currentNavIndex = index);
+          switch (index) {
+            case 0:
+              break;
+            case 1:
+              context.push('/services');
+              break;
+            case 2:
+              context.push('/appointments');
+              break;
+            case 3:
+              context.push('/chat/apt-101');
+              break;
+            case 4:
+              context.push('/profile-settings');
+              break;
+          }
+        },
+        backgroundColor: Colors.white,
+        elevation: 2,
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home, color: AppTheme.primaryColor), label: 'Home'),
+          NavigationDestination(icon: Icon(Icons.medical_services_outlined), selectedIcon: Icon(Icons.medical_services, color: AppTheme.primaryColor), label: 'Services'),
+          NavigationDestination(icon: Icon(Icons.calendar_today_outlined), selectedIcon: Icon(Icons.calendar_today, color: AppTheme.primaryColor), label: 'Appointments'),
+          NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble, color: AppTheme.primaryColor), label: 'Messages'),
+          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person, color: AppTheme.primaryColor), label: 'Profile'),
+        ],
+      ),
     );
-  }
-
-  Widget _buildPlaceholderTab() {
-    return const Center(child: Text('Tab loading...'));
   }
 }

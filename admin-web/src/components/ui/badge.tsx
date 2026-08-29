@@ -78,13 +78,15 @@ export function VerifiedBadge({ size = "sm" }: { size?: "sm" | "md" }) {
 }
 
 // ─── PRIORITY BADGE ────────────────────────────────────────────────────────────
-export function PriorityBadge({ priority }: { priority: "low" | "medium" | "high" | "urgent" }) {
-  const cfg = {
+export function PriorityBadge({ priority }: { priority: string }) {
+  const normalized = (priority || "low").toLowerCase() as "low" | "medium" | "high" | "urgent";
+  const map = {
     low: { bg: "#f3f4f6", text: "#6b7280", dot: "#9ca3af" },
     medium: { bg: "#fef3c7", text: "#92400e", dot: "#d97706" },
     high: { bg: "#fed7aa", text: "#9a3412", dot: "#ea580c" },
     urgent: { bg: "#fee2e2", text: "#991b1b", dot: "#dc2626" },
-  }[priority];
+  };
+  const cfg = map[normalized] || map.low;
   const priorityIcons = {
     low: <Clock size={12} aria-hidden="true" />,
     medium: <Info size={12} aria-hidden="true" />,
@@ -96,7 +98,7 @@ export function PriorityBadge({ priority }: { priority: "low" | "medium" | "high
       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold capitalize" 
       style={{ backgroundColor: cfg.bg, color: cfg.text }}
     >
-      <span className="shrink-0 flex items-center" style={{ color: cfg.dot }}>{priorityIcons[priority]}</span>
+      <span className="shrink-0 flex items-center" style={{ color: cfg.dot }}>{priorityIcons[normalized] || priorityIcons.low}</span>
       {priority}
     </span>
   );

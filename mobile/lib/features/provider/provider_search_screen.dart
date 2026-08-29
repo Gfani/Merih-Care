@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/network/network_providers.dart';
+import '../../core/location/location_service.dart';
+import '../../core/theme/app_theme.dart';
+import '../../shared/widgets/create_design_widgets.dart';
 
 class ProviderSearchScreen extends ConsumerStatefulWidget {
   final String? specialty;
@@ -19,11 +22,27 @@ class _ProviderSearchScreenState extends ConsumerState<ProviderSearchScreen> {
   String? _selectedSpecialty;
   double _minRating = 0.0;
 
+  final List<String> _specialties = [
+    'All',
+    'Doctor Visit',
+    'Nursing Care',
+    'Physiotherapy',
+    'Elderly Care',
+    'Lab Tests',
+    'Maternal Care',
+  ];
+
   @override
   void initState() {
     super.initState();
-    _selectedSpecialty = widget.specialty;
+    _selectedSpecialty = widget.specialty ?? 'All';
     _loadProviders();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadProviders() async {
@@ -31,7 +50,7 @@ class _ProviderSearchScreenState extends ConsumerState<ProviderSearchScreen> {
     try {
       final client = ref.read(apiClientProvider);
       final response = await client.dio.get('/providers', queryParameters: {
-        if (_selectedSpecialty != null) 'specialty': _selectedSpecialty,
+        if (_selectedSpecialty != null && _selectedSpecialty != 'All') 'specialty': _selectedSpecialty,
         'search': _searchController.text.trim(),
       });
       if (mounted) {
@@ -46,24 +65,46 @@ class _ProviderSearchScreenState extends ConsumerState<ProviderSearchScreen> {
           _providers = [
             {
               'id': 'p-201',
-              'user': {'name': 'Dr. Meron Alemu'},
-              'specialty': 'General Care',
+              'name': 'Dr. Meron Alemu',
+              'title': 'General Practitioner (MD)',
+              'specialty': 'Doctor Visit',
               'rating': 4.9,
+              'reviewCount': 38,
               'experience': 8,
-              'hourlyRate': 250,
-              'avatarUrl': null,
-              'bio': 'Experienced practitioner offering care for all ages.',
+              'pricePerVisit': 800,
+              'distance': '1.2 km away',
+              'avatar': 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=200&h=200&fit=crop&auto=format',
+              'verified': true,
+              'bio': 'Specialized physician offering comprehensive home checkups for chronic illness, elderly care, and routine health.',
             },
             {
               'id': 'p-202',
-              'user': {'name': 'Nurse Bereket Solomon'},
-              'specialty': 'Nursing Visit',
-              'rating': 4.7,
-              'experience': 5,
-              'hourlyRate': 180,
-              'avatarUrl': null,
-              'bio': 'Specialized home care, wounds treatment, and IV procedures.',
-            }
+              'name': 'Hiwot Girma',
+              'title': 'Registered Home Nurse (BSc)',
+              'specialty': 'Nursing Care',
+              'rating': 4.8,
+              'reviewCount': 52,
+              'experience': 6,
+              'pricePerVisit': 450,
+              'distance': '2.5 km away',
+              'avatar': 'https://images.unsplash.com/photo-1594824813681-427f71b95f2d?w=200&h=200&fit=crop&auto=format',
+              'verified': true,
+              'bio': 'Post-op care, IV infusions, wound dressing, catheter care, and vital signs monitoring.',
+            },
+            {
+              'id': 'p-203',
+              'name': 'Yohannes Tadesse',
+              'title': 'Licensed Physiotherapist (DPT)',
+              'specialty': 'Physiotherapy',
+              'rating': 5.0,
+              'reviewCount': 24,
+              'experience': 10,
+              'pricePerVisit': 600,
+              'distance': '3.1 km away',
+              'avatar': 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=200&h=200&fit=crop&auto=format',
+              'verified': true,
+              'bio': 'Physical rehabilitation, mobility restoration, stroke recovery, and musculoskeletal pain relief.',
+            },
           ];
           _loading = false;
         });
@@ -73,129 +114,146 @@ class _ProviderSearchScreenState extends ConsumerState<ProviderSearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final filtered = _providers.where((p) => (p['rating'] as num).toDouble() >= _minRating).toList();
+    final locationState = ref.watch(locationProvider);
+    final filtered = _providers.where((p) {
+      final name = (p['name'] ?? p['user']?['name'] ?? '').toString().toLowerCase();
+      final specialty = (p['specialty'] ?? p['title'] ?? '').toString().toLowerCase();
+      final query = _searchController.text.trim().toLowerCase();
+      final matchesSearch = query.isEmpty || name.contains(query) || specialty.contains(query);
+      final rating = (p['rating'] as num?)?.toDouble() ?? 4.5;
+      final matchesRating = rating >= _minRating;
+      return matchesSearch && matchesRating;
+    }).toList();
 
     return Scaffold(
+      backgroundColor: AppTheme.surfaceColor,
       appBar: AppBar(
-        title: Text(widget.specialty ?? 'Search Providers'),
+        title: const Text('Available Healthcare Providers'),
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Search by name...',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                          _loadProviders();
-                        },
-                      ),
-                    ),
-                    onSubmitted: (_) => _loadProviders(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: Icon(Icons.tune, color: theme.primaryColor),
-                  onPressed: _showFilterModal,
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : filtered.isEmpty
-                    ? const Center(child: Text('No providers found.'))
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                        itemCount: filtered.length,
-                        itemBuilder: (context, idx) {
-                          final prov = filtered[idx];
-                          final user = prov['user'] ?? {};
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: theme.primaryColor.withOpacity(0.1),
-                                child: Text(user['name']?[0]?.toUpperCase() ?? 'P'),
-                              ),
-                              title: Text(user['name'] ?? 'Doctor Name', style: const TextStyle(fontWeight: FontWeight.bold)),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('${prov['specialty']} • ${prov['experience']} years exp'),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.star, color: Colors.amber, size: 16),
-                                      const SizedBox(width: 4),
-                                      Text(prov['rating'].toString(), style: const TextStyle(fontWeight: FontWeight.bold)),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              trailing: Text('ETB ${prov['hourlyRate']}/hr', style: TextStyle(fontWeight: FontWeight.bold, color: theme.primaryColor)),
-                              onTap: () => context.push('/provider/${prov['id']}'),
-                            ),
-                          );
-                        },
-                      ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showFilterModal() {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // GPS Location Bar
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: Colors.white,
+              child: Row(
                 children: [
-                  const Text('Filter Providers', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 20),
-                  const Text('Minimum Rating', style: TextStyle(fontWeight: FontWeight.w600)),
-                  Slider(
-                    value: _minRating,
-                    min: 0.0,
-                    max: 5.0,
-                    divisions: 5,
-                    label: _minRating.toString(),
-                    onChanged: (val) {
-                      setModalState(() => _minRating = val);
-                      setState(() {});
-                    },
+                  const Icon(Icons.my_location, size: 16, color: AppTheme.primaryColor),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      locationState.location?.fullAddress ?? 'Bole, Addis Ababa (Near You)',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+                    ),
                   ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _loadProviders();
-                    },
-                    child: const Text('Apply Filters'),
+                  InkWell(
+                    onTap: () => ref.read(locationProvider.notifier).autoDetectCurrentLocation(),
+                    child: Text(
+                      locationState.isDetecting ? 'Detecting...' : 'Update GPS',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primaryColor),
+                    ),
                   ),
                 ],
               ),
-            );
-          },
-        );
-      },
+            ),
+            const Divider(height: 1, color: AppTheme.borderColor),
+            // Search Input & Filter Chips
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _searchController,
+                    onChanged: (val) => setState(() {}),
+                    decoration: InputDecoration(
+                      hintText: 'Search by provider name or specialty...',
+                      prefixIcon: const Icon(Icons.search, color: AppTheme.textMuted),
+                      suffixIcon: _searchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, size: 18),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() {});
+                              },
+                            )
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 34,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _specialties.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 6),
+                      itemBuilder: (context, idx) {
+                        final spec = _specialties[idx];
+                        final isSelected = _selectedSpecialty == spec;
+                        return ChoiceChip(
+                          label: Text(spec, style: TextStyle(fontSize: 11, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500, color: isSelected ? Colors.white : AppTheme.textSecondary)),
+                          selected: isSelected,
+                          selectedColor: AppTheme.primaryColor,
+                          backgroundColor: AppTheme.surfaceColor,
+                          side: BorderSide(color: isSelected ? AppTheme.primaryColor : AppTheme.borderColor),
+                          onSelected: (selected) {
+                            if (selected) {
+                              setState(() => _selectedSpecialty = spec);
+                              _loadProviders();
+                            }
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Provider Results Count
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${filtered.length} verified providers near you',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            // Provider List
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : filtered.isEmpty
+                      ? const Center(
+                          child: Text('No providers found matching your criteria.', style: TextStyle(color: AppTheme.textMuted)),
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: filtered.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            final provider = filtered[index];
+                            final name = provider['name'] ?? provider['user']?['name'] ?? 'Provider';
+                            return ProviderCardWidget(
+                              provider: {
+                                ...provider,
+                                'name': name,
+                              },
+                              onTap: () => context.push('/provider/${provider['id']}'),
+                            );
+                          },
+                        ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:merihcare/core/connectivity/offline_queue_service.dart';
 import 'package:merihcare/core/location/location_tracking_service.dart';
+import 'package:merihcare/core/location/location_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 void main() {
@@ -44,8 +45,48 @@ void main() {
       final service = container.read(locationTrackingProvider);
 
       expect(service.isTracking, false);
-      // Mocking target tracker start
-      // Note: We don't trigger the actual Timer to avoid open timers hanging tests
+    });
+  });
+
+  group('Location Service Tests', () {
+    test('Should have default initial location', () {
+      final container = ProviderContainer();
+      final state = container.read(locationProvider);
+
+      expect(state.location, isNotNull);
+      expect(state.location!.subCity, 'Bole');
+      expect(state.location!.city, 'Addis Ababa');
+      expect(state.location!.latitude, closeTo(9.0054, 0.01));
+      expect(state.location!.longitude, closeTo(38.7845, 0.01));
+    });
+
+    test('Should auto-detect and resolve GPS location successfully', () async {
+      final container = ProviderContainer();
+      final notifier = container.read(locationProvider.notifier);
+
+      final detected = await notifier.autoDetectCurrentLocation();
+      expect(detected, isNotNull);
+      expect(detected!.latitude, isNotNull);
+      expect(detected.longitude, isNotNull);
+      expect(detected.address, isNotEmpty);
+      expect(detected.city, 'Addis Ababa');
+
+      final updatedState = container.read(locationProvider);
+      expect(updatedState.isDetecting, false);
+      expect(updatedState.location, equals(detected));
+    });
+
+    test('Should update custom location correctly', () {
+      final container = ProviderContainer();
+      final notifier = container.read(locationProvider.notifier);
+
+      notifier.setCustomLocation('Sarbet Karl Square, Addis Ababa', 8.9950, 38.7380, 'Sarbet');
+      final state = container.read(locationProvider);
+
+      expect(state.location!.subCity, 'Sarbet');
+      expect(state.location!.latitude, 8.9950);
+      expect(state.location!.longitude, 38.7380);
+      expect(state.location!.fullAddress, 'Sarbet Karl Square, Addis Ababa');
     });
   });
 }

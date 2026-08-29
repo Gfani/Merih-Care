@@ -115,13 +115,20 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   decoration: const InputDecoration(
                     labelText: 'Password',
                     prefixIcon: Icon(Icons.lock_outline),
+                    helperText: 'Min 8 chars, 1 uppercase, 1 lowercase, 1 number/symbol',
                   ),
                   validator: (val) {
                     if (val == null || val.isEmpty) {
                       return 'Please enter password';
                     }
-                    if (val.length < 6) {
-                      return 'Password must be at least 6 characters';
+                    if (val.length < 8) {
+                      return 'Password must be at least 8 characters';
+                    }
+                    final hasUpper = val.contains(RegExp(r'[A-Z]'));
+                    final hasLower = val.contains(RegExp(r'[a-z]'));
+                    final hasDigitOrSpecial = val.contains(RegExp(r'[\d\W]'));
+                    if (!hasUpper || !hasLower || !hasDigitOrSpecial) {
+                      return 'Must include uppercase, lowercase, and a number or symbol';
                     }
                     return null;
                   },
@@ -157,7 +164,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                                   _phoneController.text.trim(),
                                   role: _role,
                                 );
-                            setState(() => _loading = false);
+                            if (mounted) {
+                              setState(() => _loading = false);
+                            }
                             if (ok && mounted) {
                               if (_role == 'provider') {
                                 context.go('/provider-dashboard');

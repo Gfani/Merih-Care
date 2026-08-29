@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/network/network_providers.dart';
+import '../../core/theme/app_theme.dart';
+import '../../shared/widgets/create_design_widgets.dart';
 
 class ProviderProfileScreen extends ConsumerStatefulWidget {
   final String providerId;
@@ -15,6 +17,28 @@ class ProviderProfileScreen extends ConsumerStatefulWidget {
 class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
   Map<String, dynamic>? _provider;
   bool _loading = true;
+
+  final Map<String, dynamic> _fallbackProvider = {
+    'id': 'p-201',
+    'name': 'Dr. Meron Alemu',
+    'title': 'General Practitioner (MD)',
+    'specialty': 'Doctor Home Visit',
+    'avatar': 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=200&h=200&fit=crop&auto=format',
+    'rating': 4.9,
+    'reviewCount': 38,
+    'experience': 8,
+    'pricePerVisit': 800,
+    'distance': '1.2 km away',
+    'serviceArea': 'Bole, Kazanchis, Old Airport, Sarbet',
+    'languages': ['Amharic', 'English', 'Afaan Oromoo'],
+    'qualifications': ['MD - Addis Ababa University (Black Lion Hospital)', 'Board Certified General Medicine', 'Advanced Life Support (ACLS)'],
+    'verified': true,
+    'bio': 'Dr. Meron Alemu is a dedicated general practitioner with 8+ years of clinical experience in home healthcare. She specializes in chronic disease management (hypertension, diabetes), post-operative recovery, and personalized home wellness consultations.',
+    'reviews': [
+      {'author': 'Tigist Bekele', 'rating': 5.0, 'date': 'Yesterday', 'comment': 'Dr. Meron arrived on time, was extremely thorough, and prescribed effective treatments.'},
+      {'author': 'Dawit Haile', 'rating': 4.8, 'date': '3 days ago', 'comment': 'Very kind and attentive with my elderly father. Highly recommended!'},
+    ],
+  };
 
   @override
   void initState() {
@@ -35,19 +59,7 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
     } catch (_) {
       if (mounted) {
         setState(() {
-          _provider = {
-            'id': widget.providerId,
-            'user': {'name': 'Dr. Meron Alemu', 'phone': '+251 911 223 344'},
-            'specialty': 'General Care',
-            'rating': 4.9,
-            'experience': 8,
-            'hourlyRate': 250,
-            'bio': 'Dr. Meron Alemu is a seasoned practitioner with over 8 years of home-care experience in Addis Ababa. She specializes in chronic illness care and post-operative home management.',
-            'reviews': [
-              {'author': 'Selamawit S.', 'rating': 5, 'comment': 'Excellent service, highly professional and caring.'},
-              {'author': 'Bereket M.', 'rating': 4.8, 'comment': 'On time and very helpful.'}
-            ]
-          };
+          _provider = _fallbackProvider;
           _loading = false;
         });
       }
@@ -56,121 +68,179 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        backgroundColor: AppTheme.surfaceColor,
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
 
-    final user = _provider?['user'] ?? {};
-    final reviews = (_provider?['reviews'] as List?) ?? [];
+    final p = _provider ?? _fallbackProvider;
+    final name = p['name'] ?? p['user']?['name'] ?? 'Provider';
+    final title = p['title'] ?? p['specialty'] ?? 'Healthcare Specialist';
+    final rating = (p['rating'] as num?)?.toDouble() ?? 4.9;
+    final reviewCount = p['reviewCount'] as int? ?? 38;
+    final experience = p['experience'] ?? 8;
+    final price = p['pricePerVisit'] ?? p['hourlyRate'] ?? 800;
+    final bio = p['bio'] ?? 'Dedicated healthcare professional.';
+    final languages = (p['languages'] as List?) ?? ['Amharic', 'English'];
+    final qualifications = (p['qualifications'] as List?) ?? ['Licensed Medical Clinician'];
+    final reviews = (p['reviews'] as List?) ?? [];
 
     return Scaffold(
-      appBar: AppBar(title: Text(user['name'] ?? 'Provider Profile')),
+      backgroundColor: AppTheme.surfaceColor,
+      appBar: AppBar(
+        title: const Text('Provider Profile'),
+      ),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Header Profile Card
             Container(
-              padding: const EdgeInsets.all(24),
               color: Colors.white,
-              width: double.infinity,
+              padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
-                  CircleAvatar(
-                    radius: 40,
-                    backgroundColor: theme.primaryColor.withOpacity(0.1),
-                    child: Text(user['name']?[0]?.toUpperCase() ?? 'P', style: const TextStyle(fontSize: 32)),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(user['name'] ?? 'Provider Name', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Text(_provider?['specialty'] ?? '', style: const TextStyle(color: Color(0xFF8A9AAA))),
+                  AvatarWidget(name: name, imageUrl: p['avatar'], radius: 36, verified: true),
                   const SizedBox(height: 12),
+                  Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                  const SizedBox(height: 2),
+                  Text(title, style: const TextStyle(fontSize: 13, color: AppTheme.textMuted)),
+                  const SizedBox(height: 14),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      _buildMetric(Icons.star, Colors.amber, '${_provider?['rating']} Rating'),
-                      const SizedBox(width: 24),
-                      _buildMetric(Icons.work_history, theme.primaryColor, '${_provider?['experience']} yrs exp'),
+                      _buildHeaderStat('Rating', '$rating ★ ($reviewCount)'),
+                      _buildHeaderStat('Experience', '$experience Years'),
+                      _buildHeaderStat('Verified', 'Govt Licensed'),
                     ],
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 12),
+            // Details Section
             Padding(
-              padding: const EdgeInsets.all(20.0),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Biography', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  Text(_provider?['bio'] ?? 'No bio provided.', style: const TextStyle(color: Color(0xFF4A5A6A), height: 1.4)),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Hourly Rate', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      Text('ETB ${_provider?['hourlyRate']}/hr', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.primaryColor)),
-                    ],
+                  // Price card
+                  CardWidget(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Home Visit Fee', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                            Text('Includes checkup & supplies', style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                          ],
+                        ),
+                        Text(
+                          'ETB $price',
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.primaryColor),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 24),
-                  const Text('Patient Reviews', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
+                  // About Me
+                  const Text('About Provider', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                  const SizedBox(height: 6),
+                  CardWidget(
+                    child: Text(
+                      bio,
+                      style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary, height: 1.5),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Qualifications
+                  const Text('Credentials & Qualifications', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                  const SizedBox(height: 6),
+                  CardWidget(
+                    child: Column(
+                      children: qualifications.map((q) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.verified, size: 16, color: AppTheme.primaryColor),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(q.toString(), style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                            ),
+                          ],
+                        ),
+                      )).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Languages
+                  const Text('Languages Spoken', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: languages.map((lang) => Chip(
+                      label: Text(lang.toString(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                      backgroundColor: Colors.white,
+                      side: const BorderSide(color: AppTheme.borderColor),
+                    )).toList(),
+                  ),
+                  const SizedBox(height: 16),
+                  // Patient Reviews
+                  const Text('Patient Reviews', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                  const SizedBox(height: 6),
                   if (reviews.isEmpty)
-                    const Text('No reviews yet.', style: TextStyle(color: Color(0xFF8A9AAA)))
+                    const Text('No reviews recorded yet.', style: TextStyle(fontSize: 12, color: AppTheme.textMuted))
                   else
-                    ...reviews.map((r) => Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(r['author'] ?? 'Anonymous', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.star, color: Colors.amber, size: 14),
-                                      const SizedBox(width: 2),
-                                      Text(r['rating'].toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Text(r['comment'] ?? '', style: const TextStyle(color: Color(0xFF4A5A6A), fontSize: 12)),
-                            ],
-                          ),
-                        )),
+                    ...reviews.map((r) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: CardWidget(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(r['author'] ?? 'Anonymous Patient', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                RatingWidget(rating: (r['rating'] as num?)?.toDouble() ?? 5.0),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(r['comment'] ?? '', style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                          ],
+                        ),
+                      ),
+                    )),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
           ],
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
+      bottomNavigationBar: Container(
+        color: Colors.white,
+        padding: const EdgeInsets.all(16),
+        child: SafeArea(
           child: ElevatedButton(
-            onPressed: () {
-              context.push('/booking?providerId=${widget.providerId}');
-            },
-            child: const Text('Book Appointment'),
+            onPressed: () => context.push('/booking?providerId=${widget.providerId}'),
+            child: const Text('Book Home Appointment'),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildMetric(IconData icon, Color color, String text) {
-    return Row(
+  Widget _buildHeaderStat(String label, String value) {
+    return Column(
       children: [
-        Icon(icon, color: color, size: 18),
-        const SizedBox(width: 6),
-        Text(text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+        const SizedBox(height: 2),
+        Text(label, style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
       ],
     );
   }

@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/location/location_tracking_service.dart';
+import '../../core/location/location_service.dart';
 import '../../core/network/network_providers.dart';
 import '../../shared/widgets/offline_banner.dart';
 
@@ -38,6 +40,9 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
       });
 
       if (granted) {
+        // Auto-detect current coordinates
+        ref.read(locationProvider.notifier).autoDetectCurrentLocation();
+
         // Start simulated background tracking sending coordinate updates
         final client = ref.read(apiClientProvider);
         service.startTracking('p-1', client);
@@ -48,7 +53,7 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
             setState(() {
               if (_distance > 0.1) {
                 _distance -= 0.2;
-                _eta = (_distance * 3).round() + 1;
+                _eta = max(1, (_distance * 3.5).round());
               } else {
                 _distance = 0.0;
                 _eta = 0;
@@ -153,6 +158,34 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
                                   ),
                                 ],
                               ),
+                            ),
+                          ),
+                          // Auto-detect / Recenter GPS Button
+                          Positioned(
+                            bottom: 120,
+                            right: 24,
+                            child: FloatingActionButton.small(
+                              heroTag: 'nav_gps_detect',
+                              backgroundColor: Colors.white,
+                              foregroundColor: theme.primaryColor,
+                              tooltip: 'Auto-detect current GPS location',
+                              onPressed: () async {
+                                final detected = await ref.read(locationProvider.notifier).autoDetectCurrentLocation();
+                                if (detected != null && mounted) {
+                                  setState(() {
+                                    _distance = 2.0;
+                                    _eta = 7;
+                                  });
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('📍 GPS Recenetred: ${detected.shortAddress}'),
+                                      backgroundColor: theme.primaryColor,
+                                      duration: const Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              },
+                              child: const Icon(Icons.my_location, size: 20),
                             ),
                           ),
                           // HUD Panel
