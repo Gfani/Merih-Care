@@ -77,27 +77,9 @@ export class AppointmentsService {
       const apt = new AppointmentEntity();
       apt.id = "apt-" + Date.now();
 
-      // Safe foreign key assignment to avoid FK constraint violation on mock/transient IDs
-      if (data.patientId) {
-        const userExists = await manager.findOne(UserEntity, { where: { id: data.patientId } });
-        apt.patientId = userExists ? userExists.id : null as any;
-      } else {
-        apt.patientId = null as any;
-      }
-
-      if (data.providerId) {
-        const provExists = await manager.findOne(ProviderEntity, { where: { id: data.providerId } });
-        apt.providerId = provExists ? provExists.id : null as any;
-      } else {
-        apt.providerId = null as any;
-      }
-
-      if (data.serviceId) {
-        const svcExists = await manager.findOne(ServiceEntity, { where: { id: data.serviceId } });
-        apt.serviceId = svcExists ? svcExists.id : null as any;
-      } else {
-        apt.serviceId = null as any;
-      }
+      apt.patientId = data.patientId || null;
+      apt.providerId = data.providerId || null;
+      apt.serviceId = data.serviceId || null;
 
       apt.patientName = data.patientName || "Patient";
       apt.patientAvatar = data.patientAvatar;
@@ -213,6 +195,22 @@ export class AppointmentsService {
     history.notes = `Cancelled. Reason: ${reason}`;
     history.createdAt = new Date().toISOString();
     await this.historyRepo.save(history);
+
+    // Broadcast live cancelled update to all connected admins & providers
+    try {
+      this.realtimeService.emitAppointmentUpdate(id, "cancelled", {
+        appointmentId: id,
+        patientName: savedApt.patientName,
+        service: savedApt.service,
+        status: "cancelled",
+        date: savedApt.date,
+        time: savedApt.time,
+        location: savedApt.location,
+        amount: savedApt.amount,
+        cancelledBy: actorId,
+        cancellationReason: reason,
+      });
+    } catch (_) {}
 
     return savedApt;
   }

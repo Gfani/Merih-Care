@@ -199,6 +199,23 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
     return '$mins:$secs';
   }
 
+  Future<void> _cancelActiveDispatch() async {
+    _searchTimer?.cancel();
+    if (_createdAppointmentId != null) {
+      try {
+        final client = ref.read(apiClientProvider);
+        await client.dio.post('/appointments/$_createdAppointmentId/cancel', data: {
+          'reason': 'Patient cancelled on-demand request',
+        });
+      } catch (e) {
+        print('[DISPATCH] Error cancelling appointment: $e');
+      }
+    }
+    if (mounted) {
+      context.go('/dashboard');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -216,7 +233,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
             } else if (_currentStep == OnDemandStep.summary) {
               setState(() => _currentStep = OnDemandStep.requestDetails);
             } else {
-              context.go('/dashboard');
+              _cancelActiveDispatch();
             }
           },
         ),
@@ -224,7 +241,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
         actions: [
           if (_currentStep != OnDemandStep.serviceSelect && _currentStep != OnDemandStep.rateProvider)
             TextButton(
-              onPressed: () => context.go('/dashboard'),
+              onPressed: _cancelActiveDispatch,
               child: const Text('Cancel', style: TextStyle(color: AppTheme.errorColor, fontWeight: FontWeight.bold)),
             ),
         ],

@@ -233,7 +233,17 @@ export class AppointmentsController {
     @Req() req: any
   ) {
     const actorId = req.user?.id || "unknown";
-    return this.appointmentsService.cancelAppointment(id, body.reason, actorId);
+    return this.appointmentsService.cancelAppointment(id, body?.reason || "Cancelled by user", actorId);
+  }
+
+  @Put(":id/cancel")
+  async cancelAppointmentPut(
+    @Param("id") id: string,
+    @Body() body: CancelAppointmentDto,
+    @Req() req: any
+  ) {
+    const actorId = req.user?.id || "unknown";
+    return this.appointmentsService.cancelAppointment(id, body?.reason || "Cancelled by user", actorId);
   }
 
   @Post(":id/reschedule")

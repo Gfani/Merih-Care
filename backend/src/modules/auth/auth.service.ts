@@ -111,8 +111,8 @@ export class AuthService {
       permissions: user.permissions
     };
 
-    const accessToken = await this.jwtService.signAsync(payload, { expiresIn: "15m" });
-    const refreshToken = await this.jwtService.signAsync({ sub: user.id }, { expiresIn: "7d" });
+    const accessToken = await this.jwtService.signAsync(payload, { expiresIn: "7d" });
+    const refreshToken = await this.jwtService.signAsync({ sub: user.id }, { expiresIn: "30d" });
 
     const session = new SessionEntity();
     session.id = "s-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7);
