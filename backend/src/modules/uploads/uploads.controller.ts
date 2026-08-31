@@ -1,4 +1,14 @@
-import { Controller, Post, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from "@nestjs/common";
+import {
+  Controller,
+  Post,
+  Get,
+  Query,
+  UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
+  Req,
+} from "@nestjs/common";
 import { UploadsService } from "./uploads.service";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 import { FileInterceptor } from "@nestjs/platform-express";
@@ -10,7 +20,7 @@ export class UploadsController {
 
   @Post()
   @UseInterceptors(FileInterceptor("file"))
-  async uploadFile(@UploadedFile() file: any) {
+  async uploadFile(@UploadedFile() file: any, @Req() req?: any) {
     if (!file) {
       throw new BadRequestException("No file uploaded");
     }
@@ -28,12 +38,28 @@ export class UploadsController {
       "image/webp",
       "application/pdf",
       "application/msword",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ];
     if (!allowedTypes.includes(file.mimetype)) {
-      throw new BadRequestException("Unsupported file type. Only JPG, PNG, GIF, WEBP, PDF, and DOC/DOCX files are permitted.");
+      throw new BadRequestException(
+        "Unsupported file type. Only JPG, PNG, GIF, WEBP, PDF, and DOC/DOCX files are permitted."
+      );
     }
 
-    return this.uploadsService.handleUpload(file.originalname, file.buffer);
+    // Scan for malware & executable headers
+    this.uploadsService.scanForMalware(file.originalname, file.buffer);
+
+    const sanitizedName = this.uploadsService.sanitizeFilename(file.originalname);
+    const userId = req?.user?.id || "user-1";
+
+    return this.uploadsService.handleUpload(sanitizedName, file.buffer, file.mimetype, userId);
+  }
+
+  @Get("signed-url")
+  async getSignedUrl(@Query("fileKey") fileKey: string) {
+    if (!fileKey) {
+      throw new BadRequestException("fileKey query parameter is required");
+    }
+    return this.uploadsService.generatePresignedUrl(fileKey);
   }
 }

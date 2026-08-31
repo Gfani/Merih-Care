@@ -2502,6 +2502,26 @@
         }
       }
     },
+    "/api/v1/uploads/signed-url": {
+      "get": {
+        "operationId": "UploadsController_getSignedUrl",
+        "parameters": [
+          {
+            "name": "fileKey",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "HealthController_getHealth",

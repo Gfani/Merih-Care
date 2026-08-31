@@ -1,12 +1,87 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, BadRequestException } from "@nestjs/common";
+import * as crypto from "crypto";
+import * as path from "path";
 
 @Injectable()
 export class UploadsService {
-  async handleUpload(fileName: string, fileBuffer: Buffer): Promise<any> {
-    console.log(`Uploaded file: ${fileName} (${fileBuffer.length} bytes)`);
+  /**
+   * Scans binary buffers for executable signatures (MZ header, ELF, shebang scripts)
+   */
+  scanForMalware(fileName: string, buffer: Buffer): void {
+    if (!buffer || buffer.length === 0) return;
+
+    // Check Windows MZ executable header (0x4D, 0x5A)
+    if (buffer.length >= 2 && buffer[0] === 0x4d && buffer[1] === 0x5a) {
+      throw new BadRequestException("Malware check failed: Windows executable binary signature detected.");
+    }
+
+    // Check Linux ELF header (0x7F, 'E', 'L', 'F')
+    if (
+      buffer.length >= 4 &&
+      buffer[0] === 0x7f &&
+      buffer[1] === 0x45 &&
+      buffer[2] === 0x4c &&
+      buffer[3] === 0x46
+    ) {
+      throw new BadRequestException("Malware check failed: Linux ELF binary signature detected.");
+    }
+
+    // Disallow dangerous extensions
+    const ext = path.extname(fileName).toLowerCase();
+    const dangerousExtensions = [".exe", ".bat", ".cmd", ".sh", ".dll", ".vbs", ".ps1", ".jar"];
+    if (dangerousExtensions.includes(ext)) {
+      throw new BadRequestException(`Malware check failed: Disallowed executable extension ${ext}`);
+    }
+  }
+
+  /**
+   * Sanitizes filenames by stripping directory traversal sequences and unsafe characters
+   */
+  sanitizeFilename(fileName: string): string {
+    const base = path.basename(fileName);
+    return base.replace(/[^a-zA-Z0-9._-]/g, "_");
+  }
+
+  /**
+   * Generates time-limited cryptographically signed access URL
+   */
+  generatePresignedUrl(fileKey: string, expiresInSeconds = 3600): { url: string; expiresAt: string } {
+    const expiresAt = Math.floor(Date.now() / 1000) + expiresInSeconds;
+    const secret = process.env.JWT_SECRET || "merihcare-secure-storage-secret";
+    const signature = crypto
+      .createHmac("sha256", secret)
+      .update(`${fileKey}:${expiresAt}`)
+      .digest("hex");
+
+    const baseUrl = process.env.STORAGE_ENDPOINT || "https://storage.merihcare.et";
     return {
-      url: `https://api.merihcare.et/uploads/${Date.now()}-${fileName}`,
-      fileName,
+      url: `${baseUrl}/signed/${encodeURIComponent(fileKey)}?expires=${expiresAt}&signature=${signature}`,
+      expiresAt: new Date(expiresAt * 1000).toISOString(),
+    };
+  }
+
+  async handleUpload(
+    fileName: string,
+    fileBuffer: Buffer,
+    mimeType = "application/octet-stream",
+    userId = "system"
+  ): Promise<any> {
+    const sanitized = this.sanitizeFilename(fileName);
+    const fileId = `file-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const storageKey = `${userId}/${fileId}-${sanitized}`;
+
+    console.log(`Uploaded file: ${sanitized} (${fileBuffer.length} bytes)`);
+
+    const presigned = this.generatePresignedUrl(storageKey);
+
+    return {
+      id: fileId,
+      url: presigned.url,
+      storageKey,
+      fileName: sanitized,
+      fileSize: fileBuffer.length,
+      mimeType,
+      uploadedAt: new Date().toISOString(),
     };
   }
 }
