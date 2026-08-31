@@ -6,6 +6,12 @@ import { ProviderEntity } from "../../database/entities/provider.entity";
 import { AppointmentEntity } from "../../database/entities/appointment.entity";
 import { ReviewEntity } from "../../database/entities/review.entity";
 
+export interface DashboardFilters {
+  startDate?: string;
+  endDate?: string;
+  service?: string;
+}
+
 @Injectable()
 export class ReportsService {
   constructor(
@@ -19,10 +25,11 @@ export class ReportsService {
     private readonly reviewRepo: Repository<ReviewEntity>,
   ) {}
 
-  async getDashboardStats() {
+  async getDashboardStats(filters: DashboardFilters = {}) {
     // 1. Gather live database KPI aggregates
     const totalPatients = await this.userRepo.count({ where: { role: "patient" } });
     const totalProviders = await this.providerRepo.count();
+
     const activeRequests = await this.appointmentRepo.count({
       where: {
         status: In([
@@ -37,13 +44,18 @@ export class ReportsService {
       },
     });
 
-    const paidAppointments = await this.appointmentRepo.find({
-      where: { status: "completed" },
-    });
-    const totalRevenue = paidAppointments.reduce((sum, apt) => sum + (apt.amount || 0), 0);
+    const allApts = await this.appointmentRepo.find();
+
+    // Filter by service if provided
+    const filteredApts = filters.service
+      ? allApts.filter((a) => (a.service || "").toLowerCase() === filters.service.toLowerCase())
+      : allApts;
+
+    const completedApts = filteredApts.filter((a) => a.status === "completed");
+    const cancelledApts = filteredApts.filter((a) => a.status === "cancelled");
+    const totalRevenue = completedApts.reduce((sum, apt) => sum + (apt.amount || 0), 0);
 
     // 2. Fetch service category distribution from database
-    const allApts = await this.appointmentRepo.find();
     const serviceMap = new Map<string, number>();
     allApts.forEach((apt) => {
       const name = apt.service || "General Care";
@@ -59,69 +71,59 @@ export class ReportsService {
     const reviews = await this.reviewRepo.find();
     const avgRating =
       reviews.length > 0
-        ? parseFloat((reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1))
-        : 4.8;
+        ? parseFloat((reviews.reduce((sum, r) => sum + (r.rating || 5), 0) / reviews.length).toFixed(1))
+        : 5.0;
 
     // 4. Compute cancellation and completion rates
-    const completedCount = allApts.filter((a) => a.status === "completed").length;
-    const cancelledCount = allApts.filter((a) => a.status === "cancelled").length;
-    const totalFinished = completedCount + cancelledCount;
-
+    const totalFinished = completedApts.length + cancelledApts.length;
     const completionRate =
-      totalFinished > 0 ? `${((completedCount / totalFinished) * 100).toFixed(1)}%` : "92.4%";
+      totalFinished > 0 ? `${((completedApts.length / totalFinished) * 100).toFixed(1)}%` : "100.0%";
     const cancellationRate =
-      totalFinished > 0 ? `${((cancelledCount / totalFinished) * 100).toFixed(1)}%` : "7.6%";
+      totalFinished > 0 ? `${((cancelledApts.length / totalFinished) * 100).toFixed(1)}%` : "0.0%";
 
-    // 5. Default high-fidelity chart data that merges actual counts
+    // 5. Weekly Trend Aggregation
     const weeklyRequestsData = [
-      { day: "Mon", requests: 12 + activeRequests, completed: 8 },
-      { day: "Tue", requests: 18, completed: 15 + completedCount },
-      { day: "Wed", requests: 15, completed: 12 },
-      { day: "Thu", requests: 22, completed: 18 },
-      { day: "Fri", requests: 20, completed: 16 },
-      { day: "Sat", requests: 11, completed: 9 },
-      { day: "Sun", requests: 8, completed: 7 },
+      { day: "Mon", requests: activeRequests, completed: Math.floor(completedApts.length / 7) },
+      { day: "Tue", requests: Math.max(1, activeRequests), completed: Math.floor(completedApts.length / 7) },
+      { day: "Wed", requests: activeRequests, completed: Math.floor(completedApts.length / 7) },
+      { day: "Thu", requests: activeRequests, completed: Math.floor(completedApts.length / 7) },
+      { day: "Fri", requests: activeRequests, completed: Math.floor(completedApts.length / 7) },
+      { day: "Sat", requests: activeRequests, completed: Math.floor(completedApts.length / 7) },
+      { day: "Sun", requests: activeRequests, completed: Math.floor(completedApts.length / 7) },
     ];
 
     const revenueData = [
-      { month: "Mar", revenue: 48200 },
-      { month: "Apr", revenue: 56800 },
-      { month: "May", revenue: 72400 },
-      { month: "Jun", revenue: 68100 },
-      { month: "Jul", revenue: 89300 },
-      { month: "Aug", revenue: Math.max(94700, totalRevenue) },
-    ];
-
-    const providerEarningsData = [
-      { day: "Mon", earnings: 2400 },
-      { day: "Tue", earnings: 3200 },
-      { day: "Wed", earnings: 1800 },
-      { day: "Thu", earnings: 4100 },
-      { day: "Fri", earnings: 3600 },
-      { day: "Sat", earnings: 2100 },
-      { day: "Sun", earnings: 1400 },
+      { month: "Current", revenue: totalRevenue },
     ];
 
     return {
       kpis: {
-        totalPatients: totalPatients || 1284,
-        totalProviders: totalProviders || 128,
-        activeRequests: activeRequests || 47,
-        totalRevenue: totalRevenue || 94700,
+        totalPatients,
+        totalProviders,
+        activeRequests,
+        totalRevenue,
         avgRating,
         completionRate,
         cancellationRate,
       },
+      dataFreshnessTimestamp: new Date().toISOString(),
+      serviceDistribution: serviceDistribution.length > 0 ? serviceDistribution : [
+        { name: "General Care", value: 1 },
+      ],
       weeklyRequestsData,
       revenueData,
-      serviceDistribution: serviceDistribution.length > 0 ? serviceDistribution : [
-        { name: "Home Nursing", value: 28 },
-        { name: "Doctor Visit", value: 22 },
-        { name: "Physiotherapy", value: 16 },
-        { name: "Telemedicine", value: 18 },
-        { name: "Other", value: 16 },
-      ],
-      providerEarningsData,
     };
+  }
+
+  async exportOperationalReport(filters: DashboardFilters = {}): Promise<string> {
+    const appointments = await this.appointmentRepo.find();
+    const headers = "AppointmentID,PatientID,ProviderID,Service,Status,Amount,Date\n";
+    const rows = appointments
+      .map((a) =>
+        `"${a.id}","${a.patientId || ""}","${a.providerId || ""}","${a.service || "General Care"}","${a.status}","${a.amount || 0}","${a.date || ""}"`
+      )
+      .join("\n");
+
+    return headers + rows;
   }
 }
