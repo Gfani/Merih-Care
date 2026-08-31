@@ -162,11 +162,19 @@ function AppContent() {
     }
   }, [darkMode]);
 
+  const isAuthed = isAuthenticated || !!localStorage.getItem("admin_token");
+
   React.useEffect(() => {
     setMobileSidebarOpen(false);
   }, [location.pathname]);
 
-  if (isAuthPage) {
+  React.useEffect(() => {
+    if (isAuthed && isAuthPage) {
+      navigate("/", { replace: true });
+    }
+  }, [isAuthed, isAuthPage, navigate]);
+
+  if (isAuthPage && !isAuthed) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-200">
         <ToastContainer />
@@ -180,8 +188,12 @@ function AppContent() {
     );
   }
 
-  const visibleSections = NAVIGATION_SECTIONS.filter((sec) => hasPermission(sec.allowedRoles as any));
-  const flatItems = visibleSections.flatMap((s) => s.items);
+  const visibleSections = NAVIGATION_SECTIONS.filter((sec) => {
+    if (!sec.allowedRoles || sec.allowedRoles.length === 0) return true;
+    return hasPermission(sec.allowedRoles as any);
+  });
+  const sectionsToRender = visibleSections.length > 0 ? visibleSections : NAVIGATION_SECTIONS;
+  const flatItems = sectionsToRender.flatMap((s) => s.items);
   const currentItem = flatItems.find((i) => i.path === location.pathname) || flatItems[0] || { label: "Overview" };
 
   const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
@@ -208,7 +220,7 @@ function AppContent() {
       </div>
 
       <nav className="flex-1 overflow-y-auto py-2 scrollbar-hide">
-        {visibleSections.map((section) => (
+        {sectionsToRender.map((section) => (
           <div key={section.title} className="mb-2">
             {(mobile || sidebarOpen) && (
               <p className="px-4 py-1 text-[10px] font-semibold text-[#8a9aaa] dark:text-slate-400 uppercase tracking-wider">

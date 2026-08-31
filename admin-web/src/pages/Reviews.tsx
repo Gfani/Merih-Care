@@ -41,16 +41,13 @@ export default function ReviewsSection() {
       setLoading(true);
       setError(null);
       const data = await api.getReviews();
-      setReviews(data);
+      setReviews(Array.isArray(data) ? data : (data as any)?.data || []);
       setLastUpdated(new Date());
       setSelectedIds(new Set());
     } catch (err: any) {
-      setError(err.message || "Failed to load reviews from database.");
-      if (err.response?.status === 401) {
-        api.logout();
-        toast("Session expired. Please log in again.", "error");
-        window.location.reload();
-      }
+      setReviews([]);
+      setError(err.message || "Failed to load reviews.");
+      toast(err.response?.data?.message || err.message || "Failed to load reviews", "error");
     } finally {
       setLoading(false);
     }
@@ -99,7 +96,8 @@ export default function ReviewsSection() {
   };
 
   // Filter Logic
-  const filtered = reviews.filter(r => {
+  const reviewList = Array.isArray(reviews) ? reviews : [];
+  const filtered = reviewList.filter(r => {
     const matchesStatus = statusFilter === "all" ? true : r.status === statusFilter;
     const matchesRating = ratingFilter === "all" ? true : Math.floor(r.rating || 5) === parseInt(ratingFilter);
     return matchesStatus && matchesRating;

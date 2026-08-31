@@ -48,12 +48,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
-  const role: UserRole = (user?.role as UserRole) || "admin";
+  const role: UserRole = (user?.role as UserRole) || (user as any)?.adminRole || "super_admin";
 
   const hasPermission = (allowedRoles: UserRole[]): boolean => {
-    if (!role) return false;
-    if (role === "super_admin") return true;
-    return allowedRoles.includes(role);
+    if (!allowedRoles || allowedRoles.length === 0) return true;
+    const currentRole = role || (user?.role as UserRole) || "super_admin";
+    if (currentRole === "super_admin" || currentRole === "admin") return true;
+    return allowedRoles.includes(currentRole);
   };
 
   return (

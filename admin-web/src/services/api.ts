@@ -44,6 +44,20 @@ const isDemoMode = (): boolean => {
   return stored === "true";
 };
 
+// Global unwrapper for NestJS StandardResponse envelope { success: true, data: T }
+axios.interceptors.response.use(
+  (response) => {
+    if (response.data && typeof response.data === "object" && "success" in response.data && "data" in response.data) {
+      return {
+        ...response,
+        data: response.data.data,
+      };
+    }
+    return response;
+  },
+  (error) => Promise.reject(error)
+);
+
 export const api = {
   isDemoMode,
 

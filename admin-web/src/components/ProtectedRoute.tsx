@@ -14,7 +14,9 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
   const { isAuthenticated, hasPermission } = useAuth();
   const location = useLocation();
 
-  if (!isAuthenticated) {
+  const isAuthed = isAuthenticated || !!localStorage.getItem("admin_token");
+
+  if (!isAuthed) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

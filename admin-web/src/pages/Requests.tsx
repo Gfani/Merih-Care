@@ -12,8 +12,9 @@ export default function RequestsSection() {
     setLoading(true);
     try {
       const data = await api.getAppointments();
-      setAppointments(data);
+      setAppointments(Array.isArray(data) ? data : (data as any)?.data || []);
     } catch {
+      setAppointments([]);
       console.error("Failed to load requests");
     } finally {
       setLoading(false);
@@ -24,9 +25,10 @@ export default function RequestsSection() {
     loadData();
   }, []);
 
-  const filteredRequests = appointments.map(a => ({
+  const aptList = Array.isArray(appointments) ? appointments : [];
+  const filteredRequests = aptList.map(a => ({
     ...a,
-    requestId: `REQ-${a.id.toUpperCase()}`
+    requestId: `REQ-${(a.id || "").toUpperCase()}`
   })).filter(r => {
     const pName = r.patientName || "";
     const sName = r.service || "";

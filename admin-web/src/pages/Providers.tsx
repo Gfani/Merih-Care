@@ -44,17 +44,13 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
       setLoading(true);
       setError(null);
       const data = await api.getProviders();
-      setProviders(data);
+      setProviders(Array.isArray(data) ? data : (data as any)?.data || []);
       setLastUpdated(new Date());
       setSelectedIds(new Set());
     } catch (err: any) {
-      setError(err.message || "Failed to load providers from API.");
-      // Check session expiration / 401 Unauthorized
-      if (err.response?.status === 401) {
-        api.logout();
-        toast("Session expired. Please log in again.", "error");
-        window.location.reload();
-      }
+      setProviders([]);
+      setError(err.message || "Failed to load providers.");
+      toast(err.response?.data?.message || err.message || "Failed to load providers", "error");
     } finally {
       setLoading(false);
     }
@@ -121,8 +117,9 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
   };
 
   // Filter & Sort Logic
-  const filtered = providers.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
+  const providerList = Array.isArray(providers) ? providers : [];
+  const filtered = providerList.filter(p => {
+    const matchesSearch = (p.name || "").toLowerCase().includes(search.toLowerCase()) || 
                           (p.title && p.title.toLowerCase().includes(search.toLowerCase()));
     const matchesStatus = statusFilter === "all" ? true : p.status === statusFilter;
     return matchesSearch && matchesStatus;

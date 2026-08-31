@@ -34,16 +34,13 @@ export default function ComplaintsSection() {
       setLoading(true);
       setError(null);
       const data = await api.getComplaints();
-      setComplaints(data);
+      setComplaints(Array.isArray(data) ? data : (data as any)?.data || []);
       setLastUpdated(new Date());
       setSelectedIds(new Set());
     } catch (err: any) {
+      setComplaints([]);
       setError(err.message || "Failed to load complaints.");
-      if (err.response?.status === 401) {
-        api.logout();
-        toast("Session expired. Please log in again.", "error");
-        window.location.reload();
-      }
+      toast(err.response?.data?.message || err.message || "Failed to load complaints", "error");
     } finally {
       setLoading(false);
     }
@@ -82,7 +79,8 @@ export default function ComplaintsSection() {
   };
 
   // Filter/Sort Logic
-  const filtered = complaints.filter(c => {
+  const complaintList = Array.isArray(complaints) ? complaints : [];
+  const filtered = complaintList.filter(c => {
     const matchesStatus = statusFilter === "all" ? true : c.status === statusFilter;
     const matchesPriority = priorityFilter === "all" ? true : c.priority === priorityFilter;
     return matchesStatus && matchesPriority;
@@ -97,10 +95,10 @@ export default function ComplaintsSection() {
     <div className="space-y-4 animate-fade-in">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Open", count: complaints.filter(c => c.status === "open").length, color: "#d97706" },
-          { label: "Under Review", count: complaints.filter(c => c.status === "under_review").length, color: "#1b6fba" },
-          { label: "Resolved", count: complaints.filter(c => c.status === "resolved").length, color: "#16a34a" },
-          { label: "Closed", count: complaints.filter(c => c.status === "closed").length, color: "#6b7280" },
+          { label: "Open", count: complaintList.filter(c => c.status === "open").length, color: "#d97706" },
+          { label: "Under Review", count: complaintList.filter(c => c.status === "under_review").length, color: "#1b6fba" },
+          { label: "Resolved", count: complaintList.filter(c => c.status === "resolved").length, color: "#16a34a" },
+          { label: "Closed", count: complaintList.filter(c => c.status === "closed").length, color: "#6b7280" },
         ].map(s => (
           <Card key={s.label} className="p-4 text-center shadow-xs">
             <p className="text-2xl font-bold" style={{ color: s.color, fontFamily: "DM Sans, sans-serif" }}>{s.count}</p>

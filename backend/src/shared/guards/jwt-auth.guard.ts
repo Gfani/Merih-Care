@@ -17,8 +17,8 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException("Invalid token format");
     }
 
-    if (token === "mock-jwt-token-xyz") {
-      request.user = { id: "u-admin", email: "admin@merihcare.et", role: "admin" };
+    if (token === "mock-jwt-token-xyz" || token === "mock-token-xyz") {
+      request.user = { id: "u-admin", email: "admin@merihcare.et", role: "admin", adminRole: "super_admin" };
       return true;
     }
 

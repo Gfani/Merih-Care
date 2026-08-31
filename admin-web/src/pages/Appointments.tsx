@@ -32,8 +32,9 @@ export default function AppointmentsSection() {
     setLoading(true);
     try {
       const data = await api.getAppointments();
-      setAppointments(data || []);
+      setAppointments(Array.isArray(data) ? data : (data as any)?.data || []);
     } catch {
+      setAppointments([]);
       toast("Failed to load appointments from server", "error");
     } finally {
       setLoading(false);
@@ -60,7 +61,8 @@ export default function AppointmentsSection() {
     }
   };
 
-  const filtered = appointments.filter((apt) => {
+  const aptList = Array.isArray(appointments) ? appointments : [];
+  const filtered = aptList.filter((apt) => {
     const pName = apt.patientName || "";
     const prName = apt.providerName || "";
     const sName = apt.service || "";

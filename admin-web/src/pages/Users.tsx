@@ -39,9 +39,11 @@ export default function UsersSection() {
     try {
       const pts = await api.getUsers();
       const prs = await api.getProviders();
-      setPatients(pts || []);
-      setProviders(prs || []);
+      setPatients(Array.isArray(pts) ? pts : (pts as any)?.data || []);
+      setProviders(Array.isArray(prs) ? prs : (prs as any)?.data || []);
     } catch (err: any) {
+      setPatients([]);
+      setProviders([]);
       setError(err.message || "Failed to load users. Backend API may be offline.");
     } finally {
       setLoading(false);
@@ -53,8 +55,8 @@ export default function UsersSection() {
   }, []);
 
   const allUsers = [
-    ...patients.map((p) => ({ ...p, role: "Patient" })),
-    ...providers.map((p) => ({ ...p, role: "Provider", status: p.status === "verified" ? "active" : p.status })),
+    ...(Array.isArray(patients) ? patients : []).map((p) => ({ ...p, role: "Patient" })),
+    ...(Array.isArray(providers) ? providers : []).map((p) => ({ ...p, role: "Provider", status: p.status === "verified" ? "active" : p.status })),
   ].filter((u) => {
     const nameMatch = (u.name || "").toLowerCase().includes(search.toLowerCase()) ||
                       (u.email || "").toLowerCase().includes(search.toLowerCase()) ||

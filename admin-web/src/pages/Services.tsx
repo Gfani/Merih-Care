@@ -41,16 +41,13 @@ export default function ServicesSection() {
       setLoading(true);
       setError(null);
       const data = await api.getServices();
-      setServices(data);
+      setServices(Array.isArray(data) ? data : (data as any)?.data || []);
       setLastUpdated(new Date());
       setSelectedIds(new Set());
     } catch (err: any) {
+      setServices([]);
       setError(err.message || "Failed to load services.");
-      if (err.response?.status === 401) {
-        api.logout();
-        toast("Session expired. Please log in again.", "error");
-        window.location.reload();
-      }
+      toast(err.response?.data?.message || err.message || "Failed to load services", "error");
     } finally {
       setLoading(false);
     }
@@ -142,7 +139,8 @@ export default function ServicesSection() {
   };
 
   // Filter/Sort Logic
-  const filtered = services.filter(s => s.name.toLowerCase().includes(search.toLowerCase()));
+  const serviceList = Array.isArray(services) ? services : [];
+  const filtered = serviceList.filter(s => (s.name || "").toLowerCase().includes(search.toLowerCase()));
   const totalPages = Math.ceil(filtered.length / pageSize) || 1;
   const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 

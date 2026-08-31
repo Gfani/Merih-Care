@@ -7,7 +7,7 @@ import { Roles } from "../../shared/decorators/roles.decorator";
 import { PaginationQueryDto } from "../../shared/dtos/pagination-query.dto";
 
 @Controller("providers")
-@UseGuards(JwtAuthGuard, OwnershipGuard)
+@UseGuards(JwtAuthGuard)
 export class ProvidersController {
   constructor(private readonly providersService: ProvidersService) {}
 

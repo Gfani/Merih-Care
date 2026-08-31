@@ -5,14 +5,17 @@ import { api } from "../services/api";
 import { Mail, Lock, Eye, EyeOff, ShieldCheck, Activity, Users } from "lucide-react";
 import logo from "../assets/logo.png";
 
+import { useAuth } from "../context/AuthContext";
+
 export default function Login({ onLogin }: { onLogin?: () => void }) {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
       toast("Please fill in all fields", "warning");
@@ -21,19 +24,20 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
 
     setLoading(true);
 
-    // Simulate API call
-    setTimeout(async () => {
-      try {
-        const res = await api.login(email, password);
-        setLoading(false);
-        toast(`Welcome back, ${res.user?.name || "Admin"}!`, "success");
-        onLogin?.();
-      } catch (err: any) {
-        setLoading(false);
-        const errMsg = err.response?.data?.message || err.message || "Invalid credentials. Use admin@merihcare.et / admin123";
-        toast(Array.isArray(errMsg) ? errMsg[0] : errMsg, "error");
+    try {
+      await login(email, password);
+      setLoading(false);
+      toast("Welcome back!", "success");
+      if (onLogin) {
+        onLogin();
+      } else {
+        navigate("/");
       }
-    }, 1200);
+    } catch (err: any) {
+      setLoading(false);
+      const errMsg = err.response?.data?.message || err.message || "Invalid credentials. Use admin@merihcare.et / admin123";
+      toast(Array.isArray(errMsg) ? errMsg[0] : errMsg, "error");
+    }
   };
 
   return (
