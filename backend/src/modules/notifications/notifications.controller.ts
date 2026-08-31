@@ -101,6 +101,29 @@ export class NotificationsController {
     return this.notificationsService.updatePreferences(req.user?.id, body);
   }
 
+  @Post("schedule")
+  async scheduleNotification(
+    @Body() body: { scheduledFor: string; type: any; title: string; body: string; data?: any },
+    @Req() req: any
+  ) {
+    const userId = req.user?.id;
+    return this.notificationsService.scheduleNotification(
+      userId,
+      new Date(body.scheduledFor),
+      {
+        type: body.type,
+        title: body.title,
+        body: body.body,
+        data: body.data,
+      }
+    );
+  }
+
+  @Get("delivery-logs")
+  async getDeliveryLogs() {
+    return this.notificationsService.getDeliveryLogs();
+  }
+
   // Admin send endpoint (legacy)
   @Post("send")
   async send(@Body() body: SendNotificationDto) {

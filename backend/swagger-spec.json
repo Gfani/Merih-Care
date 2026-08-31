@@ -1314,6 +1314,28 @@
         }
       }
     },
+    "/api/v1/notifications/schedule": {
+      "post": {
+        "operationId": "NotificationsController_scheduleNotification",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/delivery-logs": {
+      "get": {
+        "operationId": "NotificationsController_getDeliveryLogs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/notifications/send": {
       "post": {
         "operationId": "NotificationsController_send",

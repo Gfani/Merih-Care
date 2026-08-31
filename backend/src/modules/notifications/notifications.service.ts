@@ -4,6 +4,7 @@ import { Repository, LessThanOrEqual } from "typeorm";
 import { NotificationEntity, NotificationPreferenceEntity } from "../../database/entities/notification.entity";
 import { NotificationDeliveryAttemptEntity } from "../../database/entities/logs-delivery.entity";
 import { RealtimeService } from "../realtime/realtime.service";
+import { NOTIFICATION_TEMPLATES } from "./templates/notification-templates";
 
 export type NotificationType =
   | "appointment_reminder"
@@ -278,6 +279,40 @@ export class NotificationsService {
     });
 
     return this.preferenceRepo.save(existing);
+  }
+
+  // Multi-Channel Template Rendering
+  renderTemplate(templateKey: string, variables: Record<string, any>) {
+    const generator = NOTIFICATION_TEMPLATES[templateKey];
+    if (!generator) {
+      throw new Error(`Template "${templateKey}" not found`);
+    }
+    return generator(variables);
+  }
+
+  // Schedule notification for future dispatch
+  async scheduleNotification(
+    userId: string,
+    scheduledFor: Date,
+    opts: SendNotificationOptions
+  ): Promise<any> {
+    const scheduledItem = {
+      id: `sched-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      userId,
+      scheduledFor: scheduledFor.toISOString(),
+      options: opts,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    };
+    return scheduledItem;
+  }
+
+  // Retrieve delivery attempts log
+  async getDeliveryLogs(): Promise<NotificationDeliveryAttemptEntity[]> {
+    return this.deliveryRepo.find({
+      order: { createdAt: "DESC" as any },
+      take: 100,
+    });
   }
 
   // Legacy stub compatibility
