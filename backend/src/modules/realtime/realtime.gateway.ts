@@ -207,6 +207,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
     const now = Date.now();
     const info = socketUserMap.get(socket.id);
+    const lastUpdate = info?.lastLocationAt.get(data.appointmentId) || 0;
+
+    // Rate-limit: minimum 3 seconds between GPS telemetry updates
+    if (now - lastUpdate < 3000) {
+      return { ok: false, error: "RATE_LIMITED", message: "Location updates throttled to once every 3s" };
+    }
+
     if (info) info.lastLocationAt.set(data.appointmentId, now);
 
     // Persist to DB
@@ -231,6 +238,18 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     }, 90000);
 
     return { ok: true, ts };
+  }
+
+  // ─── Presence Inquiries ──────────────────────────────────────────
+
+  isUserOnline(userId: string): boolean {
+    return [...socketUserMap.values()].some((s) => s.userId === userId);
+  }
+
+  getOnlineUserCount(): { providers: number; patients: number; total: number } {
+    const providers = [...socketUserMap.values()].filter((s) => s.role === "provider").length;
+    const patients = [...socketUserMap.values()].filter((s) => s.role === "patient").length;
+    return { providers, patients, total: socketUserMap.size };
   }
 
   // ─── Session Restore (Reconnect) ─────────────────────────────────

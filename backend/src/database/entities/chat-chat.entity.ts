@@ -41,6 +41,9 @@ export class ConversationParticipantEntity {
   @Column({ nullable: true })
   lastReadMessageId: string; // for read receipts
 
+  @Column({ nullable: true })
+  lastReadAt: string;
+
   @Column({ default: false })
   isBlocked: boolean;
 
@@ -94,9 +97,16 @@ export class MessageAttachmentEntity {
   @PrimaryColumn()
   id: string;
 
-  @Column()
+  @Column({ nullable: true })
+  @Index()
+  conversationId: string;
+
+  @Column({ nullable: true })
   @Index()
   messageId: string;
+
+  @Column({ nullable: true })
+  uploaderId: string;
 
   @Column()
   fileUrl: string;
@@ -109,6 +119,9 @@ export class MessageAttachmentEntity {
 
   @Column({ nullable: true })
   fileName: string;
+
+  @Column({ nullable: true })
+  createdAt: string;
 }
 
 @Entity("message_reports")

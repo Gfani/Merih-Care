@@ -286,6 +286,78 @@ export class ChatService {
     return report;
   }
 
+  async markConversationRead(conversationId: string, userId: string, messageId?: string): Promise<void> {
+    const participant = await this.participantRepo.findOne({
+      where: { conversationId, userId },
+    });
+    if (participant) {
+      participant.lastReadMessageId = messageId || `read-${Date.now()}`;
+      participant.lastReadAt = new Date().toISOString();
+      await this.participantRepo.save(participant);
+    }
+  }
+
+  async uploadAttachment(
+    conversationId: string,
+    userId: string,
+    fileUrl: string,
+    fileType: string,
+    fileSize: number,
+    messageId?: string
+  ): Promise<MessageAttachmentEntity> {
+    if (!(await this.isParticipant(conversationId, userId))) {
+      throw new ForbiddenException("Not a member of this conversation");
+    }
+
+    const attachment = new MessageAttachmentEntity();
+    attachment.id = `att-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    attachment.conversationId = conversationId;
+    attachment.messageId = messageId || null;
+    attachment.uploaderId = userId;
+    attachment.fileUrl = fileUrl;
+    attachment.fileType = fileType;
+    attachment.fileSize = fileSize;
+    attachment.createdAt = new Date().toISOString();
+    return this.attachmentRepo.save(attachment);
+  }
+
+  async deleteConversation(conversationId: string, userId: string): Promise<void> {
+    const participant = await this.participantRepo.findOne({
+      where: { conversationId, userId },
+    });
+    if (!participant || participant.role !== "owner") {
+      throw new ForbiddenException("Only the conversation owner can delete the conversation");
+    }
+
+    await this.conversationRepo.delete({ id: conversationId });
+  }
+
+  async escalateToSupport(conversationId: string, userId: string, reason: string): Promise<any> {
+    if (!(await this.isParticipant(conversationId, userId))) {
+      throw new ForbiddenException("Not a member of this conversation");
+    }
+
+    const conv = await this.conversationRepo.findOne({ where: { id: conversationId } });
+    if (!conv) throw new NotFoundException("Conversation not found");
+
+    // Add support admin as participant
+    const supportParticipant = new ConversationParticipantEntity();
+    supportParticipant.id = `part-support-${Date.now()}`;
+    supportParticipant.conversationId = conversationId;
+    supportParticipant.userId = "u-admin-support";
+    supportParticipant.role = "member";
+    supportParticipant.joinedAt = new Date().toISOString();
+    await this.participantRepo.save(supportParticipant);
+
+    return {
+      success: true,
+      status: "escalated",
+      conversationId,
+      assignedSupportId: "u-admin-support",
+      reason,
+    };
+  }
+
   // Legacy stub kept for backwards compatibility
   async getChatLogs(roomId: string): Promise<any[]> {
     const { messages } = await this.getMessages(roomId, "system", 1, 50).catch(() => ({

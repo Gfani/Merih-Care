@@ -1,10 +1,10 @@
 import {
-  Controller, Get, Post, Delete, Body, Param, Query,
+  Controller, Get, Post, Delete, Patch, Body, Param, Query,
   UseGuards, Req
 } from "@nestjs/common";
 import { ChatService } from "./chat.service";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
-import { IsNotEmpty, IsString, IsOptional, IsArray, MaxLength, IsBoolean } from "class-validator";
+import { IsNotEmpty, IsString, IsOptional, IsArray, MaxLength, IsBoolean, IsNumber } from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
 
 export class CreateConversationDto {
@@ -44,6 +44,36 @@ export class ReportMessageDto {
   reason: string;
 }
 
+export class UploadAttachmentDto {
+  @ApiProperty()
+  @IsNotEmpty()
+  @IsString()
+  fileUrl: string;
+
+  @ApiProperty()
+  @IsNotEmpty()
+  @IsString()
+  fileType: string;
+
+  @ApiProperty()
+  @IsNotEmpty()
+  @IsNumber()
+  fileSize: number;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  messageId?: string;
+}
+
+export class EscalateChatDto {
+  @ApiProperty()
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(500)
+  reason: string;
+}
+
 @Controller("chat")
 @UseGuards(JwtAuthGuard)
 export class ChatController {
@@ -52,7 +82,6 @@ export class ChatController {
   @Post("conversations")
   async createConversation(@Body() body: CreateConversationDto, @Req() req: any) {
     const userId = req.user?.id;
-    // Ensure creator is always in the conversation
     const participantIds = Array.from(new Set([userId, ...body.participantIds]));
     return this.chatService.createConversation(
       participantIds,
@@ -64,6 +93,22 @@ export class ChatController {
   @Get("conversations")
   async getConversations(@Req() req: any) {
     return this.chatService.getConversations(req.user?.id);
+  }
+
+  @Delete("conversations/:id")
+  async deleteConversation(@Param("id") conversationId: string, @Req() req: any) {
+    await this.chatService.deleteConversation(conversationId, req.user?.id);
+    return { success: true };
+  }
+
+  @Patch("conversations/:id/read")
+  async markRead(
+    @Param("id") conversationId: string,
+    @Body("messageId") messageId: string,
+    @Req() req: any
+  ) {
+    await this.chatService.markConversationRead(conversationId, req.user?.id, messageId);
+    return { success: true };
   }
 
   @Get("conversations/:id/messages")
@@ -90,9 +135,34 @@ export class ChatController {
     return this.chatService.sendMessage(conversationId, req.user?.id, body.text, body.replyToId);
   }
 
+  @Post("conversations/:id/attachments")
+  async uploadAttachment(
+    @Param("id") conversationId: string,
+    @Body() body: UploadAttachmentDto,
+    @Req() req: any
+  ) {
+    return this.chatService.uploadAttachment(
+      conversationId,
+      req.user?.id,
+      body.fileUrl,
+      body.fileType,
+      body.fileSize,
+      body.messageId
+    );
+  }
+
   @Get("conversations/:id/attachments")
   async getAttachments(@Param("id") conversationId: string, @Req() req: any) {
     return this.chatService.getAttachments(conversationId, req.user?.id);
+  }
+
+  @Post("conversations/:id/escalate")
+  async escalateToSupport(
+    @Param("id") conversationId: string,
+    @Body() body: EscalateChatDto,
+    @Req() req: any
+  ) {
+    return this.chatService.escalateToSupport(conversationId, req.user?.id, body.reason);
   }
 
   @Post("conversations/:id/block/:targetId")

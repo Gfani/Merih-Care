@@ -1032,6 +1032,46 @@
         }
       }
     },
+    "/api/v1/chat/conversations/{id}": {
+      "delete": {
+        "operationId": "ChatController_deleteConversation",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/chat/conversations/{id}/read": {
+      "patch": {
+        "operationId": "ChatController_markRead",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/chat/conversations/{id}/messages": {
       "get": {
         "operationId": "ChatController_getMessages",
@@ -1097,6 +1137,34 @@
       }
     },
     "/api/v1/chat/conversations/{id}/attachments": {
+      "post": {
+        "operationId": "ChatController_uploadAttachment",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadAttachmentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      },
       "get": {
         "operationId": "ChatController_getAttachments",
         "parameters": [
@@ -1111,6 +1179,36 @@
         ],
         "responses": {
           "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/chat/conversations/{id}/escalate": {
+      "post": {
+        "operationId": "ChatController_escalateToSupport",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EscalateChatDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
             "description": ""
           }
         }
@@ -2319,6 +2417,39 @@
         },
         "required": [
           "text"
+        ]
+      },
+      "UploadAttachmentDto": {
+        "type": "object",
+        "properties": {
+          "fileUrl": {
+            "type": "string"
+          },
+          "fileType": {
+            "type": "string"
+          },
+          "fileSize": {
+            "type": "number"
+          },
+          "messageId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fileUrl",
+          "fileType",
+          "fileSize"
+        ]
+      },
+      "EscalateChatDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
         ]
       },
       "ReportMessageDto": {

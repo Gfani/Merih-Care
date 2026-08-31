@@ -69,18 +69,28 @@ export class RealtimeService {
     this.emitToRoom("admin", "admin_metrics", metrics);
   }
 
-  /** Provider location update — relay to appointment room */
+  /** User presence status changed */
+  emitUserPresence(userId: string, role: string, status: "online" | "offline") {
+    this.emitToRoom("admin", "user_presence", { userId, role, status, ts: new Date().toISOString() });
+  }
+
+  /** Provider location update for active appointment */
   emitLocationUpdate(appointmentId: string, providerId: string, lat: number, lng: number, ts: string) {
     this.emitToRoom(`appointment:${appointmentId}`, "location_update", {
-      providerId, lat, lng, lastUpdated: ts,
+      appointmentId,
+      providerId,
+      lat,
+      lng,
+      ts,
     });
   }
 
-  /** Provider went stale (no location for > 90 s) */
+  /** Provider location has gone stale (no update in 90 s) */
   emitLocationStale(appointmentId: string, providerId: string) {
-    this.emitToRoom(`appointment:${appointmentId}`, "provider_location_stale", {
+    this.emitToRoom(`appointment:${appointmentId}`, "location_stale", {
+      appointmentId,
       providerId,
-      message: "Provider location signal lost",
+      ts: new Date().toISOString(),
     });
   }
 }
