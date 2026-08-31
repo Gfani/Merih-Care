@@ -4,6 +4,10 @@ import { EmergencyService } from "./emergency.service";
 import { JwtService } from "@nestjs/jwt";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import { EmergencyEntity } from "../../database/entities/emergency.entity";
+import {
+  EmergencyResponderEntity,
+  EmergencyEscalationHistoryEntity,
+} from "../../database/entities/emergency-relation.entity";
 import { DataSource } from "typeorm";
 import { RealtimeService } from "../realtime/realtime.service";
 
@@ -17,6 +21,16 @@ describe("EmergencyController", () => {
     save: jest.fn(),
   };
 
+  const mockResponderRepo = {
+    find: jest.fn(),
+    findOne: jest.fn(),
+    save: jest.fn(),
+  };
+
+  const mockEscalationRepo = {
+    save: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [EmergencyController],
@@ -25,6 +39,14 @@ describe("EmergencyController", () => {
         {
           provide: getRepositoryToken(EmergencyEntity),
           useValue: mockEmergencyRepo,
+        },
+        {
+          provide: getRepositoryToken(EmergencyResponderEntity),
+          useValue: mockResponderRepo,
+        },
+        {
+          provide: getRepositoryToken(EmergencyEscalationHistoryEntity),
+          useValue: mockEscalationRepo,
         },
         {
           provide: JwtService,

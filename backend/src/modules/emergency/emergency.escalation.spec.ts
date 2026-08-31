@@ -3,6 +3,10 @@ import { EmergencyService } from "./emergency.service";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
 import { EmergencyEntity } from "../../database/entities/emergency.entity";
+import {
+  EmergencyResponderEntity,
+  EmergencyEscalationHistoryEntity,
+} from "../../database/entities/emergency-relation.entity";
 import { RealtimeService } from "../realtime/realtime.service";
 
 describe("Emergency Escalation Tests", () => {
@@ -10,6 +14,8 @@ describe("Emergency Escalation Tests", () => {
   let mockTransactionManager: any;
 
   const mockEmergencyRepo = { find: jest.fn(), findOne: jest.fn(), save: jest.fn() };
+  const mockResponderRepo = { find: jest.fn(), findOne: jest.fn(), save: jest.fn() };
+  const mockEscalationRepo = { save: jest.fn() };
   const mockRealtimeService = { emitEmergencyAlert: jest.fn() };
 
   beforeEach(async () => {
@@ -28,6 +34,8 @@ describe("Emergency Escalation Tests", () => {
       providers: [
         EmergencyService,
         { provide: getRepositoryToken(EmergencyEntity), useValue: mockEmergencyRepo },
+        { provide: getRepositoryToken(EmergencyResponderEntity), useValue: mockResponderRepo },
+        { provide: getRepositoryToken(EmergencyEscalationHistoryEntity), useValue: mockEscalationRepo },
         { provide: DataSource, useValue: mockDataSource },
         { provide: RealtimeService, useValue: mockRealtimeService },
       ],
@@ -61,11 +69,12 @@ describe("Emergency Escalation Tests", () => {
       );
     });
 
-    it("should return null if emergency alert is not found", async () => {
+    it("should throw NotFoundException if emergency alert is not found", async () => {
       mockTransactionManager.findOne.mockResolvedValue(null);
 
-      const result = await service.dispatchEmergency("emg-missing", "Dr. Meron Alemu");
-      expect(result).toBeNull();
+      await expect(service.dispatchEmergency("emg-missing", "Dr. Meron Alemu")).rejects.toThrow(
+        "Emergency case not found"
+      );
       expect(mockRealtimeService.emitEmergencyAlert).not.toHaveBeenCalled();
     });
   });

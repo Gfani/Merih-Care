@@ -1659,6 +1659,27 @@
         }
       }
     },
+    "/api/v1/emergency/create": {
+      "post": {
+        "operationId": "EmergencyController_createEmergency",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEmergencyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/emergency/{id}/dispatch": {
       "put": {
         "operationId": "EmergencyController_dispatch",
@@ -1684,6 +1705,116 @@
         },
         "responses": {
           "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/emergency/{id}/reassign": {
+      "put": {
+        "operationId": "EmergencyController_reassign",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReassignResponderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/emergency/{id}/arrive": {
+      "put": {
+        "operationId": "EmergencyController_markArrived",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/emergency/{id}/resolve": {
+      "put": {
+        "operationId": "EmergencyController_resolve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveEmergencyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/emergency/{id}/escalate": {
+      "post": {
+        "operationId": "EmergencyController_escalate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EscalateEmergencyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
             "description": ""
           }
         }
@@ -2626,9 +2757,79 @@
           "description"
         ]
       },
+      "CreateEmergencyDto": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "moderate",
+              "minor"
+            ]
+          },
+          "patientName": {
+            "type": "string"
+          },
+          "emergencyContact": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "location",
+          "phone",
+          "type"
+        ]
+      },
       "DispatchEmergencyDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "responder": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "responder"
+        ]
+      },
+      "ReassignResponderDto": {
+        "type": "object",
+        "properties": {
+          "newResponder": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "newResponder"
+        ]
+      },
+      "ResolveEmergencyDto": {
+        "type": "object",
+        "properties": {
+          "clinicalSummary": {
+            "type": "string"
+          }
+        }
+      },
+      "EscalateEmergencyDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ]
       },
       "UpdatePrivacyDto": {
         "type": "object",
