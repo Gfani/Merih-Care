@@ -1,0 +1,86 @@
+name: Merihcare CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, staging, develop ]
+  pull_request:
+    branches: [ main, staging ]
+
+jobs:
+  backend-test:
+    name: Backend Test & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install Dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run Backend Tests
+        working-directory: backend
+        run: npm test
+
+  admin-web-test:
+    name: Admin Web Test & Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: admin-web/package-lock.json
+
+      - name: Install Dependencies
+        working-directory: admin-web
+        run: npm ci
+
+      - name: Run Unit Tests
+        working-directory: admin-web
+        run: npm test
+
+      - name: Build Web Application
+        working-directory: admin-web
+        run: npm run build
+
+  mobile-test:
+    name: Flutter Mobile Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.x'
+          channel: 'stable'
+
+      - name: Install Mobile Dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Run Mobile Unit Tests
+        working-directory: mobile
+        run: flutter test
+
+  deploy:
+    name: Continuous Deployment
+    needs: [backend-test, admin-web-test, mobile-test]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Production
+        run: echo "Production Deployment Triggered for commit ${{ github.sha }}"

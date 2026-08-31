@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: merihcare-postgres-staging
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-merihcare_staging}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-merihcare_staging_pw}
+      POSTGRES_DB: ${DB_DATABASE:-merihcare_staging_db}
+    networks:
+      - backend-net
+    volumes:
+      - postgres_staging_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-merihcare_staging} -d ${DB_DATABASE:-merihcare_staging_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: merihcare-redis-staging
+    command: redis-server --requirepass ${REDIS_PASSWORD:-merihcare_staging_redis}
+    networks:
+      - backend-net
+    volumes:
+      - redis_staging_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:-merihcare_staging_redis} ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: merihcare-backend-staging
+    environment:
+      NODE_ENV: staging
+      PORT: 3000
+    networks:
+      - frontend-net
+      - backend-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  frontend-net:
+    driver: bridge
+  backend-net:
+    driver: bridge
+
+volumes:
+  postgres_staging_data:
+  redis_staging_data:
