@@ -2092,6 +2092,117 @@
         }
       }
     },
+    "/api/v1/complaints/create": {
+      "post": {
+        "operationId": "ComplaintsController_createComplaint",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateComplaintDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/complaints/{id}/assign": {
+      "put": {
+        "operationId": "ComplaintsController_assignInvestigator",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignComplaintDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/complaints/{id}/respond": {
+      "post": {
+        "operationId": "ComplaintsController_respondToComplaint",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RespondComplaintDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/complaints/{id}/escalate": {
+      "post": {
+        "operationId": "ComplaintsController_escalateComplaint",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EscalateComplaintDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/complaints/{id}/resolve": {
       "put": {
         "operationId": "ComplaintsController_resolve",
@@ -2960,6 +3071,71 @@
         "required": [
           "latitude",
           "longitude"
+        ]
+      },
+      "CreateComplaintDto": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "priority",
+          "description"
+        ]
+      },
+      "AssignComplaintDto": {
+        "type": "object",
+        "properties": {
+          "investigatorId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "investigatorId"
+        ]
+      },
+      "RespondComplaintDto": {
+        "type": "object",
+        "properties": {
+          "response": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "investigating",
+              "resolved"
+            ]
+          }
+        },
+        "required": [
+          "response"
+        ]
+      },
+      "EscalateComplaintDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
         ]
       },
       "ModerateReviewDto": {

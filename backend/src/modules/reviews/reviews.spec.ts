@@ -4,12 +4,19 @@ import { ReviewsService } from "./reviews.service";
 import { JwtService } from "@nestjs/jwt";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import { ReviewEntity } from "../../database/entities/review.entity";
+import { ProviderEntity } from "../../database/entities/provider.entity";
 
 describe("ReviewsController", () => {
   let controller: ReviewsController;
   let service: ReviewsService;
 
   const mockReviewRepo = {
+    find: jest.fn(),
+    findOne: jest.fn(),
+    save: jest.fn(),
+  };
+
+  const mockProviderRepo = {
     find: jest.fn(),
     findOne: jest.fn(),
     save: jest.fn(),
@@ -23,6 +30,10 @@ describe("ReviewsController", () => {
         {
           provide: getRepositoryToken(ReviewEntity),
           useValue: mockReviewRepo,
+        },
+        {
+          provide: getRepositoryToken(ProviderEntity),
+          useValue: mockProviderRepo,
         },
         {
           provide: JwtService,
