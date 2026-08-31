@@ -101,6 +101,43 @@ export class LocationsService {
     return this.locationRepo.save(loc);
   }
 
+  checkGeofenceArrival(
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number,
+    radiusMeters = 100
+  ): { isWithinGeofence: boolean; distanceMeters: number } {
+    const R = 6371e3; // Earth radius in metres
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+    const a =
+      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distanceMeters = Math.round(R * c);
+
+    return {
+      isWithinGeofence: distanceMeters <= radiusMeters,
+      distanceMeters,
+    };
+  }
+
+  async getEmergencyOverlays(): Promise<any[]> {
+    const locations = await this.locationRepo.find({ where: { status: "critical" } });
+    return locations.map((loc) => ({
+      id: loc.id,
+      userId: loc.userId,
+      latitude: loc.y,
+      longitude: loc.x,
+      severity: "critical",
+      updatedAt: loc.locationTimestamp || new Date().toISOString(),
+    }));
+  }
+
   calculateDistanceAndEta(lat1: number, lon1: number, lat2: number, lon2: number) {
     // Haversine formula to compute geodesic distance on Earth
     const R = 6371; // Earth radius in km

@@ -82,4 +82,25 @@ export class LocationsController {
     const n2 = parseFloat(lon2);
     return this.locationsService.calculateDistanceAndEta(l1, n1, l2, n2);
   }
+
+  @Get("geofence")
+  async checkGeofence(
+    @Query("lat1") lat1: string,
+    @Query("lon1") lon1: string,
+    @Query("lat2") lat2: string,
+    @Query("lon2") lon2: string,
+    @Query("radius") radius?: string,
+  ) {
+    const l1 = parseFloat(lat1);
+    const n1 = parseFloat(lon1);
+    const l2 = parseFloat(lat2);
+    const n2 = parseFloat(lon2);
+    const r = radius ? parseInt(radius) : 100;
+    return this.locationsService.checkGeofenceArrival(l1, n1, l2, n2, r);
+  }
+
+  @Get("emergencies")
+  async getEmergencies() {
+    return this.locationsService.getEmergencyOverlays();
+  }
 }

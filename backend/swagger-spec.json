@@ -1816,6 +1816,69 @@
         }
       }
     },
+    "/api/v1/locations/geofence": {
+      "get": {
+        "operationId": "LocationsController_checkGeofence",
+        "parameters": [
+          {
+            "name": "lat1",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lon1",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lat2",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lon2",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "radius",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/locations/emergencies": {
+      "get": {
+        "operationId": "LocationsController_getEmergencies",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/complaints": {
       "get": {
         "operationId": "ComplaintsController_getComplaints",
