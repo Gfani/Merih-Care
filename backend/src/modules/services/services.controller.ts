@@ -36,9 +36,21 @@ export class ServicesController {
     return this.servicesService.getAllServices();
   }
 
+  @Get("categories")
+  async getCategories() {
+    return this.servicesService.getAllServices();
+  }
+
+  @Post("categories")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("admin", "super_admin")
+  async createCategory(@Body() body: CreateServiceDto) {
+    return this.servicesService.createService(body);
+  }
+
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles("admin")
+  @Roles("admin", "super_admin")
   async create(@Body() body: CreateServiceDto) {
     return this.servicesService.createService(body);
   }

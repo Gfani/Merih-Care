@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/location/location_service.dart';
+import '../../core/network/network_providers.dart';
+import '../auth/auth_provider.dart';
 import '../../shared/widgets/create_design_widgets.dart';
 
 enum OnDemandStep {
@@ -40,17 +42,18 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
   double _selectedRating = 5.0;
   final TextEditingController _reviewController = TextEditingController();
   String _selectedPaymentMethod = 'telebirr';
+  String? _createdAppointmentId;
 
   late AnimationController _pulseController;
 
   final Map<String, dynamic> _matchedProvider = {
     'id': 'p-1',
-    'name': 'Dr. Meron Alemu',
+    'name': 'Assigned Clinician',
     'title': 'General Practitioner (MD)',
     'avatar': 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=200&h=200&fit=crop&auto=format',
-    'rating': 4.9,
-    'reviewCount': 42,
-    'etaMinutes': 12,
+    'rating': 5.0,
+    'reviewCount': 1,
+    'etaMinutes': 10,
     'phone': '+251 91 122 3344',
     'verified': true,
   };
@@ -113,17 +116,68 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
     super.dispose();
   }
 
-  void _startFindingProvider() {
+  Future<void> _startFindingProvider() async {
     setState(() {
       _currentStep = OnDemandStep.findingProvider;
       _searchSeconds = 0;
     });
 
-    _searchTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      setState(() => _searchSeconds++);
-      if (_searchSeconds >= 4) {
+    // 1. Dispatch real care appointment request to backend
+    try {
+      final client = ref.read(apiClientProvider);
+      final authState = ref.read(authProvider);
+      final user = authState.user;
+      final patientId = user?['id']?.toString() ?? 'pat-user';
+      final patientName = user?['name']?.toString() ?? (user?['email']?.toString().split('@')[0] ?? 'Patient');
+      final now = DateTime.now();
+
+      final res = await client.dio.post('/appointments', data: {
+        'patientId': patientId,
+        'patientName': patientName,
+        'serviceId': _selectedService?['id'] ?? 'srv-1',
+        'service': _selectedService?['name'] ?? 'Doctor Home Visit',
+        'date': now.toIso8601String().split('T')[0],
+        'time': '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+        'location': _locationAddress,
+        'amount': (_selectedService?['price'] ?? 800) is num ? (_selectedService?['price'] as num).toDouble() : 800.0,
+        'status': 'searching',
+      });
+
+      final dynamic data = res.data;
+      if (data is Map<String, dynamic> && data['id'] != null) {
+        _createdAppointmentId = data['id'].toString();
+      }
+    } catch (e) {
+      print('[DISPATCH] Error creating real appointment: $e');
+    }
+
+    // 2. Poll backend for actual doctor acceptance
+    _searchTimer?.cancel();
+    _searchTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
+      if (!mounted) {
         timer.cancel();
-        setState(() => _currentStep = OnDemandStep.providerMatched);
+        return;
+      }
+      setState(() => _searchSeconds += 2);
+
+      if (_createdAppointmentId != null) {
+        try {
+          final client = ref.read(apiClientProvider);
+          final check = await client.dio.get('/appointments/$_createdAppointmentId');
+          final dynamic apt = check.data;
+          if (apt is Map<String, dynamic>) {
+            final status = apt['status']?.toString();
+            if (status == 'accepted' || status == 'scheduled' || status == 'on_the_way' || status == 'in_progress') {
+              timer.cancel();
+              _matchedProvider['id'] = apt['providerId']?.toString() ?? 'p-1';
+              _matchedProvider['name'] = apt['providerName']?.toString() ?? 'Assigned Healthcare Provider';
+              _matchedProvider['phone'] = apt['providerPhone']?.toString() ?? '+251 91 122 3344';
+              setState(() => _currentStep = OnDemandStep.providerMatched);
+            }
+          }
+        } catch (e) {
+          print('[DISPATCH] Polling error: $e');
+        }
       }
     });
   }

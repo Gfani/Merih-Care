@@ -20,6 +20,15 @@ class ApiClient {
           options.headers['Content-Type'] = 'application/json';
           return handler.next(options);
         },
+        onResponse: (response, handler) {
+          if (response.data is Map<String, dynamic>) {
+            final map = response.data as Map<String, dynamic>;
+            if (map.containsKey('success') && map.containsKey('data')) {
+              response.data = map['data'];
+            }
+          }
+          return handler.next(response);
+        },
         onError: (DioException e, handler) {
           // Global error handling or token refreshing could go here
           return handler.next(e);

@@ -78,7 +78,8 @@ export function useRealtimeSocket({
 
     setConnectionState("connecting");
 
-    const socket = io(`${baseUrl}/realtime`, {
+    const origin = baseUrl.replace(/\/api\/v\d+.*$/, "");
+    const socket = io(`${origin}/realtime`, {
       auth: { token },
       // ONLY use polling as a transport if fallbackPoll is explicitly true
       transports: fallbackPoll ? ["polling", "websocket"] : ["websocket"],

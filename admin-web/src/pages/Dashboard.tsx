@@ -42,10 +42,10 @@ export default function DashboardSection() {
       )}
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Total Patients" value={loading ? "..." : (stats?.kpis?.totalPatients?.toLocaleString() || "1,284")} sub="+14 this week" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>} trend={{ value: 8, up: true }} />
-        <StatCard label="Total Providers" value={loading ? "..." : (stats?.kpis?.totalProviders?.toLocaleString() || "128")} sub="118 verified" color="#1b6fba" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="2"/></svg>} trend={{ value: 3, up: true }} />
-        <StatCard label="Active Requests" value={loading ? "..." : (stats?.kpis?.activeRequests?.toLocaleString() || "47")} sub="12 searching" color="#d97706" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>} trend={{ value: 5, up: true }} />
-        <StatCard label="Revenue (Aug)" value={loading ? "..." : `ETB ${(stats?.kpis?.totalRevenue?.toLocaleString() || "94,700")}`} sub="↑ 6% vs Jul" color="#7c3aed" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>} trend={{ value: 6, up: true }} />
+        <StatCard label="Total Patients" value={loading ? "..." : (stats?.kpis?.totalPatients ?? 0).toLocaleString()} sub="Registered patients" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>} trend={{ value: 8, up: true }} />
+        <StatCard label="Total Providers" value={loading ? "..." : (stats?.kpis?.totalProviders ?? 0).toLocaleString()} sub="Verified clinicians" color="#1b6fba" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="2"/></svg>} trend={{ value: 3, up: true }} />
+        <StatCard label="Active Requests" value={loading ? "..." : (stats?.kpis?.activeRequests ?? 0).toLocaleString()} sub="In transit / pending" color="#d97706" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>} trend={{ value: 5, up: true }} />
+        <StatCard label="Revenue" value={loading ? "..." : `ETB ${(stats?.kpis?.totalRevenue ?? 0).toLocaleString()}`} sub="Platform earnings" color="#7c3aed" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>} trend={{ value: 6, up: true }} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -136,11 +136,11 @@ export default function DashboardSection() {
           <p className="text-sm font-semibold text-[#18232e] dark:text-white mb-3" style={{ fontFamily: "DM Sans, sans-serif" }}>Today's Overview</p>
           <div className="space-y-3">
             {[
-              { label: "Appointments today", value: "24", color: "#0d7c6a" },
-              { label: "Services completed", value: "18", color: "#16a34a" },
-              { label: "Pending verifications", value: "2", color: "#d97706" },
-              { label: "Open complaints", value: "4", color: "#dc2626" },
-              { label: "Active providers", value: "89", color: "#1b6fba" },
+              { label: "Active requests", value: (stats?.kpis?.activeRequests ?? 0).toString(), color: "#0d7c6a" },
+              { label: "Completion rate", value: stats?.kpis?.completionRate || "100%", color: "#16a34a" },
+              { label: "Cancellation rate", value: stats?.kpis?.cancellationRate || "0%", color: "#d97706" },
+              { label: "Average rating", value: `${stats?.kpis?.avgRating ?? 5.0} ★`, color: "#1b6fba" },
+              { label: "Total clinicians", value: (stats?.kpis?.totalProviders ?? 0).toString(), color: "#7c3aed" },
             ].map(item => (
               <div key={item.label} className="flex items-center justify-between">
                 <span className="text-sm text-[#4a5a6a] dark:text-slate-350">{item.label}</span>

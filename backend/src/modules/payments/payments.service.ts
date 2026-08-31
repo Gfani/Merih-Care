@@ -112,6 +112,41 @@ export class PaymentsService {
     return { txRef, checkoutUrl };
   }
 
+  async processDirectPayment(
+    appointmentId: string,
+    method: string,
+    actorId: string,
+    accountNumber?: string,
+    amountOverride?: number,
+  ): Promise<any> {
+    const apt = await this.appointmentRepo.findOne({ where: { id: appointmentId } });
+    const amount = amountOverride || apt?.amount || 800;
+    const txRef = `TXN-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    if (apt) {
+      apt.status = "scheduled";
+      await this.appointmentRepo.save(apt);
+    }
+
+    const event = new PaymentEventEntity();
+    event.id = `evt-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    event.paymentId = txRef;
+    event.eventType = "charge_success";
+    event.payload = JSON.stringify({ appointmentId, amount, method, actorId, accountNumber });
+    event.createdAt = new Date().toISOString();
+    await this.eventRepo.save(event);
+
+    return {
+      success: true,
+      transactionId: txRef,
+      status: "successful",
+      method: method === "telebirr" ? "Telebirr" : method === "cbe_birr" ? "CBE Birr" : method === "chapa" ? "Chapa" : "Cash",
+      amount,
+      appointmentId,
+      date: new Date().toISOString().split("T")[0],
+    };
+  }
+
   // Verify transaction status (Server-to-Server)
   async verifyPayment(txRef: string): Promise<any> {
     let status = "failed";

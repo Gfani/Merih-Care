@@ -86,10 +86,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
         'password': password,
       });
       print('[AUTH] login: response received: ${response.statusCode}');
-      final token = (response.data['access_token'] ?? response.data['token']) as String;
-      final user = response.data['user'] as Map<String, dynamic>;
-      
-      await SecureStorage.instance.writeToken(token);
+
+      final dynamic rawData = response.data;
+      final Map<String, dynamic> data = (rawData is Map<String, dynamic> && rawData.containsKey('data') && rawData['data'] is Map<String, dynamic>)
+          ? (rawData['data'] as Map<String, dynamic>)
+          : (rawData is Map<String, dynamic> ? rawData : <String, dynamic>{});
+
+      final token = (data['access_token'] ?? data['token'] ?? '').toString();
+      final user = (data['user'] is Map<String, dynamic>)
+          ? (data['user'] as Map<String, dynamic>)
+          : <String, dynamic>{'name': email.split('@')[0], 'email': email, 'role': 'patient'};
+
+      if (token.isNotEmpty) {
+        await SecureStorage.instance.writeToken(token);
+      }
       print('[AUTH] login: token written. Authenticated: $email, role=${user['role']}');
       state = AuthState(
         status: AuthStatus.authenticated,
@@ -99,8 +109,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return true;
     } on DioException catch (e) {
       print('[AUTH] login DioError: status=${e.response?.statusCode}, body=${e.response?.data}');
-      final msg = e.response?.data['message'] ?? 'Login failed';
-      state = state.copyWith(errorMessage: msg.toString());
+      final dynamic body = e.response?.data;
+      String msg = 'Login failed';
+      if (body is Map<String, dynamic>) {
+        msg = (body['message'] ?? body['error'] ?? 'Invalid email or password').toString();
+      } else if (e.message != null) {
+        msg = e.message!;
+      }
+      state = state.copyWith(errorMessage: msg);
       return false;
     } catch (e) {
       print('[AUTH] login error: $e');
@@ -122,10 +138,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
         'role': role,
       });
       print('[AUTH] signup: response received: ${response.statusCode}');
-      final token = (response.data['access_token'] ?? response.data['token']) as String;
-      final user = response.data['user'] as Map<String, dynamic>;
-      
-      await SecureStorage.instance.writeToken(token);
+
+      final dynamic rawData = response.data;
+      final Map<String, dynamic> data = (rawData is Map<String, dynamic> && rawData.containsKey('data') && rawData['data'] is Map<String, dynamic>)
+          ? (rawData['data'] as Map<String, dynamic>)
+          : (rawData is Map<String, dynamic> ? rawData : <String, dynamic>{});
+
+      final token = (data['access_token'] ?? data['token'] ?? '').toString();
+      final user = (data['user'] is Map<String, dynamic>)
+          ? (data['user'] as Map<String, dynamic>)
+          : <String, dynamic>{'name': name, 'email': email, 'phone': phone, 'role': role};
+
+      if (token.isNotEmpty) {
+        await SecureStorage.instance.writeToken(token);
+      }
       print('[AUTH] signup: token written. Authenticated: $email, role=${user['role']}');
       state = AuthState(
         status: AuthStatus.authenticated,
@@ -135,8 +161,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return true;
     } on DioException catch (e) {
       print('[AUTH] signup DioError: status=${e.response?.statusCode}, body=${e.response?.data}');
-      final msg = e.response?.data['message'] ?? 'Registration failed';
-      state = state.copyWith(errorMessage: msg.toString());
+      final dynamic body = e.response?.data;
+      String msg = 'Registration failed';
+      if (body is Map<String, dynamic>) {
+        msg = (body['message'] ?? body['error'] ?? 'Registration failed').toString();
+      } else if (e.message != null) {
+        msg = e.message!;
+      }
+      state = state.copyWith(errorMessage: msg);
       return false;
     } catch (e) {
       print('[AUTH] signup error: $e');

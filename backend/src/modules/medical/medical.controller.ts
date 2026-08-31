@@ -60,6 +60,23 @@ export class ReportIncidentDto {
 export class MedicalRecordsController {
   constructor(private readonly medicalRecordsService: MedicalRecordsService) {}
 
+  @Get()
+  async getMyRecords(@Req() req: any) {
+    const patientId = req.user?.id || req.user?.sub || "u-patient-1";
+    const role = req.user?.role;
+    const perms = req.user?.permissions || [];
+    const adminRole = req.user?.adminRole;
+    return this.medicalRecordsService.getRecords(
+      patientId, 
+      patientId, 
+      role, 
+      perms, 
+      adminRole, 
+      req.ip, 
+      req.headers["user-agent"]
+    );
+  }
+
   @Get(":patientId")
   async getRecords(
     @Param("patientId") patientId: string, 

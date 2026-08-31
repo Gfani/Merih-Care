@@ -27,32 +27,22 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> with Si
   Future<void> _loadAppointments() async {
     try {
       final client = ref.read(apiClientProvider);
-      final response = await client.dio.get('/appointments/patient');
+      final response = await client.dio.get('/appointments');
+      final dynamic raw = response.data;
+      final List all = (raw is List)
+          ? raw
+          : (raw is Map<String, dynamic> && raw['data'] is List ? raw['data'] as List : []);
       if (mounted) {
         setState(() {
-          _appointments = response.data;
+          _appointments = all;
           _loading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      print('[APPOINTMENTS] Load error: $e');
       if (mounted) {
         setState(() {
-          _appointments = [
-            {
-              'id': 'appt-101',
-              'provider': {'name': 'Dr. Meron Alemu', 'specialty': 'General Care'},
-              'date': '2026-08-30',
-              'time': '10:00 AM',
-              'status': 'scheduled',
-            },
-            {
-              'id': 'appt-102',
-              'provider': {'name': 'Nurse Bereket Solomon', 'specialty': 'Nursing Visit'},
-              'date': '2026-08-25',
-              'time': '02:00 PM',
-              'status': 'completed',
-            }
-          ];
+          _appointments = [];
           _loading = false;
         });
       }

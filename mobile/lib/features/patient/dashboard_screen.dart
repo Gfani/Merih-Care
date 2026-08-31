@@ -41,34 +41,28 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Future<void> _loadDashboardData() async {
     try {
       final client = ref.read(apiClientProvider);
-      final response = await client.dio.get('/appointments/patient');
+      final response = await client.dio.get('/appointments');
       final provRes = await client.dio.get('/providers');
+
+      final dynamic aptData = response.data;
+      final List allApts = aptData is List ? aptData : (aptData is Map && aptData['data'] is List ? aptData['data'] : []);
+
+      final dynamic provData = provRes.data;
+      final List allProvs = provData is List ? provData : (provData is Map && provData['data'] is List ? provData['data'] : []);
 
       if (mounted) {
         setState(() {
-          _upcoming = (response.data as List).where((a) => a['status'] != 'completed' && a['status'] != 'cancelled').toList();
-          _providers = provRes.data as List;
+          _upcoming = allApts.where((a) => a['status'] != 'completed' && a['status'] != 'cancelled').toList();
+          _providers = allProvs;
           _loading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      print('[PATIENT DASHBOARD] Error loading data: $e');
       if (mounted) {
         setState(() {
-          _upcoming = [
-            {
-              'id': 'appt-101',
-              'service': 'Doctor Home Visit',
-              'provider': {'name': 'Dr. Meron Alemu', 'title': 'General Physician', 'rating': 4.9, 'verified': true},
-              'date': 'Today',
-              'time': '10:00 AM',
-              'status': 'on_the_way',
-            }
-          ];
-          _providers = [
-            {'id': 'p1', 'name': 'Dr. Meron Alemu', 'title': 'General Practitioner', 'rating': 4.9, 'reviewCount': 34, 'price': 800, 'distance': '1.8 km', 'verified': true},
-            {'id': 'p2', 'name': 'Hiwot Girma', 'title': 'Registered Nurse', 'rating': 4.8, 'reviewCount': 52, 'price': 450, 'distance': '2.4 km', 'verified': true},
-            {'id': 'p3', 'name': 'Yohannes Tadesse', 'title': 'Physiotherapist', 'rating': 5.0, 'reviewCount': 19, 'price': 600, 'distance': '3.1 km', 'verified': true},
-          ];
+          _upcoming = [];
+          _providers = [];
           _loading = false;
         });
       }
@@ -80,7 +74,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final auth = ref.watch(authProvider);
     final locationState = ref.watch(locationProvider);
     final user = auth.user;
-    final fullName = user?['name'] ?? 'Tigist Bekele';
+    final fullName = (user?['name']?.toString().isNotEmpty == true)
+        ? user!['name'].toString()
+        : (user?['email'] != null ? user!['email'].toString().split('@')[0] : 'Patient');
     final firstName = fullName.split(' ')[0];
 
     final hour = DateTime.now().hour;

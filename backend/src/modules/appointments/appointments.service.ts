@@ -3,6 +3,9 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, DataSource, In } from "typeorm";
 import { AppointmentEntity } from "../../database/entities/appointment.entity";
 import { AppointmentStatusHistoryEntity, CancellationReasonEntity } from "../../database/entities/appointment-history.entity";
+import { UserEntity } from "../../database/entities/user.entity";
+import { ProviderEntity } from "../../database/entities/provider.entity";
+import { ServiceEntity } from "../../database/entities/service.entity";
 import { RealtimeService } from "../realtime/realtime.service";
 
 @Injectable()
@@ -55,7 +58,7 @@ export class AppointmentsService {
 
   // Atomic database transaction for bookings
   async createAppointment(data: any): Promise<AppointmentEntity> {
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       // Prevent double booking if provider is pre-assigned
       if (data.providerId) {
         const collision = await manager.findOne(AppointmentEntity, {
@@ -73,14 +76,34 @@ export class AppointmentsService {
 
       const apt = new AppointmentEntity();
       apt.id = "apt-" + Date.now();
-      apt.patientId = data.patientId;
-      apt.patientName = data.patientName;
+
+      // Safe foreign key assignment to avoid FK constraint violation on mock/transient IDs
+      if (data.patientId) {
+        const userExists = await manager.findOne(UserEntity, { where: { id: data.patientId } });
+        apt.patientId = userExists ? userExists.id : null as any;
+      } else {
+        apt.patientId = null as any;
+      }
+
+      if (data.providerId) {
+        const provExists = await manager.findOne(ProviderEntity, { where: { id: data.providerId } });
+        apt.providerId = provExists ? provExists.id : null as any;
+      } else {
+        apt.providerId = null as any;
+      }
+
+      if (data.serviceId) {
+        const svcExists = await manager.findOne(ServiceEntity, { where: { id: data.serviceId } });
+        apt.serviceId = svcExists ? svcExists.id : null as any;
+      } else {
+        apt.serviceId = null as any;
+      }
+
+      apt.patientName = data.patientName || "Patient";
       apt.patientAvatar = data.patientAvatar;
-      apt.providerId = data.providerId;
       apt.providerName = data.providerName;
       apt.providerAvatar = data.providerAvatar;
-      apt.serviceId = data.serviceId;
-      apt.service = data.service;
+      apt.service = data.service || "Doctor Home Visit";
       apt.date = data.date;
       apt.time = data.time;
       apt.location = data.location;
@@ -101,6 +124,22 @@ export class AppointmentsService {
 
       return savedApt;
     });
+
+    // Broadcast live update to all subscribed WebSocket clients (Admin portal + Provider dashboard)
+    try {
+      this.realtimeService.emitAppointmentUpdate(result.id, result.status, {
+        appointmentId: result.id,
+        patientName: result.patientName,
+        service: result.service,
+        status: result.status,
+        date: result.date,
+        time: result.time,
+        location: result.location,
+        amount: result.amount,
+      });
+    } catch (_) {}
+
+    return result;
   }
 
   async updateStatus(

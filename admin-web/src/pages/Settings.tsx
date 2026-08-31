@@ -26,8 +26,26 @@ export default function SettingsSection() {
 
   // Edit profile state
   const [editProfileOpen, setEditProfileOpen] = useState(false);
-  const [adminName, setAdminName] = useState("Admin Kebede");
-  const [adminEmail, setAdminEmail] = useState("admin@merihcare.et");
+  const [adminName, setAdminName] = useState(() => {
+    const raw = localStorage.getItem("admin_user");
+    if (raw && raw !== "undefined" && raw !== "null") {
+      try {
+        const u = JSON.parse(raw);
+        return u.name || (u.email ? u.email.split("@")[0] : "Admin");
+      } catch {}
+    }
+    return "Admin";
+  });
+  const [adminEmail, setAdminEmail] = useState(() => {
+    const raw = localStorage.getItem("admin_user");
+    if (raw && raw !== "undefined" && raw !== "null") {
+      try {
+        const u = JSON.parse(raw);
+        return u.email || "admin@merihcare.et";
+      } catch {}
+    }
+    return "admin@merihcare.et";
+  });
 
   // Change password state
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);

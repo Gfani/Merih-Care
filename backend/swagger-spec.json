@@ -557,6 +557,36 @@
         }
       }
     },
+    "/api/v1/services/categories": {
+      "get": {
+        "operationId": "ServicesController_getCategories",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "post": {
+        "operationId": "ServicesController_createCategory",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateServiceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/services/{id}": {
       "put": {
         "operationId": "ServicesController_update",
@@ -920,6 +950,17 @@
         }
       }
     },
+    "/api/v1/payments/receipts": {
+      "get": {
+        "operationId": "PaymentsController_getReceipts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/payments/initialize": {
       "post": {
         "operationId": "PaymentsController_initializePayment",
@@ -930,6 +971,27 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/InitializePaymentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/payments/process-direct": {
+      "post": {
+        "operationId": "PaymentsController_processDirect",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessDirectPaymentDto"
               }
             }
           }
@@ -1521,6 +1583,17 @@
         },
         "responses": {
           "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/medical-records": {
+      "get": {
+        "operationId": "MedicalRecordsController_getMyRecords",
+        "parameters": [],
+        "responses": {
+          "200": {
             "description": ""
           }
         }
@@ -2854,6 +2927,27 @@
         },
         "required": [
           "appointmentId"
+        ]
+      },
+      "ProcessDirectPaymentDto": {
+        "type": "object",
+        "properties": {
+          "appointmentId": {
+            "type": "string",
+            "description": "Target appointment ID to pay for"
+          },
+          "method": {
+            "type": "string",
+            "description": "Payment method: telebirr, cbe_birr, chapa, cash"
+          },
+          "accountNumber": {
+            "type": "string",
+            "description": "Optional phone / account number"
+          }
+        },
+        "required": [
+          "appointmentId",
+          "method"
         ]
       },
       "RefundPaymentDto": {

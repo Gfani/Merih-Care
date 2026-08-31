@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/network/network_providers.dart';
+import '../auth/auth_provider.dart';
 import '../../shared/widgets/create_design_widgets.dart';
 
 enum ProviderFlowStep {
@@ -81,8 +83,17 @@ class _ProviderActiveFlowScreenState extends ConsumerState<ProviderActiveFlowScr
     });
   }
 
-  void _acceptDispatch() {
+  Future<void> _acceptDispatch() async {
     _countdownTimer?.cancel();
+    try {
+      final client = ref.read(apiClientProvider);
+      final aptId = _requestData['id']?.toString() ?? 'apt-1';
+      await client.dio.put('/appointments/$aptId/status', data: {
+        'status': 'accepted',
+      });
+    } catch (e) {
+      print('[PROVIDER] Accept dispatch error: $e');
+    }
     setState(() => _currentStep = ProviderFlowStep.accepted);
   }
 

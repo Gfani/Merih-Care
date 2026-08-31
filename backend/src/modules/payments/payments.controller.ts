@@ -13,6 +13,22 @@ export class InitializePaymentDto {
   appointmentId: string;
 }
 
+export class ProcessDirectPaymentDto {
+  @ApiProperty({ description: "Target appointment ID to pay for" })
+  @IsNotEmpty()
+  @IsString()
+  appointmentId: string;
+
+  @ApiProperty({ description: "Payment method: telebirr, cbe_birr, chapa, cash" })
+  @IsNotEmpty()
+  @IsString()
+  method: string;
+
+  @ApiProperty({ description: "Optional phone / account number", required: false })
+  @IsString()
+  accountNumber?: string;
+}
+
 export class RefundPaymentDto {
   @ApiProperty({ description: "Reason for the refund" })
   @IsNotEmpty()
@@ -32,11 +48,24 @@ export class PaymentsController {
     return this.paymentsService.getTransactions();
   }
 
+  @Get("receipts")
+  @UseGuards(JwtAuthGuard)
+  async getReceipts(@Req() req: any) {
+    return this.paymentsService.getTransactions();
+  }
+
   @Post("initialize")
   @UseGuards(JwtAuthGuard)
   async initializePayment(@Body() body: InitializePaymentDto, @Req() req: any) {
     const actorId = req.user?.id || "unknown";
     return this.paymentsService.initializePayment(body.appointmentId, actorId);
+  }
+
+  @Post("process-direct")
+  @UseGuards(JwtAuthGuard)
+  async processDirect(@Body() body: ProcessDirectPaymentDto, @Req() req: any) {
+    const actorId = req.user?.id || "patient";
+    return this.paymentsService.processDirectPayment(body.appointmentId, body.method, actorId, body.accountNumber);
   }
 
   @Get("verify/:txRef")

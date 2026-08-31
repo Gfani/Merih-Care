@@ -13,7 +13,7 @@ export class OwnershipGuard implements CanActivate {
     }
 
     // Admins bypass ownership checks
-    if (user.role === "admin") {
+    if (user.role === "admin" || user.role === "super_admin" || user.adminRole) {
       return true;
     }
 

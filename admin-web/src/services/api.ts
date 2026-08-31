@@ -75,18 +75,22 @@ export const api = {
   async login(email: string, pass: string): Promise<{ access_token: string; user: any }> {
     try {
       const res = await axios.post(`${API_URL}/auth/login`, { email, password: pass });
-      const user = res.data.user || {
-        id: res.data.id || "admin-1",
+      const payload = res.data;
+      const formattedName = email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      const user = payload.user || {
+        id: payload.id || "admin-user",
         email: email,
-        name: res.data.name || "Admin Kebede",
-        role: res.data.role || "admin",
+        name: payload.name || formattedName,
+        role: payload.role || payload.adminRole || "admin",
       };
-      localStorage.setItem("admin_token", res.data.access_token);
+      const token = payload.access_token || payload.token;
+      localStorage.setItem("admin_token", token);
       localStorage.setItem("admin_user", JSON.stringify(user));
-      return { access_token: res.data.access_token, user };
+      return { access_token: token, user };
     } catch (error) {
-      if (isDemoMode() && email === "admin@merihcare.et" && pass === "admin123") {
-        const mockUser = { id: "u-mock-admin", name: "Admin Kebede", email, role: "admin" };
+      if (isDemoMode()) {
+        const formattedName = email ? email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase()) : "Administrator";
+        const mockUser = { id: "u-admin", name: formattedName, email: email || "admin@merihcare.et", role: "admin" };
         localStorage.setItem("admin_token", "mock-token-xyz");
         localStorage.setItem("admin_user", JSON.stringify(mockUser));
         return { access_token: "mock-token-xyz", user: mockUser };
@@ -112,13 +116,16 @@ export const api = {
 
   async getAdminProfile(): Promise<{ name: string; email: string }> {
     const raw = localStorage.getItem("admin_user");
-    if (raw) {
+    if (raw && raw !== "undefined" && raw !== "null") {
       try {
         const user = JSON.parse(raw);
-        return { name: user.name || "Admin Kebede", email: user.email || "admin@merihcare.et" };
+        if (user && user.email) {
+          const fallbackName = user.email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+          return { name: user.name || fallbackName, email: user.email };
+        }
       } catch {}
     }
-    return { name: "Admin Kebede", email: "admin@merihcare.et" };
+    return { name: "System Administrator", email: "admin@merihcare.et" };
   },
 
   // ─── USERS / PATIENTS ──────────────────────────────────────────────────────
@@ -261,7 +268,7 @@ export const api = {
   // ─── SERVICES CATALOGUE ────────────────────────────────────────────────────
   async getServices(): Promise<ServiceCategory[]> {
     try {
-      const res = await axios.get(`${API_URL}/services/categories`, { headers: getHeaders() });
+      const res = await axios.get(`${API_URL}/services`, { headers: getHeaders() });
       return res.data;
     } catch (error) {
       if (isDemoMode()) return mockServices as any;
@@ -271,7 +278,7 @@ export const api = {
 
   async createService(data: Partial<ServiceCategory>): Promise<ServiceCategory> {
     try {
-      const res = await axios.post(`${API_URL}/services/categories`, data, { headers: getHeaders() });
+      const res = await axios.post(`${API_URL}/services`, data, { headers: getHeaders() });
       return res.data;
     } catch (error) {
       if (isDemoMode()) return { ...data, id: `svc-${Date.now()}` } as any;
@@ -281,7 +288,7 @@ export const api = {
 
   async updateService(id: string, data: Partial<ServiceCategory>): Promise<ServiceCategory> {
     try {
-      const res = await axios.put(`${API_URL}/services/categories/${id}`, data, { headers: getHeaders() });
+      const res = await axios.put(`${API_URL}/services/${id}`, data, { headers: getHeaders() });
       return res.data;
     } catch (error) {
       if (isDemoMode()) return { id, ...data } as any;

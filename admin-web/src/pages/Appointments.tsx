@@ -43,6 +43,12 @@ export default function AppointmentsSection() {
 
   useEffect(() => {
     loadData();
+    const timer = setInterval(() => {
+      api.getAppointments().then(data => {
+        setAppointments(Array.isArray(data) ? data : (data as any)?.data || []);
+      }).catch(() => {});
+    }, 3000);
+    return () => clearInterval(timer);
   }, []);
 
   const handleUpdateStatus = async () => {
@@ -108,6 +114,8 @@ export default function AppointmentsSection() {
             label=""
             options={[
               { value: "all", label: "All Status" },
+              { value: "searching", label: "Searching Provider" },
+              { value: "pending", label: "Pending" },
               { value: "scheduled", label: "Scheduled" },
               { value: "accepted", label: "Accepted" },
               { value: "on_the_way", label: "On The Way" },
@@ -118,7 +126,7 @@ export default function AppointmentsSection() {
             ]}
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-36"
+            className="w-44"
           />
         </div>
       </div>

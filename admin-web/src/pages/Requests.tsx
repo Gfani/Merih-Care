@@ -23,6 +23,12 @@ export default function RequestsSection() {
 
   useEffect(() => {
     loadData();
+    const timer = setInterval(() => {
+      api.getAppointments().then(data => {
+        setAppointments(Array.isArray(data) ? data : (data as any)?.data || []);
+      }).catch(() => {});
+    }, 3000);
+    return () => clearInterval(timer);
   }, []);
 
   const aptList = Array.isArray(appointments) ? appointments : [];
@@ -46,12 +52,13 @@ export default function RequestsSection() {
         <SearchBar placeholder="Search requests..." value={search} onChange={setSearch} className="flex-1 min-w-[200px]" />
         <Select label="" options={[
           { value: "all", label: "All Status" },
+          { value: "searching", label: "Searching Provider" },
           { value: "pending", label: "Pending" },
           { value: "scheduled", label: "Scheduled" },
           { value: "in_progress", label: "In Progress" },
           { value: "completed", label: "Completed" },
           { value: "cancelled", label: "Cancelled" },
-        ]} value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-40" />
+        ]} value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-44" />
       </div>
       <Card>
         {loading ? (
@@ -63,12 +70,12 @@ export default function RequestsSection() {
           <DataTable
             columns={[
               { key: "requestId", header: "Request ID", render: (row) => <span className="text-xs font-mono text-[#8a9aaa]">{row.requestId as string}</span> },
-              { key: "patientName", header: "Patient" },
-              { key: "service", header: "Service" },
-              { key: "providerName", header: "Provider" },
+              { key: "patientName", header: "Patient", render: (row) => <span>{row.patientName || "Patient"}</span> },
+              { key: "service", header: "Service", render: (row) => <span>{row.service || "General Care"}</span> },
+              { key: "providerName", header: "Provider", render: (row) => <span className="text-xs">{row.providerName || "Pending Provider Match"}</span> },
               { key: "date", header: "Date", render: (row) => <span className="text-xs">{row.date as string} {row.time as string}</span> },
               { key: "status", header: "Status", render: (row) => <StatusBadge status={row.status as any} /> },
-              { key: "amount", header: "Amount", render: (row) => <span className="font-semibold text-[#0d7c6a] dark:text-cyan-400">ETB {(row.amount as number).toLocaleString()}</span> },
+              { key: "amount", header: "Amount", render: (row) => <span className="font-semibold text-[#0d7c6a] dark:text-cyan-400">ETB {Number(row.amount || 0).toLocaleString()}</span> },
             ]}
             data={filteredRequests as any}
           />

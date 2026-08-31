@@ -50,9 +50,13 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
     try {
       final client = ref.read(apiClientProvider);
       final response = await client.dio.get('/providers/${widget.providerId}');
+      final dynamic raw = response.data;
+      final Map<String, dynamic> data = (raw is Map<String, dynamic> && raw.containsKey('data') && raw['data'] is Map<String, dynamic>)
+          ? raw['data'] as Map<String, dynamic>
+          : (raw is Map<String, dynamic> ? raw : _fallbackProvider);
       if (mounted) {
         setState(() {
-          _provider = response.data;
+          _provider = data;
           _loading = false;
         });
       }

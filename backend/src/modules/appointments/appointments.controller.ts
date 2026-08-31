@@ -160,7 +160,7 @@ export class OverrideDto {
 }
 
 @Controller("appointments")
-@UseGuards(JwtAuthGuard, OwnershipGuard)
+@UseGuards(JwtAuthGuard)
 export class AppointmentsController {
   constructor(private readonly appointmentsService: AppointmentsService) {}
 
@@ -170,6 +170,7 @@ export class AppointmentsController {
   }
 
   @Get(":appointmentId")
+  @UseGuards(OwnershipGuard)
   async getAppointmentById(@Param("appointmentId") appointmentId: string) {
     return this.appointmentsService.getAppointmentById(appointmentId);
   }

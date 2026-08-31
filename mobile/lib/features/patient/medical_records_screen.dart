@@ -23,24 +23,21 @@ class _MedicalRecordsScreenState extends ConsumerState<MedicalRecordsScreen> {
     try {
       final client = ref.read(apiClientProvider);
       final response = await client.dio.get('/medical-records');
+      final dynamic raw = response.data;
+      final List all = (raw is List)
+          ? raw
+          : (raw is Map<String, dynamic> && raw['data'] is List ? raw['data'] as List : []);
       if (mounted) {
         setState(() {
-          _records = response.data;
+          _records = all;
           _loading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      print('[MEDICAL RECORDS] Error loading records: $e');
       if (mounted) {
         setState(() {
-          _records = [
-            {
-              'id': 'mrec-001',
-              'diagnosis': 'Acute Seasonal Flu',
-              'notes': 'Patient presented with 38.5C fever, cough. Prescribed paracetamol 500mg, bed rest.',
-              'createdAt': '2026-08-15T12:00:00Z',
-              'provider': {'name': 'Dr. Meron Alemu'},
-            }
-          ];
+          _records = [];
           _loading = false;
         });
       }

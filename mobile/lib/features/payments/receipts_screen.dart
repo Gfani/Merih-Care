@@ -27,35 +27,21 @@ class _ReceiptsScreenState extends ConsumerState<ReceiptsScreen> {
     try {
       final client = ref.read(apiClientProvider);
       final response = await client.dio.get('/payments/receipts');
+      final dynamic raw = response.data;
+      final List all = (raw is List)
+          ? raw
+          : (raw is Map<String, dynamic> && raw['data'] is List ? raw['data'] as List : []);
       if (mounted) {
         setState(() {
-          _receipts = response.data;
+          _receipts = all;
           _loading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      print('[RECEIPTS] Error loading receipts: $e');
       if (mounted) {
         setState(() {
-          _receipts = [
-            {
-              'id': 'TXN-9023412',
-              'amount': 250,
-              'method': 'Stripe Card',
-              'status': 'paid',
-              'date': '2026-08-28T10:00:00Z',
-              'provider': {'name': 'Dr. Meron Alemu'},
-              'service': 'General Consultation',
-            },
-            {
-              'id': 'TXN-9023380',
-              'amount': 180,
-              'method': 'Stripe Card',
-              'status': 'paid',
-              'date': '2026-08-20T14:30:00Z',
-              'provider': {'name': 'Nurse Bereket Solomon'},
-              'service': 'Nursing Visit',
-            },
-          ];
+          _receipts = [];
           _loading = false;
         });
       }

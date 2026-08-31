@@ -24,55 +24,64 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
   List<dynamic> _incomingRequests = [];
   List<dynamic> _activeSchedule = [];
   bool _loading = true;
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
     _loadDashboardData();
+    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (mounted && _isOnline) {
+        _loadDashboardData();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadDashboardData() async {
     try {
       final client = ref.read(apiClientProvider);
       final response = await client.dio.get('/appointments');
-      final all = response.data as List;
+      final dynamic raw = response.data;
+      final List all = (raw is List)
+          ? raw
+          : (raw is Map<String, dynamic> && raw['data'] is List ? raw['data'] as List : []);
 
       if (mounted) {
         setState(() {
-          _incomingRequests = all.where((a) => a['status'] == 'requested' || a['status'] == 'searching').toList();
-          _activeSchedule = all.where((a) => a['status'] == 'accepted' || a['status'] == 'scheduled').toList();
+          _incomingRequests = all.where((a) => a['status'] == 'requested' || a['status'] == 'searching' || a['status'] == 'pending').toList();
+          _activeSchedule = all.where((a) => a['status'] == 'accepted' || a['status'] == 'scheduled' || a['status'] == 'in_progress').toList();
           _loading = false;
         });
       }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _incomingRequests = [
-            {
-              'id': 'req-901',
-              'patientName': 'Tigist Bekele',
-              'service': 'Doctor Home Visit',
-              'location': 'Bole Subcity, House 452 (2.1 km away)',
-              'price': 800.0,
-              'urgency': 'Immediate',
-              'time': 'Just now',
-              'countdown': 30,
-            }
-          ];
-          _activeSchedule = [
-            {
-              'id': 'apt-act-1',
-              'patientName': 'Abebe Bikila',
-              'service': 'Post-Op Wound Care',
-              'date': 'Today',
-              'time': '02:00 PM',
-              'location': 'Kazanchis, Addis Ababa',
-              'status': 'scheduled',
-            }
-          ];
-          _loading = false;
-        });
-      }
+    } catch (e) {
+      print('[PROVIDER] loadDashboardData error: $e');
+    }
+  }
+
+  Future<void> _acceptIncomingRequest(dynamic req) async {
+    try {
+      final client = ref.read(apiClientProvider);
+      final aptId = req['id']?.toString() ?? 'apt-1';
+      await client.dio.put('/appointments/$aptId/status', data: {
+        'status': 'accepted',
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Care request accepted! Proceeding to patient location.'),
+          backgroundColor: AppTheme.primaryColor,
+        ),
+      );
+      _loadDashboardData();
+      context.push('/provider/active-request');
+    } catch (e) {
+      print('[PROVIDER] Accept error: $e');
+      context.push('/provider/active-request');
     }
   }
 
@@ -311,7 +320,7 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
                                 children: [
                                   Text('Gross Fee: ETB ${req['price']}', style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
                                   ElevatedButton(
-                                    onPressed: () => context.push('/provider/active-request'),
+                                    onPressed: () => _acceptIncomingRequest(req),
                                     style: ElevatedButton.styleFrom(
                                       minimumSize: const Size(90, 36),
                                       padding: const EdgeInsets.symmetric(horizontal: 14),
