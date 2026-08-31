@@ -26,7 +26,12 @@ export default function ServicesSection() {
   const [priceFrom, setPriceFrom] = useState("");
 
   // Permissions configuration
-  const adminUser = JSON.parse(localStorage.getItem("admin_user") || "{}");
+  const getAdminUser = () => {
+    const raw = localStorage.getItem("admin_user");
+    if (!raw || raw === "undefined" || raw === "null") return {};
+    try { return JSON.parse(raw); } catch { return {}; }
+  };
+  const adminUser = getAdminUser();
   const userRole = adminUser.role || "";
   const userPermissions = adminUser.permissions || [];
   const canModifyServices = userRole === "super_admin" || userPermissions.includes("edit:services") || userPermissions.includes("admin:services");

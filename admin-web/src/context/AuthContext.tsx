@@ -18,7 +18,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem("admin_token"));
   const [user, setUser] = useState<User | null>(() => {
     const raw = localStorage.getItem("admin_user");
-    return raw ? JSON.parse(raw) : null;
+    if (!raw || raw === "undefined" || raw === "null") return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
   });
 
   useEffect(() => {

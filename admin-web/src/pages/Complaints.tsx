@@ -19,7 +19,12 @@ export default function ComplaintsSection() {
   const [selectedComplaint, setSelectedComplaint] = useState<any>(null);
 
   // Permissions configuration
-  const adminUser = JSON.parse(localStorage.getItem("admin_user") || "{}");
+  const getAdminUser = () => {
+    const raw = localStorage.getItem("admin_user");
+    if (!raw || raw === "undefined" || raw === "null") return {};
+    try { return JSON.parse(raw); } catch { return {}; }
+  };
+  const adminUser = getAdminUser();
   const userRole = adminUser.role || "";
   const userPermissions = adminUser.permissions || [];
   const canResolve = userRole === "super_admin" || userPermissions.includes("edit:complaints") || userPermissions.includes("admin:complaints");

@@ -29,7 +29,12 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
   const [selectedDetails, setSelectedDetails] = useState<any>(null);
 
   // Permission awareness details
-  const adminUser = JSON.parse(localStorage.getItem("admin_user") || "{}");
+  const getAdminUser = () => {
+    const raw = localStorage.getItem("admin_user");
+    if (!raw || raw === "undefined" || raw === "null") return {};
+    try { return JSON.parse(raw); } catch { return {}; }
+  };
+  const adminUser = getAdminUser();
   const userRole = adminUser.role || "";
   const userPermissions = adminUser.permissions || [];
   const canModifyProviders = userRole === "super_admin" || userPermissions.includes("edit:providers") || userPermissions.includes("admin:providers");

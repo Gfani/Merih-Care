@@ -19,6 +19,8 @@ void main() {
       expect(find.text('Doctor Home Visit'), findsOneWidget);
       expect(find.text('Urgent Nursing Care'), findsOneWidget);
       expect(find.text('Physiotherapy Session'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
     });
 
     testWidgets('ProviderActiveFlowScreen renders incoming dispatch countdown alert', (WidgetTester tester) async {
@@ -34,6 +36,9 @@ void main() {
       expect(find.text('New Home Visit Request!'), findsOneWidget);
       expect(find.text('Accept Visit'), findsOneWidget);
       expect(find.text('Decline'), findsOneWidget);
+
+      // Cleanly unmount to cancel periodic timers
+      await tester.pumpWidget(const SizedBox());
     });
   });
 }

@@ -61,9 +61,15 @@ export const api = {
   async login(email: string, pass: string): Promise<{ access_token: string; user: any }> {
     try {
       const res = await axios.post(`${API_URL}/auth/login`, { email, password: pass });
+      const user = res.data.user || {
+        id: res.data.id || "admin-1",
+        email: email,
+        name: res.data.name || "Admin Kebede",
+        role: res.data.role || "admin",
+      };
       localStorage.setItem("admin_token", res.data.access_token);
-      localStorage.setItem("admin_user", JSON.stringify(res.data.user));
-      return res.data;
+      localStorage.setItem("admin_user", JSON.stringify(user));
+      return { access_token: res.data.access_token, user };
     } catch (error) {
       if (isDemoMode() && email === "admin@merihcare.et" && pass === "admin123") {
         const mockUser = { id: "u-mock-admin", name: "Admin Kebede", email, role: "admin" };

@@ -26,7 +26,12 @@ export default function ReviewsSection() {
   const [selectedDetails, setSelectedDetails] = useState<any>(null);
 
   // Permissions configuration
-  const adminUser = JSON.parse(localStorage.getItem("admin_user") || "{}");
+  const getAdminUser = () => {
+    const raw = localStorage.getItem("admin_user");
+    if (!raw || raw === "undefined" || raw === "null") return {};
+    try { return JSON.parse(raw); } catch { return {}; }
+  };
+  const adminUser = getAdminUser();
   const userRole = adminUser.role || "";
   const userPermissions = adminUser.permissions || [];
   const canModerate = userRole === "super_admin" || userPermissions.includes("edit:reviews") || userPermissions.includes("admin:reviews");

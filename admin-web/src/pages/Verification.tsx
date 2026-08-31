@@ -28,7 +28,10 @@ export default function VerificationSection() {
   const [selectedAdmin, setSelectedAdmin] = useState<any>(null);
 
   const userStr = localStorage.getItem("admin_user");
-  const user = userStr ? JSON.parse(userStr) : null;
+  const user = (() => {
+    if (!userStr || userStr === "undefined" || userStr === "null") return null;
+    try { return JSON.parse(userStr); } catch { return null; }
+  })();
   const isSuperAdmin = user?.adminRole === "super_admin" || user?.email === "admin@merihcare.et";
 
   const loadData = async () => {
