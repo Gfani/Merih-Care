@@ -376,6 +376,47 @@
         }
       }
     },
+    "/api/v1/verification/expiring-licenses": {
+      "get": {
+        "operationId": "VerificationController_getExpiringLicenses",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/verification/{id}/assign-reviewer": {
+      "post": {
+        "operationId": "VerificationController_assignReviewer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignReviewerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/verification/{id}/approve": {
       "post": {
         "operationId": "VerificationController_approve",
@@ -445,6 +486,36 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/RequestCorrectionsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/verification/{id}/sanction": {
+      "post": {
+        "operationId": "VerificationController_sanction",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SanctionProviderDto"
               }
             }
           }
@@ -2346,6 +2417,18 @@
         "type": "object",
         "properties": {}
       },
+      "AssignReviewerDto": {
+        "type": "object",
+        "properties": {
+          "reviewerId": {
+            "type": "string",
+            "description": "Admin Reviewer ID"
+          }
+        },
+        "required": [
+          "reviewerId"
+        ]
+      },
       "RejectProviderDto": {
         "type": "object",
         "properties": {
@@ -2368,6 +2451,22 @@
         },
         "required": [
           "comments"
+        ]
+      },
+      "SanctionProviderDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Sanction reason or compliance violation details"
+          },
+          "sanctionType": {
+            "type": "string",
+            "description": "Sanction type: suspended, revoked, probation"
+          }
+        },
+        "required": [
+          "reason"
         ]
       },
       "CreateServiceDto": {

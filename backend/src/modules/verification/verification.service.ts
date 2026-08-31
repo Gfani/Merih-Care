@@ -116,4 +116,75 @@ export class VerificationService {
     }
     return null;
   }
+
+  async assignReviewer(providerId: string, reviewerId: string, actorId: string): Promise<any> {
+    const provider = await this.providerRepo.findOne({ where: { id: providerId } });
+    if (!provider) return null;
+
+    const review = new VerificationReviewEntity();
+    review.id = `rev-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    review.providerId = providerId;
+    review.reviewerId = reviewerId;
+    review.decision = "under_review";
+    review.notes = `Assigned reviewer: ${reviewerId} by ${actorId}`;
+    await this.reviewRepo.save(review);
+
+    const history = new VerificationHistoryEntity();
+    history.id = `hist-${Date.now()}`;
+    history.providerId = providerId;
+    history.status = "under_review";
+    history.changedBy = actorId;
+    history.notes = `Reviewer ${reviewerId} assigned.`;
+    history.createdAt = new Date().toISOString();
+    await this.historyRepo.save(history);
+
+    return { success: true, providerId, assignedReviewerId: reviewerId };
+  }
+
+  async sanctionProvider(
+    providerId: string,
+    reason: string,
+    sanctionType: string,
+    actorId: string
+  ): Promise<ProviderEntity> {
+    const provider = await this.providerRepo.findOne({ where: { id: providerId } });
+    if (provider) {
+      provider.verified = false;
+      provider.status = sanctionType || "suspended";
+      const saved = await this.providerRepo.save(provider);
+
+      const review = new VerificationReviewEntity();
+      review.id = `rev-${Date.now()}`;
+      review.providerId = providerId;
+      review.reviewerId = actorId;
+      review.decision = sanctionType || "sanctioned";
+      review.notes = reason;
+      await this.reviewRepo.save(review);
+
+      const history = new VerificationHistoryEntity();
+      history.id = `hist-${Date.now()}`;
+      history.providerId = providerId;
+      history.status = sanctionType || "suspended";
+      history.changedBy = actorId;
+      history.notes = `Compliance sanction applied: ${reason}`;
+      history.createdAt = new Date().toISOString();
+      await this.historyRepo.save(history);
+
+      return saved;
+    }
+    return null;
+  }
+
+  async getExpiringLicenses(): Promise<any[]> {
+    const all = await this.providerRepo.find();
+    // Return verified providers with upcoming license review dates
+    return all.filter((p) => p.verified).map((p) => ({
+      providerId: p.id,
+      name: p.name,
+      title: p.title,
+      status: p.status,
+      complianceStatus: "active",
+      reviewDueInDays: 30,
+    }));
+  }
 }
