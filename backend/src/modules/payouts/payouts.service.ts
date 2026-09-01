@@ -20,17 +20,26 @@ export class PayoutsService {
     return this.payoutRepo.find();
   }
 
+  private cachedMinPayout: { limit: number; expiresAt: number } | null = null;
+
   getMinPayoutLimit(): number {
+    const now = Date.now();
+    if (this.cachedMinPayout && this.cachedMinPayout.expiresAt > now) {
+      return this.cachedMinPayout.limit;
+    }
+
+    let limit = 500;
     const settingsPath = path.join(process.cwd(), "database", "settings.json");
     if (fs.existsSync(settingsPath)) {
       try {
         const settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
-        return parseFloat(settings.minPayout) || 500;
+        limit = parseFloat(settings.minPayout) || 500;
       } catch {
-        // fallback
+        limit = 500;
       }
     }
-    return 500;
+    this.cachedMinPayout = { limit, expiresAt: now + 60000 };
+    return limit;
   }
 
   // Atomic database transaction for payouts

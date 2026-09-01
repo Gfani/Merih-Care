@@ -321,6 +321,42 @@ export const api = {
     }
   },
 
+  // ─── PAYOUTS & SETTLEMENTS ───────────────────────────────────────────────
+  async getPayouts(): Promise<any[]> {
+    try {
+      const res = await axios.get(`${API_URL}/payouts`, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) {
+        return [
+          { id: "pay-1", providerId: "prov-01", amount: 2400, status: "pending", bankAccount: "CBE - 1000234981", transactionReference: "REF-101", createdAt: new Date().toISOString() },
+          { id: "pay-2", providerId: "prov-02", amount: 1800, status: "completed", bankAccount: "Awash - 014298172", transactionReference: "REF-102", createdAt: new Date().toISOString() },
+        ];
+      }
+      throw error;
+    }
+  },
+
+  async updatePayoutStatus(id: string, status: string, transactionReference?: string): Promise<any> {
+    try {
+      const res = await axios.post(`${API_URL}/payouts/${id}/status`, { status, transactionReference }, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { id, status, transactionReference };
+      throw error;
+    }
+  },
+
+  async createBatchSettlement(): Promise<any> {
+    try {
+      const res = await axios.post(`${API_URL}/payouts/batches`, {}, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { batchReference: `BATCH-${Date.now()}`, totalPayouts: 2, totalAmount: 4200, status: "completed" };
+      throw error;
+    }
+  },
+
   // ─── COMPLAINTS & REVIEWS ──────────────────────────────────────────────────
   async getComplaints(): Promise<Complaint[]> {
     try {
@@ -332,12 +368,12 @@ export const api = {
     }
   },
 
-  async resolveComplaint(id: string, status: Complaint["status"], resolutionNotes: string): Promise<any> {
+  async resolveComplaint(id: string, status?: Complaint["status"] | string, resolutionNotes?: string): Promise<any> {
     try {
-      const res = await axios.put(`${API_URL}/complaints/${id}`, { status, resolutionNotes }, { headers: getHeaders() });
+      const res = await axios.put(`${API_URL}/complaints/${id}`, { status: status || "resolved", resolutionNotes: resolutionNotes || "Resolved by admin" }, { headers: getHeaders() });
       return res.data;
     } catch (error) {
-      if (isDemoMode()) return { id, status, resolutionNotes, resolvedAt: new Date().toISOString() };
+      if (isDemoMode()) return { id, status: status || "resolved", resolutionNotes, resolvedAt: new Date().toISOString() };
       throw error;
     }
   },
@@ -375,6 +411,70 @@ export const api = {
       }
       throw error;
     }
+  },
+
+  async getEmergencies(): Promise<EmergencyAlert[]> {
+    return this.getEmergencyAlerts();
+  },
+
+  async dispatchEmergency(id: string, responder: string): Promise<any> {
+    try {
+      const res = await axios.post(`${API_URL}/emergency/${id}/dispatch`, { responder }, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { id, responder, status: "dispatched" };
+      throw error;
+    }
+  },
+
+  // ─── LOCATIONS & LIVE MAP ──────────────────────────────────────────────────
+  async getLocations(): Promise<any[]> {
+    try {
+      const res = await axios.get(`${API_URL}/locations`, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) {
+        return [
+          { id: "loc-1", userId: "p1", name: "Dr. Meron Alemu", role: "provider", latitude: 9.0192, longitude: 38.7578, status: "available" },
+          { id: "loc-2", userId: "p2", name: "Hiwot Girma", role: "provider", latitude: 9.0250, longitude: 38.7620, status: "on_the_way" },
+        ];
+      }
+      throw error;
+    }
+  },
+
+  async updateLocationPrivacy(...args: any[]): Promise<any> {
+    const userId = args[0];
+    const privacyMode = args.length > 1 ? args[1] : true;
+    try {
+      const res = await axios.put(`${API_URL}/locations/${userId}/privacy`, { privacyMode }, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { userId, privacyMode };
+      throw error;
+    }
+  },
+
+  async getRoute(...args: any[]): Promise<any> {
+    const origin = args.length >= 4 ? { lat: args[0], lng: args[1] } : args[0];
+    const destination = args.length >= 4 ? { lat: args[2], lng: args[3] } : args[1];
+    try {
+      const res = await axios.post(`${API_URL}/locations/route`, { origin, destination }, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) {
+        return {
+          distance: "3.2 km",
+          duration: "12 mins",
+          coordinates: [origin, destination],
+        };
+      }
+      throw error;
+    }
+  },
+
+  async getVerificationReviews(): Promise<any[]> {
+    return this.getProviders({ verified: false });
   },
 
   // ─── AUDIT LOGS ────────────────────────────────────────────────────────────
@@ -477,5 +577,57 @@ export const api = {
 
   async getDashboardStats(): Promise<any> {
     return this.getOverviewMetrics();
+  },
+
+  async moderateReview(id: string, action?: any): Promise<any> {
+    try {
+      const res = await axios.post(`${API_URL}/reviews/${id}/moderate`, { action: action === "hidden" || action === "reject" ? "reject" : "approve" }, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { id, action, moderatedAt: new Date().toISOString() };
+      throw error;
+    }
+  },
+
+  async toggleService(id: string, active?: boolean): Promise<any> {
+    try {
+      const res = await axios.put(`${API_URL}/services/${id}/toggle`, { active }, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { id, active };
+      throw error;
+    }
+  },
+
+  async updateAdminProfile(arg1: any, arg2?: any): Promise<any> {
+    const data = arg2 !== undefined ? arg2 : arg1;
+    try {
+      const res = await axios.put(`${API_URL}/admin/profile`, data, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return data;
+      throw error;
+    }
+  },
+
+  async updateAdminPassword(arg1: any, arg2?: any): Promise<any> {
+    const data = arg2 !== undefined ? arg2 : arg1;
+    try {
+      const res = await axios.put(`${API_URL}/admin/password`, data, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { success: true };
+      throw error;
+    }
+  },
+
+  async approveAdminAccount(id: string): Promise<any> {
+    try {
+      const res = await axios.post(`${API_URL}/admin/users/${id}/approve`, {}, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { id, status: "approved" };
+      throw error;
+    }
   },
 };

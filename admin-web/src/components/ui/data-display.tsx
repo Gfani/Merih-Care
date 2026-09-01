@@ -13,7 +13,7 @@ export interface Column<T> {
   width?: string;
 }
 
-export function DataTable<T extends Record<string, unknown>>({ columns, data, onRowClick }: { columns: Column<T>[]; data: T[]; onRowClick?: (row: T) => void }) {
+export function DataTable<T = any>({ columns, data, onRowClick }: { columns: Column<T>[]; data: T[]; onRowClick?: (row: T) => void }) {
   const primaryCol = columns[0];
   const otherCols = columns.slice(1).filter(c => c.key !== "actions");
   const actionsCol = columns.find(c => c.key === "actions");
@@ -54,7 +54,7 @@ export function DataTable<T extends Record<string, unknown>>({ columns, data, on
                     const isActions = col.key === "actions";
                     return (
                       <td key={col.key} className="px-4 py-3.5 text-[#18232e] dark:text-slate-150 whitespace-nowrap" onClick={isActions ? (e) => e.stopPropagation() : undefined}>
-                        {col.render ? col.render(row) : (row[col.key] as React.ReactNode)}
+                        {col.render ? col.render(row) : ((row as any)[col.key] as React.ReactNode)}
                       </td>
                     );
                   })}
@@ -83,7 +83,7 @@ export function DataTable<T extends Record<string, unknown>>({ columns, data, on
               {primaryCol && (
                 <div className="flex items-center justify-between gap-2 border-b border-[#f0f4f7] dark:border-slate-700 pb-2.5">
                   <div className="min-w-0 flex-1">
-                    {primaryCol.render ? primaryCol.render(row) : <span className="font-semibold text-sm text-[#18232e] dark:text-white">{row[primaryCol.key] as React.ReactNode}</span>}
+                    {primaryCol.render ? primaryCol.render(row) : <span className="font-semibold text-sm text-[#18232e] dark:text-white">{(row as any)[primaryCol.key] as React.ReactNode}</span>}
                   </div>
                 </div>
               )}
@@ -95,7 +95,7 @@ export function DataTable<T extends Record<string, unknown>>({ columns, data, on
                     <div key={col.key} className="space-y-0.5">
                       <p className="text-[10px] font-semibold text-[#8a9aaa] dark:text-slate-400 uppercase tracking-wider">{col.header}</p>
                       <div className="text-[#18232e] dark:text-slate-200">
-                        {col.render ? col.render(row) : (row[col.key] as React.ReactNode)}
+                        {col.render ? col.render(row) : ((row as any)[col.key] as React.ReactNode)}
                       </div>
                     </div>
                   ))}
@@ -105,7 +105,7 @@ export function DataTable<T extends Record<string, unknown>>({ columns, data, on
               {/* Actions Footer */}
               {actionsCol && (
                 <div className="flex justify-end gap-1.5 pt-2 border-t border-[#f0f4f7] dark:border-slate-700" onClick={(e) => e.stopPropagation()}>
-                  {actionsCol.render ? actionsCol.render(row) : (row[actionsCol.key] as React.ReactNode)}
+                  {actionsCol.render ? actionsCol.render(row) : ((row as any)[actionsCol.key] as React.ReactNode)}
                 </div>
               )}
             </div>

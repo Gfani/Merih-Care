@@ -4,7 +4,7 @@ import { api } from "../services/api";
 import { AlertTriangle } from "lucide-react";
 
 interface ProvidersSectionProps {
-  onVerification: () => void;
+  onVerification?: () => void;
 }
 
 export default function ProvidersSection({ onVerification }: ProvidersSectionProps) {

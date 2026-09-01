@@ -44,9 +44,6 @@ dependencies:
   # Maps
   google_maps_flutter: ^2.5.3
 
-  # Payments
-  flutter_stripe: ^10.1.1
-
   # Image/file picker
   image_picker: ^1.0.7
   file_picker: ^8.0.0

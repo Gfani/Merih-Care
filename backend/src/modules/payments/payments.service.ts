@@ -26,17 +26,26 @@ export class PaymentsService {
     private readonly dataSource: DataSource,
   ) {}
 
+  private cachedCommissionRate: { rate: number; expiresAt: number } | null = null;
+
   getCommissionRate(): number {
+    const now = Date.now();
+    if (this.cachedCommissionRate && this.cachedCommissionRate.expiresAt > now) {
+      return this.cachedCommissionRate.rate;
+    }
+
+    let rate = 15;
     const settingsPath = path.join(process.cwd(), "database", "settings.json");
     if (fs.existsSync(settingsPath)) {
       try {
         const settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
-        return parseFloat(settings.commissionRate) || 15;
+        rate = parseFloat(settings.commissionRate) || 15;
       } catch {
-        // fallback
+        rate = 15;
       }
     }
-    return 15;
+    this.cachedCommissionRate = { rate, expiresAt: now + 60000 }; // 1-minute memory cache
+    return rate;
   }
 
   async getTransactions(limit = 50, offset = 0) {

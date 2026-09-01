@@ -15,8 +15,8 @@ describe("Admin Web - Users Management & Suspend/Restore Tests", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(api, "getUsers").mockResolvedValue(mockPatientsList);
-    vi.spyOn(api, "getProviders").mockResolvedValue(mockProvidersList);
+    vi.spyOn(api, "getUsers").mockResolvedValue(mockPatientsList as any);
+    vi.spyOn(api, "getProviders").mockResolvedValue(mockProvidersList as any);
     vi.spyOn(api, "toggleUserSuspension").mockImplementation((id: string, currentStatus: string) => {
       return Promise.resolve({ id, status: currentStatus === "active" ? "suspended" : "active" });
     });

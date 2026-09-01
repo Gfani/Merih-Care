@@ -69,13 +69,13 @@ export default function RequestsSection() {
         ) : (
           <DataTable
             columns={[
-              { key: "requestId", header: "Request ID", render: (row) => <span className="text-xs font-mono text-[#8a9aaa]">{row.requestId as string}</span> },
-              { key: "patientName", header: "Patient", render: (row) => <span>{row.patientName || "Patient"}</span> },
-              { key: "service", header: "Service", render: (row) => <span>{row.service || "General Care"}</span> },
-              { key: "providerName", header: "Provider", render: (row) => <span className="text-xs">{row.providerName || "Pending Provider Match"}</span> },
-              { key: "date", header: "Date", render: (row) => <span className="text-xs">{row.date as string} {row.time as string}</span> },
-              { key: "status", header: "Status", render: (row) => <StatusBadge status={row.status as any} /> },
-              { key: "amount", header: "Amount", render: (row) => <span className="font-semibold text-[#0d7c6a] dark:text-cyan-400">ETB {Number(row.amount || 0).toLocaleString()}</span> },
+              { key: "requestId", header: "Request ID", render: (row: any) => <span className="text-xs font-mono text-[#8a9aaa]">{row.requestId as string}</span> },
+              { key: "patientName", header: "Patient", render: (row: any) => <span>{(row.patientName as string) || "Patient"}</span> },
+              { key: "service", header: "Service", render: (row: any) => <span>{(row.service as string) || "General Care"}</span> },
+              { key: "providerName", header: "Provider", render: (row: any) => <span className="text-xs">{(row.providerName as string) || "Pending Provider Match"}</span> },
+              { key: "date", header: "Date", render: (row: any) => <span className="text-xs">{row.date as string} {row.time as string}</span> },
+              { key: "status", header: "Status", render: (row: any) => <StatusBadge status={row.status as any} /> },
+              { key: "amount", header: "Amount", render: (row: any) => <span className="font-semibold text-[#0d7c6a] dark:text-cyan-400">ETB {Number(row.amount || 0).toLocaleString()}</span> },
             ]}
             data={filteredRequests as any}
           />

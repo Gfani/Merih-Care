@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Req } from "@nestjs/common";
+import { Controller, Get, Post, Body, Param, UseGuards, Req } from "@nestjs/common";
 import { PayoutsService } from "./payouts.service";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 import { RolesGuard } from "../../shared/guards/roles.guard";
@@ -13,6 +13,15 @@ export class PayoutsController {
   @Get()
   async getPayouts() {
     return this.payoutsService.getPayouts();
+  }
+
+  @Post(":id/status")
+  async updatePayoutStatus(
+    @Param("id") id: string,
+    @Body("status") status: string,
+    @Body("transactionReference") transactionReference?: string,
+  ) {
+    return this.payoutsService.updatePayoutStatus(id, status, transactionReference);
   }
 
   @Post("batches")

@@ -21,7 +21,7 @@ describe("Admin Web - Provider Verification Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.setItem("admin_user", JSON.stringify({ email: "admin@merihcare.et", adminRole: "super_admin" }));
-    vi.spyOn(api, "getProviders").mockResolvedValue(mockProvidersList);
+    vi.spyOn(api, "getProviders").mockResolvedValue(mockProvidersList as any);
     vi.spyOn(api, "getPendingAdmins").mockResolvedValue([]);
     vi.spyOn(api, "approveProvider").mockResolvedValue({ id: "p-pending-1", verified: true, status: "verified" });
     vi.spyOn(api, "rejectProvider").mockResolvedValue({ id: "p-pending-1", verified: false, status: "rejected" });

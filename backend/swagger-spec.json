@@ -1152,6 +1152,26 @@
         }
       }
     },
+    "/api/v1/payouts/{id}/status": {
+      "post": {
+        "operationId": "PayoutsController_updatePayoutStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/payouts/batches": {
       "post": {
         "operationId": "PayoutsController_createBatchSettlement",

@@ -25,6 +25,7 @@ const ServicesSection = React.lazy(() => import("./pages/Services"));
 const RequestsSection = React.lazy(() => import("./pages/Requests"));
 const AppointmentsSection = React.lazy(() => import("./pages/Appointments"));
 const PaymentsSection = React.lazy(() => import("./pages/Payments"));
+const PayoutsSection = React.lazy(() => import("./pages/Payouts"));
 const ComplaintsSection = React.lazy(() => import("./pages/Complaints"));
 const ReviewsSection = React.lazy(() => import("./pages/Reviews"));
 const EmergencySection = React.lazy(() => import("./pages/Emergency"));
@@ -35,7 +36,7 @@ const SettingsSection = React.lazy(() => import("./pages/Settings"));
 const Login = React.lazy(() => import("./pages/Login"));
 const SignUp = React.lazy(() => import("./pages/SignUp"));
 
-const NAVIGATION_SECTIONS = [
+const getNavigationSections = (badges: { verification: number; complaints: number; payouts: number }) => [
   {
     title: "Overview",
     allowedRoles: ["super_admin", "admin", "finance_admin", "verifier"],
@@ -51,7 +52,7 @@ const NAVIGATION_SECTIONS = [
     items: [
       { id: "users", path: "/users", label: "Users", icon: <Users size={16} /> },
       { id: "providers", path: "/providers", label: "Providers", icon: <HeartPulse size={16} /> },
-      { id: "verification", path: "/verification", label: "Verification", icon: <ShieldCheck size={16} />, badge: 2 },
+      { id: "verification", path: "/verification", label: "Verification", icon: <ShieldCheck size={16} />, badge: badges.verification || undefined },
     ],
   },
   {
@@ -69,13 +70,14 @@ const NAVIGATION_SECTIONS = [
     allowedRoles: ["super_admin", "admin", "finance_admin"],
     items: [
       { id: "payments", path: "/payments", label: "Payments", icon: <CreditCard size={16} /> },
+      { id: "payouts", path: "/payouts", label: "Payouts", icon: <CreditCard size={16} />, badge: badges.payouts || undefined },
     ],
   },
   {
     title: "Safety & Quality",
     allowedRoles: ["super_admin", "admin"],
     items: [
-      { id: "complaints", path: "/complaints", label: "Complaints", icon: <AlertTriangle size={16} />, badge: 4 },
+      { id: "complaints", path: "/complaints", label: "Complaints", icon: <AlertTriangle size={16} />, badge: badges.complaints || undefined },
       { id: "reviews", path: "/reviews", label: "Reviews", icon: <Star size={16} /> },
     ],
   },
@@ -119,6 +121,7 @@ function AppContent() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [notifPopoverOpen, setNotifPopoverOpen] = useState(false);
+  const [badgeCounts, setBadgeCounts] = useState({ verification: 0, complaints: 0, payouts: 0 });
 
   // Real-time socket health monitor
   const { isLive, connectionState } = useRealtimeSocket({ token });
@@ -130,6 +133,23 @@ function AppContent() {
       setUnreadCount(count);
       const list = await api.getNotifications(1, 10);
       setNotifications(list);
+    } catch {
+      // Ignored in background
+    }
+  };
+
+  const loadBadgeCounts = async () => {
+    if (!isAuthenticated) return;
+    try {
+      const [verifs, comps, pays] = await Promise.all([
+        api.getVerificationReviews().catch(() => []),
+        api.getComplaints().catch(() => []),
+        api.getPayouts().catch(() => []),
+      ]);
+      const pendingVerifs = (verifs || []).filter((v: any) => v.status === "pending" || v.reviewStatus === "pending").length;
+      const pendingComps = (comps || []).filter((c: any) => c.status === "open" || c.status === "pending").length;
+      const pendingPays = (pays || []).filter((p: any) => p.status === "pending").length;
+      setBadgeCounts({ verification: pendingVerifs, complaints: pendingComps, payouts: pendingPays });
     } catch {
       // Ignored in background
     }
@@ -148,7 +168,11 @@ function AppContent() {
 
   React.useEffect(() => {
     loadNotifications();
-    const timer = setInterval(loadNotifications, 60000);
+    loadBadgeCounts();
+    const timer = setInterval(() => {
+      loadNotifications();
+      loadBadgeCounts();
+    }, 60000);
     return () => clearInterval(timer);
   }, [isAuthenticated]);
 
@@ -178,9 +202,9 @@ function AppContent() {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-200">
         <ToastContainer />
-        <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Skeleton className="w-12 h-12 rounded-full" /></div>}>
+        <React.Suspense fallback={<LoadingShell />}>
           <Routes>
-            <Route path="/login" element={<Login onLogin={() => navigate("/")} />} />
+            <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<SignUp />} />
           </Routes>
         </React.Suspense>
@@ -188,11 +212,12 @@ function AppContent() {
     );
   }
 
-  const visibleSections = NAVIGATION_SECTIONS.filter((sec) => {
+  const allSections = getNavigationSections(badgeCounts);
+  const visibleSections = allSections.filter((sec) => {
     if (!sec.allowedRoles || sec.allowedRoles.length === 0) return true;
     return hasPermission(sec.allowedRoles as any);
   });
-  const sectionsToRender = visibleSections.length > 0 ? visibleSections : NAVIGATION_SECTIONS;
+  const sectionsToRender = visibleSections.length > 0 ? visibleSections : allSections;
   const flatItems = sectionsToRender.flatMap((s) => s.items);
   const currentItem = flatItems.find((i) => i.path === location.pathname) || flatItems[0] || { label: "Overview" };
 
@@ -404,6 +429,7 @@ function AppContent() {
                 <Route path="/services" element={<ProtectedRoute allowedRoles={["super_admin", "admin"]}><ServicesSection /></ProtectedRoute>} />
                 <Route path="/emergency" element={<ProtectedRoute allowedRoles={["super_admin", "admin"]}><EmergencySection /></ProtectedRoute>} />
                 <Route path="/payments" element={<ProtectedRoute allowedRoles={["super_admin", "admin", "finance_admin"]}><PaymentsSection /></ProtectedRoute>} />
+                <Route path="/payouts" element={<ProtectedRoute allowedRoles={["super_admin", "admin", "finance_admin"]}><PayoutsSection /></ProtectedRoute>} />
                 <Route path="/complaints" element={<ProtectedRoute allowedRoles={["super_admin", "admin"]}><ComplaintsSection /></ProtectedRoute>} />
                 <Route path="/reviews" element={<ProtectedRoute allowedRoles={["super_admin", "admin"]}><ReviewsSection /></ProtectedRoute>} />
                 <Route path="/audit-logs" element={<ProtectedRoute allowedRoles={["super_admin", "admin"]}><AuditLogsSection /></ProtectedRoute>} />

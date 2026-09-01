@@ -29,7 +29,7 @@ describe("Admin Web - Complaints Resolution Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.setItem("admin_user", JSON.stringify({ role: "super_admin" }));
-    vi.spyOn(api, "getComplaints").mockResolvedValue(mockComplaintsList);
+    vi.spyOn(api, "getComplaints").mockResolvedValue(mockComplaintsList as any);
     vi.spyOn(api, "resolveComplaint").mockResolvedValue({ id: "comp-1", status: "resolved" });
   });
 

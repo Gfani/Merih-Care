@@ -95,12 +95,12 @@ export default function AuditLogsSection() {
                 {
                   key: "id",
                   header: "Log ID",
-                  render: (row) => <span className="text-xs font-mono text-[#8a9aaa]">{row.id}</span>,
+                  render: (row: any) => <span className="text-xs font-mono text-[#8a9aaa]">{row.id}</span>,
                 },
                 {
                   key: "actor",
                   header: "Actor",
-                  render: (row) => (
+                  render: (row: any) => (
                     <span className="text-xs font-bold text-[#18232e] dark:text-white">
                       {row.actorEmail || row.actor || "System"}
                     </span>
@@ -109,7 +109,7 @@ export default function AuditLogsSection() {
                 {
                   key: "action",
                   header: "Action",
-                  render: (row) => (
+                  render: (row: any) => (
                     <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-[#e8f1fb] text-[#1b6fba] font-mono">
                       {row.action}
                     </span>
@@ -118,7 +118,7 @@ export default function AuditLogsSection() {
                 {
                   key: "entity",
                   header: "Target Entity",
-                  render: (row) => (
+                  render: (row: any) => (
                     <span className="text-xs text-[#4a5a6a] dark:text-slate-300">
                       {row.entity || row.resource}
                     </span>
@@ -127,7 +127,7 @@ export default function AuditLogsSection() {
                 {
                   key: "timestamp",
                   header: "Timestamp",
-                  render: (row) => (
+                  render: (row: any) => (
                     <span className="text-xs text-[#8a9aaa] font-mono">
                       {row.createdAt || row.timestamp || "2026-08-29"}
                     </span>
