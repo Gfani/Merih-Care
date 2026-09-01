@@ -58,7 +58,15 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       setLoading(true);
       setError(null);
       const data = await api.getLocations();
-      setLocations(data);
+      const normalized = (data || []).map((loc: any) => ({
+        ...loc,
+        name: loc.name || (loc.userId ? `User ${String(loc.userId).substring(0, 6)}` : `User ${loc.id || "00"}`),
+        role: loc.role || "provider",
+        status: loc.status || "available",
+        x: Number(loc.x ?? loc.longitude ?? 38.7578),
+        y: Number(loc.y ?? loc.latitude ?? 9.0192),
+      }));
+      setLocations(normalized);
     } catch (err: any) {
       setError(err.message || "Failed to fetch map locations.");
     } finally {
@@ -441,10 +449,10 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
                       className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold shrink-0"
                       style={{ backgroundColor: pin.role === "provider" ? "#0d7c6a" : "#1b6fba" }}
                     >
-                      {pin.name.substring(0, 2).toUpperCase()}
+                      {(pin.name || (pin.userId ? `U-${pin.userId}` : "MC")).substring(0, 2).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[10px] font-semibold text-[#18232e] dark:text-white truncate">{pin.name}</p>
+                      <p className="text-[10px] font-semibold text-[#18232e] dark:text-white truncate">{pin.name || `User ${pin.userId || pin.id}`}</p>
                       <p className="text-[9px] text-[#8a9aaa] dark:text-slate-400 truncate">{pin.role}</p>
                     </div>
                     <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: meta.color }} />
