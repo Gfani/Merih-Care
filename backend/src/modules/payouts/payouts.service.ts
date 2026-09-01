@@ -4,6 +4,7 @@ import { Repository, DataSource } from "typeorm";
 import { PayoutEntity, ProviderEarningsEntity } from "../../database/entities/financial.entity";
 import * as fs from "fs";
 import * as path from "path";
+import * as crypto from "crypto";
 
 @Injectable()
 export class PayoutsService {
@@ -53,12 +54,12 @@ export class PayoutsService {
       await manager.save(ledger);
 
       const payout = new PayoutEntity();
-      payout.id = "pay-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
+      payout.id = "pay-" + crypto.randomUUID();
       payout.providerId = providerId;
       payout.amount = amount;
       payout.status = "pending";
       payout.bankAccount = bankAccount;
-      payout.transactionReference = "REF-" + Date.now();
+      payout.transactionReference = "REF-" + crypto.randomUUID();
       payout.createdAt = new Date().toISOString();
 
       return manager.save(payout);

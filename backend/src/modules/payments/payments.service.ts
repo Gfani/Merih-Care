@@ -39,17 +39,72 @@ export class PaymentsService {
     return 15;
   }
 
-  getTransactions() {
-    return [
-      { id: "txn001", patientName: "Tigist Bekele", providerName: "Dr. Meron Alemu", service: "Doctor Home Visit", amount: 1200, method: "Telebirr", status: "successful", date: "2026-08-25" },
-      { id: "txn002", patientName: "Selamawit Tadesse", providerName: "Dr. Meron Alemu", service: "Doctor Home Visit", amount: 1200, method: "CBE Birr", status: "refunded", date: "2026-08-15" },
-      { id: "txn003", patientName: "Dawit Haile", providerName: "Yonas Tekeste", service: "Physiotherapy", amount: 600, method: "Cash", status: "successful", date: "2026-08-20" },
-      { id: "txn004", patientName: "Bereket Mengistu", providerName: "Selamawit Dagnew", service: "Maternal Care", amount: 900, method: "Telebirr", status: "successful", date: "2026-08-24" },
-      { id: "txn005", patientName: "Frehiwot Solomon", providerName: "Bereket Haile", service: "Lab Services", amount: 350, method: "Awash Bank", status: "pending", date: "2026-08-25" },
-      { id: "txn006", patientName: "Dawit Haile", providerName: "Hiwot Girma", service: "Home Nursing", amount: 800, method: "Telebirr", status: "successful", date: "2026-08-22" },
-      { id: "txn007", patientName: "Tigist Bekele", providerName: "Hiwot Girma", service: "Home Nursing", amount: 800, method: "Telebirr", status: "pending", date: "2026-08-25" },
-      { id: "txn008", patientName: "Bereket Mengistu", providerName: "Dr. Meron Alemu", service: "Doctor Home Visit", amount: 1200, method: "CBE Birr", status: "failed", date: "2026-08-18" },
-    ];
+  async getTransactions(limit = 50, offset = 0) {
+    const events = await this.eventRepo.find({
+      order: { createdAt: "DESC" as any },
+      take: limit,
+      skip: offset,
+    });
+
+    const appointments = await this.appointmentRepo.find({
+      relations: ["patient", "provider"],
+    });
+    const aptMap = new Map(appointments.map((a) => [a.id, a]));
+
+    const result = events.map((evt) => {
+      let payload: any = {};
+      try {
+        payload = JSON.parse(evt.payload || "{}");
+      } catch {}
+
+      const apt = payload.appointmentId ? aptMap.get(payload.appointmentId) : null;
+      const status =
+        evt.eventType === "charge_succeeded"
+          ? "successful"
+          : evt.eventType === "charge_refunded"
+          ? "refunded"
+          : evt.eventType === "charge_pending"
+          ? "pending"
+          : "failed";
+
+      return {
+        id: evt.paymentId || evt.id,
+        patientName: apt?.patientName || (apt?.patient as any)?.name || payload.first_name || "Patient",
+        providerName: apt?.providerName || (apt?.provider as any)?.name || "Assigned Provider",
+        service: apt?.service || "Healthcare Consultation",
+        amount: payload.amount || apt?.amount || 0,
+        method:
+          payload.method === "telebirr"
+            ? "Telebirr"
+            : payload.method === "cbe_birr"
+            ? "CBE Birr"
+            : payload.method === "chapa"
+            ? "Chapa"
+            : payload.method || "Digital Payment",
+        status,
+        date: evt.createdAt ? evt.createdAt.split("T")[0] : new Date().toISOString().split("T")[0],
+      };
+    });
+
+    if (result.length === 0) {
+      return appointments.map((apt) => ({
+        id: `tx-${apt.id}`,
+        patientName: apt.patientName || (apt?.patient as any)?.name || "Patient",
+        providerName: apt.providerName || (apt?.provider as any)?.name || "Assigned Provider",
+        service: apt.service || "Healthcare Visit",
+        amount: apt.amount || 800,
+        method: "Telebirr",
+        status:
+          apt.status === "completed" || apt.status === "scheduled"
+            ? "successful"
+            : apt.status === "cancelled"
+            ? "refunded"
+            : "pending",
+        date: apt.date || new Date().toISOString().split("T")[0],
+      }));
+    }
+
+    return result;
   }
 
   // Initialize Payment Session (Chapa checkout session)
@@ -61,12 +116,12 @@ export class PaymentsService {
       throw new ConflictException("Appointment is already paid");
     }
 
-    const txRef = `tx-${appointmentId}-${Date.now()}`;
-    const amount = apt.amount || 100; // fallback
+    const txRef = `tx-${appointmentId}-${crypto.randomUUID()}`;
+    const amount = apt.amount || 100;
 
     // Register PENDING Payment Event
     const event = new PaymentEventEntity();
-    event.id = `evt-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    event.id = `evt-${crypto.randomUUID()}`;
     event.paymentId = txRef;
     event.eventType = "charge_pending";
     event.payload = JSON.stringify({ appointmentId, amount, actorId });
@@ -81,8 +136,8 @@ export class PaymentsService {
         const response = await fetch("https://api.chapa.co/v1/transaction/initialize", {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${this.chapaSecretKey}`,
-            "Content-Type": "application/json"
+            Authorization: `Bearer ${this.chapaSecretKey}`,
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             amount: amount.toString(),
@@ -95,9 +150,9 @@ export class PaymentsService {
             return_url: `https://merihcare.et/payment-success?ref=${txRef}`,
             customization: {
               title: "Merihcare Healthcare Service",
-              description: `Booking reference: ${appointmentId}`
-            }
-          })
+              description: `Booking reference: ${appointmentId}`,
+            },
+          }),
         });
 
         const resData = await response.json();
@@ -121,20 +176,10 @@ export class PaymentsService {
   ): Promise<any> {
     const apt = await this.appointmentRepo.findOne({ where: { id: appointmentId } });
     const amount = amountOverride || apt?.amount || 800;
-    const txRef = `TXN-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const txRef = `TXN-${crypto.randomUUID()}`;
 
-    if (apt) {
-      apt.status = "scheduled";
-      await this.appointmentRepo.save(apt);
-    }
-
-    const event = new PaymentEventEntity();
-    event.id = `evt-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    event.paymentId = txRef;
-    event.eventType = "charge_success";
-    event.payload = JSON.stringify({ appointmentId, amount, method, actorId, accountNumber });
-    event.createdAt = new Date().toISOString();
-    await this.eventRepo.save(event);
+    const payload = { appointmentId, amount, method, actorId, accountNumber };
+    await this.processSuccessfulPayment(txRef, payload);
 
     return {
       success: true,
@@ -157,8 +202,8 @@ export class PaymentsService {
         const response = await fetch(`https://api.chapa.co/v1/transaction/verify/${txRef}`, {
           method: "GET",
           headers: {
-            "Authorization": `Bearer ${this.chapaSecretKey}`
-          }
+            Authorization: `Bearer ${this.chapaSecretKey}`,
+          },
         });
         chapaResponse = await response.json();
         if (response.ok && chapaResponse.data?.status === "success") {
@@ -206,21 +251,28 @@ export class PaymentsService {
   async processSuccessfulPayment(txRef: string, payload: any): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
       const processed = await manager.findOne(PaymentEventEntity, {
-        where: { paymentId: txRef, eventType: "charge_succeeded" }
+        where: { paymentId: txRef, eventType: "charge_succeeded" },
       });
       if (processed) return;
 
       const event = new PaymentEventEntity();
-      event.id = `evt-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      event.id = `evt-${crypto.randomUUID()}`;
       event.paymentId = txRef;
       event.eventType = "charge_succeeded";
-      event.payload = JSON.stringify(payload);
+      event.payload = typeof payload === "string" ? payload : JSON.stringify(payload);
       event.createdAt = new Date().toISOString();
       await manager.save(event);
 
-      const parts = txRef.split("-");
-      if (parts.length < 2) return;
-      const aptId = parts.slice(1, parts.length - 1).join("-") || parts[1];
+      // Extract appointment ID
+      let aptId = payload?.appointmentId;
+      if (!aptId) {
+        const parts = txRef.split("-");
+        if (parts.length >= 2) {
+          aptId = parts.slice(1, parts.length - 1).join("-") || parts[1];
+        }
+      }
+
+      if (!aptId) return;
 
       const apt = await manager.findOne(AppointmentEntity, { where: { id: aptId } });
       if (!apt) return;
@@ -229,12 +281,12 @@ export class PaymentsService {
       await manager.save(apt);
 
       const rate = this.getCommissionRate();
-      const amount = apt.amount || 0;
+      const amount = apt.amount || payload.amount || 0;
       const commissionAmount = amount * (rate / 100);
       const netEarnings = amount - commissionAmount;
 
       const commRecord = new CommissionRecordEntity();
-      commRecord.id = `com-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      commRecord.id = `com-${crypto.randomUUID()}`;
       commRecord.paymentId = txRef;
       commRecord.amount = commissionAmount;
       commRecord.ratePercentage = rate;
@@ -266,7 +318,8 @@ export class PaymentsService {
       if (!apt) throw new BadRequestException("Appointment not found");
 
       const txRefSearch = `tx-${id}-`;
-      const event = await manager.createQueryBuilder(PaymentEventEntity, "event")
+      const event = await manager
+        .createQueryBuilder(PaymentEventEntity, "event")
         .where("event.paymentId LIKE :txRef", { txRef: `${txRefSearch}%` })
         .andWhere("event.eventType = :type", { type: "charge_succeeded" })
         .getOne();
@@ -277,7 +330,7 @@ export class PaymentsService {
       if (existingRefund) throw new BadRequestException("Payment is already refunded");
 
       const refund = new RefundEntity();
-      refund.id = `ref-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      refund.id = `ref-${crypto.randomUUID()}`;
       refund.paymentId = event.paymentId;
       refund.amount = apt.amount;
       refund.reason = reason;
@@ -305,7 +358,7 @@ export class PaymentsService {
       }
 
       const logEvent = new PaymentEventEntity();
-      logEvent.id = `evt-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      logEvent.id = `evt-${crypto.randomUUID()}`;
       logEvent.paymentId = event.paymentId;
       logEvent.eventType = "charge_refunded";
       logEvent.payload = JSON.stringify({ reason, actorId, amount: apt.amount });

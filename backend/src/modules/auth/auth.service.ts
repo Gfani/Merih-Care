@@ -4,6 +4,7 @@ import { Repository } from "typeorm";
 import { UserEntity } from "../../database/entities/user.entity";
 import { SessionEntity } from "../../database/entities/session.entity";
 import * as bcrypt from "bcryptjs";
+import * as crypto from "crypto";
 import { JwtService } from "@nestjs/jwt";
 
 @Injectable()
@@ -75,7 +76,7 @@ export class AuthService {
 
     const hashed = await this.hashPassword(pass);
     const user = new UserEntity();
-    user.id = "u-" + Date.now();
+    user.id = "u-" + crypto.randomUUID();
     user.name = name;
     user.email = email;
     user.password = hashed;
@@ -115,7 +116,7 @@ export class AuthService {
     const refreshToken = await this.jwtService.signAsync({ sub: user.id }, { expiresIn: "30d" });
 
     const session = new SessionEntity();
-    session.id = "s-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7);
+    session.id = "s-" + crypto.randomUUID();
     session.userId = userId;
     session.refreshToken = await bcrypt.hash(refreshToken, 10);
     session.tokenExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -205,8 +206,9 @@ export class AuthService {
   async requestPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
     const user = await this.userRepo.findOne({ where: { email } });
     if (user) {
-      // In production: send 6-digit OTP code to user's registered phone / email
-      user.passwordResetToken = "849201";
+      // Generate cryptographically secure 6-digit OTP code
+      const resetOtp = crypto.randomInt(100000, 999999).toString();
+      user.passwordResetToken = resetOtp;
       user.passwordResetExpires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
       await this.userRepo.save(user);
     }
@@ -241,7 +243,8 @@ export class AuthService {
   async requestEmailVerification(email: string): Promise<{ success: boolean }> {
     const user = await this.userRepo.findOne({ where: { email } });
     if (user) {
-      user.emailVerificationToken = "571923";
+      const verifyOtp = crypto.randomInt(100000, 999999).toString();
+      user.emailVerificationToken = verifyOtp;
       await this.userRepo.save(user);
     }
     return { success: true };

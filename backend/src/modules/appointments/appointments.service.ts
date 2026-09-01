@@ -7,6 +7,7 @@ import { UserEntity } from "../../database/entities/user.entity";
 import { ProviderEntity } from "../../database/entities/provider.entity";
 import { ServiceEntity } from "../../database/entities/service.entity";
 import { RealtimeService } from "../realtime/realtime.service";
+import * as crypto from "crypto";
 
 @Injectable()
 export class AppointmentsService {
@@ -75,7 +76,7 @@ export class AppointmentsService {
       }
 
       const apt = new AppointmentEntity();
-      apt.id = "apt-" + Date.now();
+      apt.id = "apt-" + crypto.randomUUID();
 
       apt.patientId = data.patientId || null;
       apt.providerId = data.providerId || null;
@@ -96,7 +97,7 @@ export class AppointmentsService {
 
       // Save initial status history record
       const history = new AppointmentStatusHistoryEntity();
-      history.id = `apth-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      history.id = `apth-${crypto.randomUUID()}`;
       history.appointmentId = savedApt.id;
       history.status = savedApt.status;
       history.changedBy = data.patientId || "patient";
@@ -146,7 +147,7 @@ export class AppointmentsService {
 
     // Save status history record
     const history = new AppointmentStatusHistoryEntity();
-    history.id = `apth-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    history.id = `apth-${crypto.randomUUID()}`;
     history.appointmentId = id;
     history.status = newStatus;
     history.changedBy = actorId;
@@ -179,7 +180,7 @@ export class AppointmentsService {
 
     // Save cancellation reason record
     const cancelRecord = new CancellationReasonEntity();
-    cancelRecord.id = `cxl-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    cancelRecord.id = `cxl-${crypto.randomUUID()}`;
     cancelRecord.appointmentId = id;
     cancelRecord.reason = reason;
     cancelRecord.cancelledBy = actorId;
@@ -188,7 +189,7 @@ export class AppointmentsService {
 
     // Save status history
     const history = new AppointmentStatusHistoryEntity();
-    history.id = `apth-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    history.id = `apth-${crypto.randomUUID()}`;
     history.appointmentId = id;
     history.status = "cancelled";
     history.changedBy = actorId;
@@ -241,7 +242,7 @@ export class AppointmentsService {
 
     // Save status history
     const history = new AppointmentStatusHistoryEntity();
-    history.id = `apth-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    history.id = `apth-${crypto.randomUUID()}`;
     history.appointmentId = id;
     history.status = apt.status;
     history.changedBy = actorId;

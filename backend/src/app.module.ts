@@ -2,6 +2,7 @@ import { Module, NestModule, MiddlewareConsumer } from "@nestjs/common";
 import { RequestIdMiddleware } from "./shared/middleware/request-id.middleware";
 import { ConfigModule } from "@nestjs/config";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
+import { ScheduleModule } from "@nestjs/schedule";
 import { APP_GUARD } from "@nestjs/core";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { getDatabaseConfig } from "./database/database.config";
@@ -84,6 +85,9 @@ import { RealtimeModule } from "./modules/realtime/realtime.module";
       isGlobal: true,
       envFilePath: process.env.NODE_ENV ? `.env.${process.env.NODE_ENV}` : ".env",
     }),
+
+    // Global Task Scheduler
+    ScheduleModule.forRoot(),
     
     // Global API Rate Limiter
     ThrottlerModule.forRoot([{

@@ -12,8 +12,15 @@ import { Server, Socket } from "socket.io";
 import { JwtService } from "@nestjs/jwt";
 import { ChatService } from "./chat.service";
 
+const allowedOrigins = process.env.NODE_ENV === "production"
+  ? (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : ["https://admin.merihcare.et", "https://app.merihcare.et"])
+  : true;
+
 @WebSocketGateway({
-  cors: { origin: "*", credentials: true },
+  cors: {
+    origin: allowedOrigins,
+    credentials: true,
+  },
   namespace: "/chat",
 })
 export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {

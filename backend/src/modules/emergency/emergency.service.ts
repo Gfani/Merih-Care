@@ -7,6 +7,7 @@ import {
   EmergencyEscalationHistoryEntity,
 } from "../../database/entities/emergency-relation.entity";
 import { RealtimeService } from "../realtime/realtime.service";
+import * as crypto from "crypto";
 
 @Injectable()
 export class EmergencyService {
@@ -34,7 +35,7 @@ export class EmergencyService {
     emergencyContact?: string
   ): Promise<EmergencyEntity> {
     const alert = new EmergencyEntity();
-    alert.id = `emg-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    alert.id = `emg-${crypto.randomUUID()}`;
     alert.patientId = patientId;
     alert.patient = patientName || "Patient";
     alert.location = location;
@@ -74,7 +75,7 @@ export class EmergencyService {
       const savedAlert = await manager.save(alert);
 
       const dispatchLog = new EmergencyResponderEntity();
-      dispatchLog.id = "log-" + Date.now();
+      dispatchLog.id = "log-" + crypto.randomUUID();
       dispatchLog.emergencyId = id;
       dispatchLog.providerId = responder;
       dispatchLog.dispatchedAt = new Date().toISOString();
@@ -108,7 +109,7 @@ export class EmergencyService {
 
     // Log escalation / handoff record
     const escalation = new EmergencyEscalationHistoryEntity();
-    escalation.id = `esc-${Date.now()}`;
+    escalation.id = `esc-${crypto.randomUUID()}`;
     escalation.emergencyId = id;
     escalation.level = "REASSIGNED";
     escalation.reason = reason || `Reassigned from ${oldResponder} to ${newResponder}`;
@@ -168,7 +169,7 @@ export class EmergencyService {
     if (!alert) throw new NotFoundException("Emergency case not found");
 
     const escalation = new EmergencyEscalationHistoryEntity();
-    escalation.id = `esc-${Date.now()}`;
+    escalation.id = `esc-${crypto.randomUUID()}`;
     escalation.emergencyId = id;
     escalation.level = "LEVEL_2_PARAMEDIC_ESCALATION";
     escalation.reason = reason;

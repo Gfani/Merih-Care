@@ -3,6 +3,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { LocationEntity } from "../../database/entities/location.entity";
 import { LocationHistoryEntity } from "../../database/entities/emergency-relation.entity";
+import * as crypto from "crypto";
 
 @Injectable()
 export class LocationsService {
@@ -48,7 +49,7 @@ export class LocationsService {
     let loc = await this.locationRepo.findOne({ where: [{ id }, { userId: id }] });
     if (!loc) {
       loc = new LocationEntity();
-      loc.id = id.startsWith("loc-") ? id : `loc-${Date.now()}`;
+      loc.id = id.startsWith("loc-") ? id : `loc-${crypto.randomUUID()}`;
       loc.userId = id;
       loc.role = "provider";
     }
@@ -63,7 +64,7 @@ export class LocationsService {
 
     // Save location history record
     const history = new LocationHistoryEntity();
-    history.id = `loch-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    history.id = `loch-${crypto.randomUUID()}`;
     history.providerId = loc.userId || id;
     history.x = longitude;
     history.y = latitude;
@@ -77,7 +78,7 @@ export class LocationsService {
     let loc = await this.locationRepo.findOne({ where: { userId } });
     if (!loc) {
       loc = new LocationEntity();
-      loc.id = `loc-${Date.now()}`;
+      loc.id = `loc-${crypto.randomUUID()}`;
       loc.userId = userId;
       loc.role = "provider";
       loc.x = 38.7578; // Addis Ababa default lon
@@ -91,7 +92,7 @@ export class LocationsService {
     let loc = await this.locationRepo.findOne({ where: { userId } });
     if (!loc) {
       loc = new LocationEntity();
-      loc.id = `loc-${Date.now()}`;
+      loc.id = `loc-${crypto.randomUUID()}`;
       loc.userId = userId;
       loc.role = "provider";
       loc.x = 38.7578;

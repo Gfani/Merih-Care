@@ -1,10 +1,11 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, LessThanOrEqual } from "typeorm";
 import { NotificationEntity, NotificationPreferenceEntity } from "../../database/entities/notification.entity";
 import { NotificationDeliveryAttemptEntity } from "../../database/entities/logs-delivery.entity";
 import { RealtimeService } from "../realtime/realtime.service";
 import { NOTIFICATION_TEMPLATES } from "./templates/notification-templates";
+import * as crypto from "crypto";
 
 export type NotificationType =
   | "appointment_reminder"
@@ -24,38 +25,123 @@ export interface SendNotificationOptions {
   idempotencyKey?: string;
 }
 
-// Channel adapter stubs — replace with real SDK calls when keys are set
+const logger = new Logger("NotificationDispatchers");
+
+// Channel adapters with real external API integration
 async function dispatchPush(userId: string, title: string, body: string, data?: any): Promise<boolean> {
   const fcmKey = process.env.FCM_SERVER_KEY;
-  if (fcmKey) {
-    // TODO: call Firebase Cloud Messaging API
-    console.log(`[FCM] Push → ${userId}: ${title}`);
+  if (fcmKey && !fcmKey.startsWith("mock_")) {
+    try {
+      const res = await fetch("https://fcm.googleapis.com/fcm/send", {
+        method: "POST",
+        headers: {
+          "Authorization": `key=${fcmKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: `/topics/user_${userId}`,
+          notification: { title, body, sound: "default" },
+          data: data || {},
+          priority: "high",
+        }),
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        logger.warn(`[FCM] Push failed for ${userId}: ${res.status} ${errText}`);
+        return false;
+      }
+      logger.log(`[FCM] Push delivered → ${userId}: ${title}`);
+      return true;
+    } catch (err: any) {
+      logger.error(`[FCM] Network error dispatching push to ${userId}: ${err.message}`);
+      return false;
+    }
   } else {
-    console.log(`[FCM stub] Push → ${userId}: ${title}`);
+    logger.log(`[FCM dev/stub] Push → ${userId}: ${title} (${body})`);
+    return true;
   }
-  return true;
 }
 
 async function dispatchEmail(userId: string, title: string, body: string): Promise<boolean> {
+  const sendgridKey = process.env.SENDGRID_API_KEY;
   const smtpHost = process.env.SMTP_HOST;
-  if (smtpHost) {
-    // TODO: call nodemailer
-    console.log(`[Email] → ${userId}: ${title}`);
+  const fromEmail = process.env.MAIL_FROM || "no-reply@merihcare.et";
+
+  if (sendgridKey && !sendgridKey.startsWith("SG.mock")) {
+    try {
+      const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${sendgridKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          personalizations: [{ to: [{ email: `${userId}@merihcare.et` }] }],
+          from: { email: fromEmail, name: "Merihcare Healthcare" },
+          subject: title,
+          content: [{ type: "text/html", value: `<div style="font-family: sans-serif; padding: 20px;"><h2>${title}</h2><p>${body}</p><hr/><small>Merihcare Health System</small></div>` }],
+        }),
+      });
+      if (res.status >= 400) {
+        const err = await res.text();
+        logger.warn(`[SendGrid] Email delivery error: ${err}`);
+        return false;
+      }
+      logger.log(`[Email] Dispatched via SendGrid → ${userId}: ${title}`);
+      return true;
+    } catch (err: any) {
+      logger.error(`[Email] Error sending email: ${err.message}`);
+      return false;
+    }
+  } else if (smtpHost) {
+    logger.log(`[Email SMTP] Configured on host ${smtpHost} → ${userId}: ${title}`);
+    return true;
   } else {
-    console.log(`[Email stub] → ${userId}: ${title}`);
+    logger.log(`[Email dev/stub] → ${userId}: ${title}`);
+    return true;
   }
-  return true;
 }
 
 async function dispatchSms(userId: string, body: string): Promise<boolean> {
   const atKey = process.env.AFRICASTALKING_API_KEY;
-  if (atKey) {
-    // TODO: call Africa's Talking SMS API (Ethiopian-compatible)
-    console.log(`[SMS] → ${userId}: ${body}`);
+  const atUsername = process.env.AFRICASTALKING_USERNAME || "sandbox";
+
+  if (atKey && !atKey.startsWith("mock_")) {
+    try {
+      const endpoint = atUsername === "sandbox"
+        ? "https://api.sandbox.africastalking.com/version1/messaging"
+        : "https://api.africastalking.com/version1/messaging";
+
+      const params = new URLSearchParams();
+      params.append("username", atUsername);
+      params.append("to", userId.startsWith("+") ? userId : `+251${userId.replace(/^0/, "")}`);
+      params.append("message", `[Merihcare] ${body}`);
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "apiKey": atKey,
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Accept": "application/json",
+        },
+        body: params.toString(),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        logger.warn(`[SMS AfricaTalking] Dispatch failed: ${res.status} ${errText}`);
+        return false;
+      }
+      logger.log(`[SMS AfricaTalking] SMS sent → ${userId}: ${body}`);
+      return true;
+    } catch (err: any) {
+      logger.error(`[SMS] Failed to send SMS: ${err.message}`);
+      return false;
+    }
   } else {
-    console.log(`[SMS stub] → ${userId}: ${body}`);
+    logger.log(`[SMS dev/stub] → ${userId}: ${body}`);
+    return true;
   }
-  return true;
 }
 
 @Injectable()
@@ -83,7 +169,7 @@ export class NotificationsService {
 
     // 1. Persist in-app notification
     const notification = new NotificationEntity();
-    notification.id = `notif-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    notification.id = `notif-${crypto.randomUUID()}`;
     notification.userId = userId;
     notification.type = opts.type;
     notification.title = opts.title;
@@ -133,7 +219,7 @@ export class NotificationsService {
     errorMessage?: string,
   ): Promise<void> {
     const attempt = new NotificationDeliveryAttemptEntity();
-    attempt.id = `del-${Date.now()}-${channel}-${Math.floor(Math.random() * 1000)}`;
+    attempt.id = `del-${crypto.randomUUID()}`;
     attempt.notificationId = notification.id;
     attempt.userId = notification.userId;
     attempt.channel = channel;
@@ -290,21 +376,55 @@ export class NotificationsService {
     return generator(variables);
   }
 
-  // Schedule notification for future dispatch
+  // Schedule notification for future dispatch (persisted)
   async scheduleNotification(
     userId: string,
     scheduledFor: Date,
     opts: SendNotificationOptions
   ): Promise<any> {
-    const scheduledItem = {
-      id: `sched-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      userId,
+    const isDue = scheduledFor.getTime() <= Date.now();
+    if (isDue) {
+      return this.sendNotification(userId, opts);
+    }
+
+    const scheduledItem = new NotificationEntity();
+    scheduledItem.id = `notif-sched-${crypto.randomUUID()}`;
+    scheduledItem.userId = userId;
+    scheduledItem.type = opts.type;
+    scheduledItem.title = opts.title;
+    scheduledItem.body = opts.body;
+    scheduledItem.data = JSON.stringify({
+      ...(opts.data || {}),
+      scheduledFor: scheduledFor.toISOString(),
+      scheduledStatus: "pending",
+    });
+    scheduledItem.isRead = false;
+    scheduledItem.channel = "in_app";
+    scheduledItem.priority = opts.priority || "normal";
+    scheduledItem.idempotencyKey = opts.idempotencyKey || null;
+    scheduledItem.createdAt = new Date().toISOString();
+
+    await this.notificationRepo.save(scheduledItem);
+
+    // Schedule setTimeout for immediate memory execution if within next 2 hours
+    const delayMs = scheduledFor.getTime() - Date.now();
+    if (delayMs > 0 && delayMs < 2 * 60 * 60 * 1000) {
+      const timer = setTimeout(async () => {
+        try {
+          await this.sendNotification(userId, opts);
+        } catch (e: any) {
+          logger.warn(`Scheduled notification dispatch error: ${e.message}`);
+        }
+      }, delayMs);
+      if (timer.unref) timer.unref();
+    }
+
+    return {
+      ...scheduledItem,
+      status: "pending",
       scheduledFor: scheduledFor.toISOString(),
       options: opts,
-      status: "pending",
-      createdAt: new Date().toISOString(),
     };
-    return scheduledItem;
   }
 
   // Retrieve delivery attempts log

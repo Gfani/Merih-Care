@@ -21,8 +21,15 @@ const socketUserMap = new Map<string, { userId: string; role: string; rooms: Set
 const adminSocketCount = { count: 0 };
 let adminMetricsInterval: NodeJS.Timeout | null = null;
 
+const allowedOrigins = process.env.NODE_ENV === "production"
+  ? (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : ["https://admin.merihcare.et", "https://app.merihcare.et"])
+  : true;
+
 @WebSocketGateway({
-  cors: { origin: "*", credentials: true },
+  cors: {
+    origin: allowedOrigins,
+    credentials: true,
+  },
   namespace: "/realtime",
   pingInterval: 25000,
   pingTimeout: 35000,
@@ -80,9 +87,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       }
     }
 
-    // Server heartbeat — emit ping every 25 s
+    // Server heartbeat — emit ping every 25 s to all connected namespace clients
     setInterval(() => {
-      server.to("/realtime").emit("ping", { ts: new Date().toISOString() });
+      server.emit("ping", { ts: new Date().toISOString() });
     }, 25000);
   }
 
