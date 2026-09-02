@@ -246,6 +246,16 @@ export class AppointmentsController {
     return this.appointmentsService.cancelAppointment(id, body?.reason || "Cancelled by user", actorId);
   }
 
+  @Post(":id/assign")
+  async assignProvider(
+    @Param("id") id: string,
+    @Body() body: { providerId: string; providerName: string },
+    @Req() req: any
+  ) {
+    const actorId = req.user?.id || "admin";
+    return this.appointmentsService.assignProvider(id, body.providerId, body.providerName, actorId);
+  }
+
   @Post(":id/reschedule")
   async rescheduleAppointment(
     @Param("id") id: string,

@@ -275,6 +275,53 @@ export class AppointmentsService {
     return savedApt;
   }
 
+  // Provider Assignment / Reassignment
+  async assignProvider(
+    id: string,
+    providerId: string,
+    providerName: string,
+    actorId: string,
+  ): Promise<AppointmentEntity> {
+    const apt = await this.appointmentRepo.findOne({ where: { id } });
+    if (!apt) throw new BadRequestException("Appointment not found");
+
+    const collision = await this.appointmentRepo.findOne({
+      where: {
+        providerId,
+        date: apt.date,
+        time: apt.time,
+        status: In(["scheduled", "accepted", "on_the_way", "arrived", "in_progress"]),
+      },
+    });
+    if (collision && collision.id !== id) {
+      throw new ConflictException("Provider is already booked for this appointment slot.");
+    }
+
+    apt.providerId = providerId;
+    apt.providerName = providerName;
+    apt.status = "accepted";
+    const savedApt = await this.appointmentRepo.save(apt);
+
+    const history = new AppointmentStatusHistoryEntity();
+    history.id = `apth-${crypto.randomUUID()}`;
+    history.appointmentId = id;
+    history.status = "accepted";
+    history.changedBy = actorId;
+    history.notes = `Assigned to provider ${providerName} (${providerId}).`;
+    history.createdAt = new Date().toISOString();
+    await this.historyRepo.save(history);
+
+    try {
+      this.realtimeService.emitAppointmentUpdate(id, "accepted", {
+        appointmentId: id,
+        providerId,
+        providerName,
+      });
+    } catch (_) {}
+
+    return savedApt;
+  }
+
   // Provider Arrival Check-in
   async checkInProvider(id: string, actorId: string, coordinates?: { latitude: number; longitude: number }): Promise<AppointmentEntity> {
     const apt = await this.appointmentRepo.findOne({ where: { id } });
