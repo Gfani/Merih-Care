@@ -45,7 +45,19 @@ export interface UseRealtimeSocketReturn {
 }
 
 const HEARTBEAT_STALE_MS = 35_000;
-const BACKEND_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+
+const resolveSocketUrl = (): string => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl) {
+    return envUrl.replace(/\/api\/v1\/?$/, "");
+  }
+  if (typeof window !== "undefined" && import.meta.env.PROD) {
+    return window.location.origin;
+  }
+  return "http://localhost:3000";
+};
+
+const BACKEND_URL = resolveSocketUrl();
 
 export function useRealtimeSocket({
   token,

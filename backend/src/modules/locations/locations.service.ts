@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, BadRequestException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { LocationEntity } from "../../database/entities/location.entity";
@@ -45,6 +45,16 @@ export class LocationsService {
     longitude: number,
     accuracy = 0,
   ): Promise<LocationEntity> {
+    if (typeof latitude !== "number" || typeof longitude !== "number" || isNaN(latitude) || isNaN(longitude)) {
+      throw new BadRequestException("Invalid coordinates: latitude and longitude must be numbers");
+    }
+    if (latitude < -90 || latitude > 90) {
+      throw new BadRequestException(`Latitude ${latitude} is out of valid range [-90, 90]`);
+    }
+    if (longitude < -180 || longitude > 180) {
+      throw new BadRequestException(`Longitude ${longitude} is out of valid range [-180, 180]`);
+    }
+
     // Try to find by location ID or user ID
     let loc = await this.locationRepo.findOne({ where: [{ id }, { userId: id }] });
     if (!loc) {

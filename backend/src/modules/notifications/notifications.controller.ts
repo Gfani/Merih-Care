@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Put, Patch, Body, Param, Query,
+  Controller, Get, Post, Put, Patch, Delete, Body, Param, Query,
   UseGuards, Req
 } from "@nestjs/common";
 import { NotificationsService } from "./notifications.service";
@@ -107,6 +107,19 @@ export class NotificationsController {
     @Req() req: any
   ) {
     return this.notificationsService.registerDeviceToken(req.user?.id, body.token, body.platform);
+  }
+
+  @Post("register-device")
+  async registerDeviceAlias(
+    @Body() body: { token: string; platform?: string },
+    @Req() req: any
+  ) {
+    return this.notificationsService.registerDeviceToken(req.user?.id, body.token, body.platform);
+  }
+
+  @Delete("device-token")
+  async unregisterPushToken(@Req() req: any) {
+    return this.notificationsService.unregisterDeviceToken(req.user?.id);
   }
 
   @Post("schedule")

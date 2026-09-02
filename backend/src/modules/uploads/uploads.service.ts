@@ -69,6 +69,15 @@ export class UploadsService {
     mimeType = "application/octet-stream",
     userId = "system"
   ): Promise<any> {
+    // Maximum file size limit: 15MB
+    const MAX_FILE_SIZE = 15 * 1024 * 1024;
+    if (fileBuffer && fileBuffer.length > MAX_FILE_SIZE) {
+      throw new BadRequestException(`File size exceeds maximum allowed limit of 15MB (${fileBuffer.length} bytes)`);
+    }
+
+    // Malware signature and dangerous extension scan
+    this.scanForMalware(fileName, fileBuffer);
+
     const sanitized = this.sanitizeFilename(fileName);
     const fileId = `file-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const storageKey = `${userId}/${fileId}-${sanitized}`;

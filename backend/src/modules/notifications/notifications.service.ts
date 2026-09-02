@@ -391,6 +391,17 @@ export class NotificationsService {
     return { success: true, userId, platform: prefs.devicePlatform };
   }
 
+  async unregisterDeviceToken(userId: string): Promise<any> {
+    const prefs = await this.preferenceRepo.findOne({ where: { userId } });
+    if (prefs) {
+      prefs.pushToken = null;
+      prefs.devicePlatform = null;
+      prefs.updatedAt = new Date().toISOString();
+      await this.preferenceRepo.save(prefs);
+    }
+    return { success: true, userId, message: "Device unregistered successfully" };
+  }
+
   // Multi-Channel Template Rendering
   renderTemplate(templateKey: string, variables: Record<string, any>) {
     const generator = NOTIFICATION_TEMPLATES[templateKey];
