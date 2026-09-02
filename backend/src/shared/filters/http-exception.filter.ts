@@ -35,6 +35,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const correlationId = (request.headers["x-correlation-id"] as string) || request["id"] || `corr-${Date.now()}`;
 
     console.error(`[Correlation ID: ${correlationId}] Error ${status} (${errorCode}): ${JSON.stringify(message)} at ${request.url}`);
+    if (status === 500) {
+      console.error(exception?.stack || exception);
+    }
 
     response.status(status).json({
       success: false,

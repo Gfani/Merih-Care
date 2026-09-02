@@ -78,12 +78,12 @@ export class AdminController {
     private readonly scheduledTasks?: ScheduledTasksService,
   ) {}
 
-  @Get("settings")
+  @Get(["settings", "admin/settings"])
   async getSettings() {
     return this.adminService.getSettings();
   }
 
-  @Put("settings")
+  @Put(["settings", "admin/settings"])
   async updateSettings(@Body() body: UpdateSettingsDto) {
     return this.adminService.updateSettings(body);
   }

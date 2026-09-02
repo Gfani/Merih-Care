@@ -38,9 +38,16 @@ export class ProvidersService {
     limit = 50,
     offset = 0,
     userLat?: number,
-    userLon?: number
+    userLon?: number,
+    verified?: string
   ): Promise<any[]> {
+    const where: any = {};
+    if (verified !== undefined) {
+      where.verified = verified === "true";
+    }
+
     const providers = await this.providerRepo.find({
+      where,
       take: limit,
       skip: offset,
       order: { createdAt: "DESC" as any },

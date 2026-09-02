@@ -4,6 +4,29 @@ import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 import { RolesGuard } from "../../shared/guards/roles.guard";
 import { Roles } from "../../shared/decorators/roles.decorator";
 import { PaginationQueryDto } from "../../shared/dtos/pagination-query.dto";
+import { IsOptional, IsString } from "class-validator";
+
+export class ProviderQueryDto extends PaginationQueryDto {
+  @IsOptional()
+  @IsString()
+  verified?: string;
+
+  @IsOptional()
+  @IsString()
+  lat?: string;
+
+  @IsOptional()
+  @IsString()
+  lon?: string;
+
+  @IsOptional()
+  @IsString()
+  fuzz?: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+}
 
 @Controller("providers")
 @UseGuards(JwtAuthGuard)
@@ -11,20 +34,22 @@ export class ProvidersController {
   constructor(private readonly providersService: ProvidersService) {}
 
   @Get()
-  async getProviders(
-    @Query() query: PaginationQueryDto,
-    @Query("lat") lat?: string,
-    @Query("lon") lon?: string,
-    @Query("fuzz") fuzz?: string
-  ) {
+  async getProviders(@Query() query: ProviderQueryDto) {
     const limit = query?.limit ? Number(query.limit) : 50;
     const page = query?.page ? Number(query.page) : 1;
     const offset = (page - 1) * limit;
-    const fuzzLocation = fuzz === "false" ? false : true;
-    const userLat = lat ? parseFloat(lat) : undefined;
-    const userLon = lon ? parseFloat(lon) : undefined;
+    const fuzzLocation = query?.fuzz === "false" ? false : true;
+    const userLat = query?.lat ? parseFloat(query.lat) : undefined;
+    const userLon = query?.lon ? parseFloat(query.lon) : undefined;
 
-    return this.providersService.getAllProviders(fuzzLocation, limit, offset, userLat, userLon);
+    return this.providersService.getAllProviders(
+      fuzzLocation,
+      limit,
+      offset,
+      userLat,
+      userLon,
+      query?.verified
+    );
   }
 
   @Get(":id")
