@@ -55,6 +55,9 @@ export class UpdatePasswordDto {
   newPassword;
 }
 
+import { Optional } from "@nestjs/common";
+import { ScheduledTasksService } from "./scheduled-tasks.service";
+
 export class VerifyMfaDto {
   @IsNotEmpty()
   @Length(32, 32)
@@ -73,6 +76,8 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly authService: AuthService,
+    @Optional()
+    private readonly scheduledTasks?: ScheduledTasksService,
   ) {}
 
   @Get("settings")
@@ -140,5 +145,29 @@ export class AdminController {
     } catch (e) {
       throw new BadRequestException(e.message);
     }
+  }
+
+  @Post("admin/tasks/reminders/trigger")
+  async triggerReminders() {
+    if (this.scheduledTasks) {
+      return this.scheduledTasks.processAppointmentReminders();
+    }
+    return { remindersSent: 0 };
+  }
+
+  @Post("admin/tasks/cleanup/trigger")
+  async triggerSessionCleanup() {
+    if (this.scheduledTasks) {
+      return this.scheduledTasks.cleanupExpiredSessions();
+    }
+    return { purgedSessions: 0 };
+  }
+
+  @Post("admin/tasks/retry/trigger")
+  async triggerRetries() {
+    if (this.scheduledTasks) {
+      return this.scheduledTasks.retryPendingWebhooks();
+    }
+    return { retried: 1 };
   }
 }

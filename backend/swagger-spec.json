@@ -2646,6 +2646,39 @@
         }
       }
     },
+    "/api/v1/admin/tasks/reminders/trigger": {
+      "post": {
+        "operationId": "AdminController_triggerReminders",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/admin/tasks/cleanup/trigger": {
+      "post": {
+        "operationId": "AdminController_triggerSessionCleanup",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/admin/tasks/retry/trigger": {
+      "post": {
+        "operationId": "AdminController_triggerRetries",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/audit-logs": {
       "get": {
         "operationId": "AuditController_getAuditLogs",
