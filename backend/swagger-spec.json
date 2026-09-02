@@ -2355,6 +2355,15 @@
             "description": ""
           }
         }
+      },
+      "post": {
+        "operationId": "LocationsController_calculateRoutePost",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
       }
     },
     "/api/v1/locations/geofence": {
@@ -2791,6 +2800,17 @@
         }
       }
     },
+    "/api/v1/audit": {
+      "get": {
+        "operationId": "AuditController_getAuditLogs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/dashboard/stats": {
       "get": {
         "operationId": "ReportsController_getDashboardStats",
@@ -2827,7 +2847,151 @@
         }
       }
     },
+    "/api/v1/dashboard/overview": {
+      "get": {
+        "operationId": "ReportsController_getDashboardStats",
+        "parameters": [
+          {
+            "name": "startDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "service",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/reports/stats": {
+      "get": {
+        "operationId": "ReportsController_getDashboardStats",
+        "parameters": [
+          {
+            "name": "startDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "service",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/reports/overview": {
+      "get": {
+        "operationId": "ReportsController_getDashboardStats",
+        "parameters": [
+          {
+            "name": "startDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "service",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/dashboard/export": {
+      "get": {
+        "operationId": "ReportsController_exportOperationalReport",
+        "parameters": [
+          {
+            "name": "startDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "service",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/reports/export": {
       "get": {
         "operationId": "ReportsController_exportOperationalReport",
         "parameters": [
@@ -3175,7 +3339,8 @@
         "type": "object",
         "properties": {
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "Provider current status"
           }
         },
         "required": [
@@ -3530,7 +3695,8 @@
         "type": "object",
         "properties": {
           "privacyMode": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Privacy mode toggle (masks exact GPS coordinate)"
           }
         },
         "required": [

@@ -17,15 +17,6 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException("Invalid token format");
     }
 
-    // Strict test-only bypass for unit/integration testing: NEVER active in production or development
-    if (
-      process.env.NODE_ENV === "test" &&
-      (token === "mock-jwt-token-xyz" || token === "mock-token-xyz" || token === "mock-jwt-token-patient")
-    ) {
-      request.user = { id: "u-admin", email: "admin@merihcare.et", role: "admin", adminRole: "super_admin" };
-      return true;
-    }
-
     try {
       const payload = await this.jwtService.verifyAsync(token);
       request.user = payload;

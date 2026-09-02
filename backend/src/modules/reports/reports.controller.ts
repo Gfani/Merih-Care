@@ -5,13 +5,13 @@ import { RolesGuard } from "../../shared/guards/roles.guard";
 import { Roles } from "../../shared/decorators/roles.decorator";
 import { Response } from "express";
 
-@Controller("dashboard")
+@Controller(["dashboard", "reports"])
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles("admin")
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
-  @Get("stats")
+  @Get(["stats", "overview"])
   async getDashboardStats(
     @Query("startDate") startDate?: string,
     @Query("endDate") endDate?: string,

@@ -42,20 +42,29 @@ class NotificationService {
     // Handle foreground messages
     FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
 
-    // Get FCM token and register with backend
-    final token = await messaging.getToken();
-    if (token != null) {
-      try {
-        await ApiClient().registerPushToken(token);
-      } catch (_) {}
-    }
+    // Initial token fetch and backend synchronization
+    await syncTokenWithBackend();
 
     // Listen for FCM token refresh events
     messaging.onTokenRefresh.listen((newToken) {
-      try {
-        ApiClient().registerPushToken(newToken);
-      } catch (_) {}
+      _cachedFcmToken = newToken;
+      ApiClient().registerPushToken(newToken).catchError((_) => false);
     });
+  }
+
+  String? _cachedFcmToken;
+  String? get cachedFcmToken => _cachedFcmToken;
+
+  /// Synchronize FCM token with backend (called on startup & post-login)
+  Future<bool> syncTokenWithBackend() async {
+    try {
+      final token = _cachedFcmToken ?? await FirebaseMessaging.instance.getToken();
+      if (token == null) return false;
+      _cachedFcmToken = token;
+      return await ApiClient().registerPushToken(token);
+    } catch (_) {
+      return false;
+    }
   }
 
   void _handleForegroundMessage(RemoteMessage message) {

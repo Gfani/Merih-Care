@@ -161,12 +161,14 @@ export class NotificationsService {
   // ─── Core Dispatcher ──────────────────────────────────────────────
 
   async sendNotification(userId: string, opts: SendNotificationOptions): Promise<NotificationEntity> {
-    // Idempotency check
-    if (opts.idempotencyKey) {
-      const existing = await this.notificationRepo.findOne({
-        where: { userId, idempotencyKey: opts.idempotencyKey },
-      });
-      if (existing) return existing;
+    // Deduplication check: explicit idempotencyKey or 60-second window auto-dedupe
+    const autoDedupeKey = opts.idempotencyKey || `dedupe-${userId}-${opts.type}-${opts.title}`;
+    const oneMinuteAgo = new Date(Date.now() - 60000).toISOString();
+    const existing = await this.notificationRepo.findOne({
+      where: { userId, idempotencyKey: autoDedupeKey },
+    });
+    if (existing && (opts.idempotencyKey || existing.createdAt > oneMinuteAgo)) {
+      return existing;
     }
 
     // 1. Persist in-app notification
@@ -180,7 +182,7 @@ export class NotificationsService {
     notification.isRead = false;
     notification.channel = "in_app";
     notification.priority = opts.priority || "normal";
-    notification.idempotencyKey = opts.idempotencyKey || null;
+    notification.idempotencyKey = autoDedupeKey;
     notification.createdAt = new Date().toISOString();
     await this.notificationRepo.save(notification);
 

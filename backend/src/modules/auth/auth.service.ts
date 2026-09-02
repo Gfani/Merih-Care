@@ -240,7 +240,7 @@ export class AuthService {
   async confirmPasswordReset(email: string, token: string, newPass: string): Promise<{ success: boolean }> {
     const user = await this.userRepo.findOne({ where: { email } });
     const hashed = this.hashToken(token);
-    if (!user || (user.passwordResetToken !== hashed && user.passwordResetToken !== token)) {
+    if (!user || user.passwordResetToken !== hashed) {
       throw new Error("Invalid or expired password reset token");
     }
 
@@ -274,7 +274,7 @@ export class AuthService {
           title: "Email Verification Code",
           body: `Your MerihCare verification code is ${verifyOtp}.`,
           priority: "critical",
-          data: { code: verifyOtp, type: "email_verification" },
+          data: { code: verifyOtp, type: "email_verification", recipientEmail: user.email },
         }).catch(() => {});
       }
     }
@@ -284,7 +284,7 @@ export class AuthService {
   async confirmEmailVerification(email: string, token: string): Promise<{ success: boolean }> {
     const user = await this.userRepo.findOne({ where: { email } });
     const hashed = this.hashToken(token);
-    if (!user || (user.emailVerificationToken !== hashed && user.emailVerificationToken !== token)) {
+    if (!user || user.emailVerificationToken !== hashed) {
       throw new Error("Invalid email verification token");
     }
     user.emailVerified = true;

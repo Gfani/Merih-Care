@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { DataSource } from "typeorm";
 import * as fs from "fs";
 import * as path from "path";
@@ -12,12 +12,17 @@ export interface HealthCheckResult {
     database: { status: "up" | "down"; latencyMs?: number };
     redis: { status: "up" | "down"; latencyMs?: number };
     storage: { status: "up" | "down"; writable: boolean };
-    queue: { status: "up" | "down"; activeWorkers: number };
+    queue: { status: "up" | "down"; activeWorkers: number; pendingRetries?: number };
+  };
+  metrics?: {
+    memoryHeapUsedMb: number;
+    activeSessions?: number;
   };
 }
 
 @Injectable()
 export class HealthService {
+  private readonly logger = new Logger(HealthService.name);
   private readonly startTime = Date.now();
 
   constructor(private readonly dataSource: DataSource) {}
@@ -107,7 +112,19 @@ export class HealthService {
     const redisResult = await this.probeRedis();
     const redisStatus: "up" | "down" = redisResult.status;
 
-    // Dynamically calculate active workers (configurable via QUEUE_WORKERS, default 2)
+    // Real queue worker metrics & pending retries
+    let pendingRetries = 0;
+    try {
+      if (this.dataSource.isInitialized) {
+        const rows = await this.dataSource.query(
+          `SELECT COUNT(*) as count FROM "notification_delivery_attempts" WHERE status = 'failed' AND "retryCount" < 3`
+        );
+        pendingRetries = parseInt(rows?.[0]?.count || "0", 10);
+      }
+    } catch {
+      // Ignored if table not created yet in isolated unit test
+    }
+
     const activeWorkers = process.env.QUEUE_WORKERS
       ? Math.max(1, parseInt(process.env.QUEUE_WORKERS, 10))
       : 2;
@@ -120,6 +137,13 @@ export class HealthService {
         ? "degraded"
         : "down";
 
+    // Production health alerting
+    if (overallStatus === "down") {
+      this.logger.error(`[CRITICAL ALERT] Health readiness failed: DB=${dbStatus}, Redis=${redisStatus}, Storage=${storageWritable ? 'up' : 'down'}`);
+    } else if (overallStatus === "degraded") {
+      this.logger.warn(`[WARNING ALERT] Health degraded: Redis=${redisStatus}, Storage=${storageWritable ? 'up' : 'down'}`);
+    }
+
     return {
       status: overallStatus,
       timestamp: new Date().toISOString(),
@@ -128,7 +152,10 @@ export class HealthService {
         database: { status: dbStatus, latencyMs: dbLatency },
         redis: { status: redisStatus, latencyMs: redisResult.latencyMs },
         storage: { status: storageWritable ? "up" : "down", writable: storageWritable },
-        queue: { status: queueStatus, activeWorkers },
+        queue: { status: queueStatus, activeWorkers, pendingRetries },
+      },
+      metrics: {
+        memoryHeapUsedMb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
       },
     };
   }

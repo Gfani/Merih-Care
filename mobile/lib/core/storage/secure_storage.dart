@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../notifications/notification_service.dart';
+import '../network/api_client.dart';
 
 class SecureStorage {
   SecureStorage._privateConstructor();
@@ -15,6 +17,8 @@ class SecureStorage {
     try {
       await _storage.write(key: _tokenKey, value: token);
     } catch (_) {}
+    // Ensure FCM push token is registered with backend under this authenticated user session
+    NotificationService.instance.syncTokenWithBackend();
   }
 
   Future<String?> readToken() async {
@@ -29,6 +33,10 @@ class SecureStorage {
   }
 
   Future<void> deleteToken() async {
+    // Unregister device push token before deleting credentials
+    try {
+      await ApiClient().unregisterPushToken();
+    } catch (_) {}
     _tokenFallback = null;
     try {
       await _storage.delete(key: _tokenKey);

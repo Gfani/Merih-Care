@@ -84,11 +84,10 @@ describe("Authorization & Guards Tests", () => {
       await expect(jwtGuard.canActivate(context)).rejects.toThrow(UnauthorizedException);
     });
 
-    it("should allow mock-jwt-token-xyz for developer/admin bypass", async () => {
-      const { context, req } = createMockHttpContext("Bearer mock-jwt-token-xyz");
-      const result = await jwtGuard.canActivate(context);
-      expect(result).toBe(true);
-      expect(req.user.role).toBe("admin");
+    it("should reject mock-jwt-token-xyz when token verification fails", async () => {
+      (mockJwtService.verifyAsync as jest.Mock).mockRejectedValue(new Error("Invalid token"));
+      const { context } = createMockHttpContext("Bearer mock-jwt-token-xyz");
+      await expect(jwtGuard.canActivate(context)).rejects.toThrow(UnauthorizedException);
     });
 
     it("should verify valid JWT token and attach payload to req.user", async () => {

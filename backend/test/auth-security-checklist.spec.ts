@@ -49,7 +49,7 @@ describe("Auth & User Security Checklist Tests", () => {
       const mockUser = new UserEntity();
       mockUser.id = "u-1";
       mockUser.email = "patient@merihcare.et";
-      mockUser.passwordResetToken = "849201";
+      mockUser.passwordResetToken = (authService as any).hashToken("849201");
       mockUser.passwordResetExpires = new Date(Date.now() + 10000).toISOString();
       mockUserRepo.findOne.mockResolvedValue(mockUser);
 
@@ -58,11 +58,11 @@ describe("Auth & User Security Checklist Tests", () => {
       expect(mockUser.passwordResetToken).toBeNull();
     });
 
-    it("should reject password reset with invalid token", async () => {
+    it("should reject invalid password reset token", async () => {
       const mockUser = new UserEntity();
       mockUser.id = "u-1";
       mockUser.email = "patient@merihcare.et";
-      mockUser.passwordResetToken = "849201";
+      mockUser.passwordResetToken = (authService as any).hashToken("849201");
       mockUserRepo.findOne.mockResolvedValue(mockUser);
 
       await expect(
@@ -76,7 +76,7 @@ describe("Auth & User Security Checklist Tests", () => {
       const mockUser = new UserEntity();
       mockUser.id = "u-1";
       mockUser.email = "doctor@merihcare.et";
-      mockUser.emailVerificationToken = "571923";
+      mockUser.emailVerificationToken = (authService as any).hashToken("571923");
       mockUserRepo.findOne.mockResolvedValue(mockUser);
 
       const result = await authService.confirmEmailVerification("doctor@merihcare.et", "571923");

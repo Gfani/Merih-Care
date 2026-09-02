@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Param, Body, UseGuards, Query, Req } from "@nestjs/common";
+import { Controller, Get, Post, Put, Param, Body, UseGuards, Query, Req } from "@nestjs/common";
 import { LocationsService } from "./locations.service";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 import { IsNumber, Min, Max, IsOptional, IsBoolean, IsString } from "class-validator";
@@ -24,13 +24,13 @@ export class MoveLocationDto {
 }
 
 export class UpdatePrivacyDto {
-  @ApiProperty()
+  @ApiProperty({ description: "Privacy mode toggle (masks exact GPS coordinate)" })
   @IsBoolean()
   privacyMode: boolean;
 }
 
 export class UpdateStatusDto {
-  @ApiProperty()
+  @ApiProperty({ description: "Provider current status" })
   @IsString()
   status: string; // available, busy, critical, offline
 }
@@ -81,6 +81,15 @@ export class LocationsController {
     const l2 = parseFloat(lat2);
     const n2 = parseFloat(lon2);
     return this.locationsService.calculateDistanceAndEta(l1, n1, l2, n2);
+  }
+
+  @Post("route")
+  async calculateRoutePost(@Body() body: any) {
+    const lat1 = body?.origin?.latitude ?? body?.origin?.lat ?? body?.origin?.y ?? body?.lat1 ?? 9.0192;
+    const lon1 = body?.origin?.longitude ?? body?.origin?.lng ?? body?.origin?.lon ?? body?.origin?.x ?? body?.lon1 ?? 38.7578;
+    const lat2 = body?.destination?.latitude ?? body?.destination?.lat ?? body?.destination?.y ?? body?.lat2 ?? 9.0300;
+    const lon2 = body?.destination?.longitude ?? body?.destination?.lng ?? body?.destination?.lon ?? body?.destination?.x ?? body?.lon2 ?? 38.7400;
+    return this.locationsService.calculateDistanceAndEta(Number(lat1), Number(lon1), Number(lat2), Number(lon2));
   }
 
   @Get("geofence")

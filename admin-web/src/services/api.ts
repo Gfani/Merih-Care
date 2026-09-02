@@ -31,9 +31,14 @@ import {
 
 const resolveApiUrl = (): string => {
   const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl) return envUrl;
+  if (envUrl) {
+    if (import.meta.env.PROD && envUrl.includes("localhost")) {
+      throw new Error("Security Alert: Cannot use localhost VITE_API_URL in production build!");
+    }
+    return envUrl;
+  }
   if (import.meta.env.PROD) {
-    return "/api/v1";
+    return "https://api.merihcare.et/api/v1";
   }
   return "http://localhost:3000/api/v1";
 };
@@ -69,7 +74,19 @@ axios.interceptors.response.use(
     }
     return response;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    if (error?.response?.status === 401 && typeof window !== "undefined") {
+      const isLoginRequest = error.config?.url?.includes("/auth/login");
+      if (!isLoginRequest) {
+        localStorage.removeItem("admin_token");
+        localStorage.removeItem("admin_user");
+        if (window.location.pathname !== "/login") {
+          window.location.href = "/login";
+        }
+      }
+    }
+    return Promise.reject(error);
+  }
 );
 
 export const api = {

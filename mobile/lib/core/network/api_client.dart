@@ -49,4 +49,14 @@ class ApiClient {
       return false;
     }
   }
+
+  /// Unregister device push token upon logout
+  Future<bool> unregisterPushToken() async {
+    try {
+      final res = await dio.delete('/notifications/device-token');
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
 }

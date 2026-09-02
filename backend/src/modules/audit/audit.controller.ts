@@ -4,7 +4,7 @@ import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 import { RolesGuard } from "../../shared/guards/roles.guard";
 import { Roles } from "../../shared/decorators/roles.decorator";
 
-@Controller("audit-logs")
+@Controller(["audit-logs", "audit"])
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles("admin")
 export class AuditController {
