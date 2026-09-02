@@ -22,9 +22,12 @@ export class AppointmentsService {
     private readonly realtimeService: RealtimeService,
   ) {}
 
-  async getAllAppointments(): Promise<AppointmentEntity[]> {
+  async getAllAppointments(limit = 50, offset = 0): Promise<AppointmentEntity[]> {
     return this.appointmentRepo.find({
-      relations: ["patient", "provider", "serviceRelation"]
+      relations: ["patient", "provider", "serviceRelation"],
+      take: limit,
+      skip: offset,
+      order: { date: "DESC" as any, time: "DESC" as any },
     });
   }
 

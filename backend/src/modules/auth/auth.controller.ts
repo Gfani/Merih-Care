@@ -4,6 +4,7 @@ import { IsEmail, IsNotEmpty, MinLength, MaxLength, IsOptional, Matches, IsIn, L
 import { Request } from "express";
 import { verifyTOTP } from "../../shared/utils/totp";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
+import { RateLimiterGuard } from "../../shared/guards/rate-limiter.guard";
 
 export class LoginDto {
   @IsEmail()
@@ -197,21 +198,25 @@ export class AuthController {
   }
 
   @Post("password-reset/request")
+  @UseGuards(RateLimiterGuard)
   async requestPasswordReset(@Body() body: PasswordResetRequestDto) {
     return this.authService.requestPasswordReset(body.email);
   }
 
   @Post("password-reset/confirm")
+  @UseGuards(RateLimiterGuard)
   async confirmPasswordReset(@Body() body: PasswordResetConfirmDto) {
     return this.authService.confirmPasswordReset(body.email, body.token, body.newPassword);
   }
 
   @Post("email-verification/request")
+  @UseGuards(RateLimiterGuard)
   async requestEmailVerification(@Body() body: EmailVerificationRequestDto) {
     return this.authService.requestEmailVerification(body.email);
   }
 
   @Post("email-verification/confirm")
+  @UseGuards(RateLimiterGuard)
   async confirmEmailVerification(@Body() body: EmailVerificationConfirmDto) {
     return this.authService.confirmEmailVerification(body.email, body.token);
   }

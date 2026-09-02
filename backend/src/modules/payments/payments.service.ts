@@ -91,7 +91,11 @@ export class PaymentsService {
             ? "Chapa"
             : payload.method || "Digital Payment",
         status,
-        date: evt.createdAt ? evt.createdAt.split("T")[0] : new Date().toISOString().split("T")[0],
+        date: evt.createdAt
+          ? evt.createdAt instanceof Date
+            ? evt.createdAt.toISOString().split("T")[0]
+            : String(evt.createdAt).split("T")[0]
+          : new Date().toISOString().split("T")[0],
       };
     });
 
@@ -134,7 +138,7 @@ export class PaymentsService {
     event.paymentId = txRef;
     event.eventType = "charge_pending";
     event.payload = JSON.stringify({ appointmentId, amount, actorId });
-    event.createdAt = new Date().toISOString();
+    event.createdAt = new Date();
     await this.eventRepo.save(event);
 
     // Call Chapa checkout init
@@ -269,7 +273,7 @@ export class PaymentsService {
       event.paymentId = txRef;
       event.eventType = "charge_succeeded";
       event.payload = typeof payload === "string" ? payload : JSON.stringify(payload);
-      event.createdAt = new Date().toISOString();
+      event.createdAt = new Date();
       await manager.save(event);
 
       // Extract appointment ID
@@ -314,7 +318,7 @@ export class PaymentsService {
         }
         ledger.balance += netEarnings;
         ledger.totalEarned += netEarnings;
-        ledger.updatedAt = new Date().toISOString();
+        ledger.updatedAt = new Date();
         await manager.save(ledger);
       }
     });
@@ -361,7 +365,7 @@ export class PaymentsService {
         if (ledger) {
           ledger.balance = Math.max(0, ledger.balance - netEarnings);
           ledger.totalEarned = Math.max(0, ledger.totalEarned - netEarnings);
-          ledger.updatedAt = new Date().toISOString();
+          ledger.updatedAt = new Date();
           await manager.save(ledger);
         }
       }
@@ -371,7 +375,7 @@ export class PaymentsService {
       logEvent.paymentId = event.paymentId;
       logEvent.eventType = "charge_refunded";
       logEvent.payload = JSON.stringify({ reason, actorId, amount: apt.amount });
-      logEvent.createdAt = new Date().toISOString();
+      logEvent.createdAt = new Date();
       await manager.save(logEvent);
 
       return refund;

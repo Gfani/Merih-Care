@@ -1,7 +1,7 @@
-import { Injectable, BadRequestException } from "@nestjs/common";
+import { Injectable, BadRequestException, Optional } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, DataSource } from "typeorm";
-import { PayoutEntity, ProviderEarningsEntity } from "../../database/entities/financial.entity";
+import { PayoutEntity, ProviderEarningsEntity, PayoutBatchEntity } from "../../database/entities/financial.entity";
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
@@ -14,6 +14,9 @@ export class PayoutsService {
     @InjectRepository(ProviderEarningsEntity)
     private readonly earningsRepo: Repository<ProviderEarningsEntity>,
     private readonly dataSource: DataSource,
+    @Optional()
+    @InjectRepository(PayoutBatchEntity)
+    private readonly batchRepo?: Repository<PayoutBatchEntity>,
   ) {}
 
   async getPayouts(): Promise<PayoutEntity[]> {
@@ -59,7 +62,7 @@ export class PayoutsService {
       // Deduct balance
       ledger.balance -= amount;
       ledger.totalWithdrawn += amount;
-      ledger.updatedAt = new Date().toISOString();
+      ledger.updatedAt = new Date();
       await manager.save(ledger);
 
       const payout = new PayoutEntity();
@@ -98,7 +101,7 @@ export class PayoutsService {
         if (ledger) {
           ledger.balance += payout.amount;
           ledger.totalWithdrawn = Math.max(0, ledger.totalWithdrawn - payout.amount);
-          ledger.updatedAt = new Date().toISOString();
+          ledger.updatedAt = new Date();
           await manager.save(ledger);
         }
         
@@ -124,13 +127,26 @@ export class PayoutsService {
       totalSettled += 1;
     }
 
-    return {
-      batchReference: batchRef,
-      totalPayouts: totalSettled,
-      totalAmount: totalBatchAmount,
-      status: "completed",
-      processedBy: actorId,
-      createdAt: new Date().toISOString(),
-    };
+    const batch = new PayoutBatchEntity();
+    batch.id = "batch-" + crypto.randomUUID();
+    batch.batchReference = batchRef;
+    batch.totalPayouts = totalSettled;
+    batch.totalAmount = totalBatchAmount;
+    batch.status = "completed";
+    batch.processedBy = actorId;
+    batch.createdAt = new Date().toISOString();
+
+    if (this.batchRepo) {
+      await this.batchRepo.save(batch);
+    }
+
+    return batch;
+  }
+
+  async getPayoutBatches(): Promise<PayoutBatchEntity[]> {
+    if (this.batchRepo) {
+      return this.batchRepo.find();
+    }
+    return [];
   }
 }

@@ -1,6 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../network/api_client.dart';
 
 /// Background message handler — must be a top-level function.
 @pragma('vm:entry-point')
@@ -41,12 +42,20 @@ class NotificationService {
     // Handle foreground messages
     FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
 
-    // Get FCM token (useful for server-side targeting)
+    // Get FCM token and register with backend
     final token = await messaging.getToken();
     if (token != null) {
-      // In production: send token to your backend
-      // await ApiClient().dio.post('/notifications/register-device', data: {'token': token});
+      try {
+        await ApiClient().registerPushToken(token);
+      } catch (_) {}
     }
+
+    // Listen for FCM token refresh events
+    messaging.onTokenRefresh.listen((newToken) {
+      try {
+        ApiClient().registerPushToken(newToken);
+      } catch (_) {}
+    });
   }
 
   void _handleForegroundMessage(RemoteMessage message) {

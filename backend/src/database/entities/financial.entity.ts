@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryColumn, Index } from "typeorm";
+import { Entity, Column, PrimaryColumn, Index, CreateDateColumn, UpdateDateColumn } from "typeorm";
 
 @Entity("payment_events")
 export class PaymentEventEntity {
@@ -15,8 +15,8 @@ export class PaymentEventEntity {
   @Column({ nullable: true })
   payload: string;
 
-  @Column()
-  createdAt: string;
+  @CreateDateColumn()
+  createdAt: Date;
 }
 
 @Entity("refunds")
@@ -126,7 +126,7 @@ export class ProviderEarningsEntity {
   @Column({ default: 0 })
   totalWithdrawn: number;
 
-  @Column()
-  updatedAt: string;
+  @UpdateDateColumn()
+  updatedAt: Date;
 }
 

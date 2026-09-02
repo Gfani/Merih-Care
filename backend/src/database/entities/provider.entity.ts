@@ -48,6 +48,12 @@ export class ProviderEntity {
   @Column({ default: 0 })
   pricePerVisit: number;
 
+  @Column("float", { nullable: true })
+  latitude: number;
+
+  @Column("float", { nullable: true })
+  longitude: number;
+
   @Column({ nullable: true })
   distance: string;
 

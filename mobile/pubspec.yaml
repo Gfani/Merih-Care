@@ -37,9 +37,10 @@ dependencies:
   web_socket_channel: ^3.0.0
   socket_io_client: ^3.0.1
 
-  # Push notifications
+  # Push notifications & crash reporting
   firebase_core: ^2.27.0
   firebase_messaging: ^14.8.0
+  firebase_crashlytics: ^3.4.0
   flutter_local_notifications: ^17.0.0
 
   # Maps

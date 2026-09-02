@@ -28,8 +28,10 @@ export interface SendNotificationOptions {
 const logger = new Logger("NotificationDispatchers");
 
 // Channel adapters with real external API integration
-async function dispatchPush(userId: string, title: string, body: string, data?: any): Promise<boolean> {
+async function dispatchPush(userId: string, title: string, body: string, data?: any, pushToken?: string): Promise<boolean> {
   const fcmKey = process.env.FCM_SERVER_KEY;
+  const targetRecipient = pushToken || `/topics/user_${userId}`;
+
   if (fcmKey && !fcmKey.startsWith("mock_")) {
     try {
       const res = await fetch("https://fcm.googleapis.com/fcm/send", {
@@ -39,7 +41,7 @@ async function dispatchPush(userId: string, title: string, body: string, data?: 
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          to: `/topics/user_${userId}`,
+          to: targetRecipient,
           notification: { title, body, sound: "default" },
           data: data || {},
           priority: "high",
@@ -47,17 +49,17 @@ async function dispatchPush(userId: string, title: string, body: string, data?: 
       });
       if (!res.ok) {
         const errText = await res.text();
-        logger.warn(`[FCM] Push failed for ${userId}: ${res.status} ${errText}`);
+        logger.warn(`[FCM] Push failed for ${userId} (${targetRecipient}): ${res.status} ${errText}`);
         return false;
       }
-      logger.log(`[FCM] Push delivered → ${userId}: ${title}`);
+      logger.log(`[FCM] Push delivered → ${userId} [${targetRecipient}]: ${title}`);
       return true;
     } catch (err: any) {
       logger.error(`[FCM] Network error dispatching push to ${userId}: ${err.message}`);
       return false;
     }
   } else {
-    logger.log(`[FCM dev/stub] Push → ${userId}: ${title} (${body})`);
+    logger.log(`[FCM dev/stub] Push → ${userId} [${targetRecipient}]: ${title} (${body})`);
     return true;
   }
 }
@@ -195,7 +197,7 @@ export class NotificationsService {
     await this.attemptDelivery(notification, "in_app", true);
 
     if (isCritical || prefs.push) {
-      const ok = await dispatchPush(userId, opts.title, opts.body, opts.data).catch(() => false);
+      const ok = await dispatchPush(userId, opts.title, opts.body, opts.data, prefs.pushToken).catch(() => false);
       await this.attemptDelivery(notification, "push", ok, ok ? null : "FCM dispatch failed");
     }
 

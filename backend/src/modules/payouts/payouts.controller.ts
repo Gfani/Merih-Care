@@ -24,6 +24,11 @@ export class PayoutsController {
     return this.payoutsService.updatePayoutStatus(id, status, transactionReference);
   }
 
+  @Get("batches")
+  async getPayoutBatches() {
+    return this.payoutsService.getPayoutBatches();
+  }
+
   @Post("batches")
   async createBatchSettlement(@Req() req: any) {
     const actorId = req.user?.id || "admin";

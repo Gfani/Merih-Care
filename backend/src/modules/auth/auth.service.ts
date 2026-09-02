@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { UserEntity } from "../../database/entities/user.entity";
@@ -6,6 +6,7 @@ import { SessionEntity } from "../../database/entities/session.entity";
 import * as bcrypt from "bcryptjs";
 import * as crypto from "crypto";
 import { JwtService } from "@nestjs/jwt";
+import { NotificationsService } from "../notifications/notifications.service";
 
 @Injectable()
 export class AuthService {
@@ -15,7 +16,13 @@ export class AuthService {
     @InjectRepository(SessionEntity)
     private readonly sessionRepo: Repository<SessionEntity>,
     private readonly jwtService: JwtService,
+    @Optional()
+    private readonly notificationsService?: NotificationsService,
   ) {}
+
+  private hashToken(token: string): string {
+    return crypto.createHash("sha256").update(token).digest("hex");
+  }
 
   async hashPassword(password: string): Promise<string> {
     return bcrypt.hash(password, 10);
@@ -208,9 +215,20 @@ export class AuthService {
     if (user) {
       // Generate cryptographically secure 6-digit OTP code
       const resetOtp = crypto.randomInt(100000, 999999).toString();
-      user.passwordResetToken = resetOtp;
+      user.passwordResetToken = this.hashToken(resetOtp);
       user.passwordResetExpires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
       await this.userRepo.save(user);
+
+      // Dispatch password reset code via notification service
+      if (this.notificationsService) {
+        await this.notificationsService.sendNotification(user.id, {
+          type: "general",
+          title: "Password Reset Code",
+          body: `Your MerihCare password reset code is ${resetOtp}. This code expires in 15 minutes.`,
+          priority: "critical",
+          data: { code: resetOtp, type: "password_reset" },
+        }).catch(() => {});
+      }
     }
     return {
       success: true,
@@ -220,7 +238,8 @@ export class AuthService {
 
   async confirmPasswordReset(email: string, token: string, newPass: string): Promise<{ success: boolean }> {
     const user = await this.userRepo.findOne({ where: { email } });
-    if (!user || user.passwordResetToken !== token) {
+    const hashed = this.hashToken(token);
+    if (!user || (user.passwordResetToken !== hashed && user.passwordResetToken !== token)) {
       throw new Error("Invalid or expired password reset token");
     }
 
@@ -244,15 +263,27 @@ export class AuthService {
     const user = await this.userRepo.findOne({ where: { email } });
     if (user) {
       const verifyOtp = crypto.randomInt(100000, 999999).toString();
-      user.emailVerificationToken = verifyOtp;
+      user.emailVerificationToken = this.hashToken(verifyOtp);
       await this.userRepo.save(user);
+
+      // Dispatch email verification code via notification service
+      if (this.notificationsService) {
+        await this.notificationsService.sendNotification(user.id, {
+          type: "verification_update",
+          title: "Email Verification Code",
+          body: `Your MerihCare verification code is ${verifyOtp}.`,
+          priority: "critical",
+          data: { code: verifyOtp, type: "email_verification" },
+        }).catch(() => {});
+      }
     }
     return { success: true };
   }
 
   async confirmEmailVerification(email: string, token: string): Promise<{ success: boolean }> {
     const user = await this.userRepo.findOne({ where: { email } });
-    if (!user || user.emailVerificationToken !== token) {
+    const hashed = this.hashToken(token);
+    if (!user || (user.emailVerificationToken !== hashed && user.emailVerificationToken !== token)) {
       throw new Error("Invalid email verification token");
     }
     user.emailVerified = true;

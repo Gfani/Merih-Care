@@ -29,7 +29,16 @@ import {
   SystemSettings,
 } from "../types";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api/v1";
+const resolveApiUrl = (): string => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl) return envUrl;
+  if (import.meta.env.PROD) {
+    return "/api/v1";
+  }
+  return "http://localhost:3000/api/v1";
+};
+
+const API_URL = resolveApiUrl();
 
 const getHeaders = () => {
   const token = localStorage.getItem("admin_token");
@@ -40,8 +49,13 @@ const getHeaders = () => {
 };
 
 const isDemoMode = (): boolean => {
+  // Disallow demo mode in production builds
+  if (import.meta.env.PROD) {
+    return false;
+  }
+  const enabledByEnv = import.meta.env.VITE_ENABLE_DEMO_MODE === "true" || import.meta.env.DEV;
   const stored = localStorage.getItem("demo_mode");
-  return stored === "true";
+  return enabledByEnv && stored === "true";
 };
 
 // Global unwrapper for NestJS StandardResponse envelope { success: true, data: T }

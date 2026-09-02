@@ -217,8 +217,8 @@ export class ChatService {
     return this.messageRepo.save(message);
   }
 
-  async searchMessages(conversationId: string, userId: string, query: string): Promise<MessageEntity[]> {
-    if (!(await this.isParticipant(conversationId, userId))) {
+  async searchMessages(conversationId: string, userId: string, query: string, role?: string): Promise<MessageEntity[]> {
+    if (role !== "admin" && !(await this.isParticipant(conversationId, userId))) {
       throw new ForbiddenException("Not a participant");
     }
 
@@ -226,7 +226,7 @@ export class ChatService {
       .createQueryBuilder("msg")
       .where("msg.conversationId = :conversationId", { conversationId })
       .andWhere("msg.isDeleted = false")
-      .andWhere("msg.text LIKE :query", { query: `%${query}%` })
+      .andWhere("LOWER(msg.text) LIKE LOWER(:query)", { query: `%${query}%` })
       .orderBy("msg.createdAt", "DESC")
       .take(50)
       .getMany();

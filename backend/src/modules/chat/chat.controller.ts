@@ -205,7 +205,9 @@ export class ChatController {
     @Query("q") query: string,
     @Req() req: any
   ) {
-    return this.chatService.searchMessages(conversationId, req.user?.id, query || "");
+    const actorId = req.user?.id || req.user?.sub;
+    const actorRole = req.user?.role;
+    return this.chatService.searchMessages(conversationId, actorId, query || "", actorRole);
   }
 
   // Legacy

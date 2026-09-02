@@ -37,8 +37,14 @@ async function bootstrap() {
     JSON.stringify(document, null, 2)
   );
 
+  const allowedOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(",").map((s) => s.trim())
+    : process.env.NODE_ENV === "production"
+    ? ["https://admin.merihcare.et", "https://app.merihcare.et"]
+    : true;
+
   app.enableCors({
-    origin: process.env.NODE_ENV === "production" ? ["https://admin.merihcare.et", "https://app.merihcare.et"] : true,
+    origin: allowedOrigins,
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
     credentials: true,
   });

@@ -1,9 +1,12 @@
-import { Injectable, BadRequestException } from "@nestjs/common";
+import { Injectable, BadRequestException, Logger } from "@nestjs/common";
 import * as crypto from "crypto";
 import * as path from "path";
+import * as fs from "fs";
 
 @Injectable()
 export class UploadsService {
+  private readonly logger = new Logger(UploadsService.name);
+
   /**
    * Scans binary buffers for executable signatures (MZ header, ELF, shebang scripts)
    */
@@ -70,7 +73,20 @@ export class UploadsService {
     const fileId = `file-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const storageKey = `${userId}/${fileId}-${sanitized}`;
 
-    console.log(`Uploaded file: ${sanitized} (${fileBuffer.length} bytes)`);
+    // Persist binary payload to disk storage volume
+    const uploadsBaseDir = process.env.UPLOADS_DIR || path.join(process.cwd(), "uploads");
+    const targetFilePath = path.join(uploadsBaseDir, storageKey);
+    const targetDir = path.dirname(targetFilePath);
+
+    try {
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+      fs.writeFileSync(targetFilePath, fileBuffer);
+      this.logger.log(`Uploaded & persisted file: ${sanitized} -> ${targetFilePath} (${fileBuffer.length} bytes)`);
+    } catch (err: any) {
+      this.logger.error(`Failed to persist file ${targetFilePath}: ${err.message}`);
+    }
 
     const presigned = this.generatePresignedUrl(storageKey);
 
@@ -78,6 +94,7 @@ export class UploadsService {
       id: fileId,
       url: presigned.url,
       storageKey,
+      filePath: targetFilePath,
       fileName: sanitized,
       fileSize: fileBuffer.length,
       mimeType,
