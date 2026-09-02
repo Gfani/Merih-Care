@@ -18,7 +18,7 @@ class SecureStorage {
       await _storage.write(key: _tokenKey, value: token);
     } catch (_) {}
     // Ensure FCM push token is registered with backend under this authenticated user session
-    NotificationService.instance.syncTokenWithBackend();
+    await NotificationService.instance.syncTokenWithBackend();
   }
 
   Future<String?> readToken() async {
@@ -34,9 +34,7 @@ class SecureStorage {
 
   Future<void> deleteToken() async {
     // Unregister device push token before deleting credentials
-    try {
-      await ApiClient().unregisterPushToken();
-    } catch (_) {}
+    await NotificationService.instance.unregisterToken();
     _tokenFallback = null;
     try {
       await _storage.delete(key: _tokenKey);

@@ -40,6 +40,18 @@ services:
     environment:
       NODE_ENV: staging
       PORT: 3000
+      DB_TYPE: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-merihcare_staging}
+      DB_PASSWORD: ${DB_PASSWORD:-merihcare_staging_pw}
+      DB_DATABASE: ${DB_DATABASE:-merihcare_staging_db}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-merihcare_staging_redis}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-merihcare_staging_redis}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:-staging_jwt_secret_merihcare_key_2026}
+      JWT_EXPIRATION_TIME: 1d
     networks:
       - frontend-net
       - backend-net

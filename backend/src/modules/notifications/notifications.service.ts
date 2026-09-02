@@ -1,8 +1,9 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, LessThanOrEqual } from "typeorm";
 import { NotificationEntity, NotificationPreferenceEntity } from "../../database/entities/notification.entity";
 import { NotificationDeliveryAttemptEntity } from "../../database/entities/logs-delivery.entity";
+import { UserEntity } from "../../database/entities/user.entity";
 import { RealtimeService } from "../realtime/realtime.service";
 import { NOTIFICATION_TEMPLATES } from "./templates/notification-templates";
 import * as crypto from "crypto";
@@ -23,6 +24,8 @@ export interface SendNotificationOptions {
   data?: Record<string, any>;
   priority?: "normal" | "critical";
   idempotencyKey?: string;
+  recipientEmail?: string;
+  recipientPhone?: string;
 }
 
 const logger = new Logger("NotificationDispatchers");
@@ -64,10 +67,13 @@ async function dispatchPush(userId: string, title: string, body: string, data?: 
   }
 }
 
-async function dispatchEmail(userId: string, title: string, body: string): Promise<boolean> {
+async function dispatchEmail(userId: string, title: string, body: string, recipientEmail?: string): Promise<boolean> {
   const sendgridKey = process.env.SENDGRID_API_KEY;
   const smtpHost = process.env.SMTP_HOST;
   const fromEmail = process.env.MAIL_FROM || "no-reply@merihcare.et";
+  const toEmail = recipientEmail && recipientEmail.includes("@")
+    ? recipientEmail
+    : `${userId}@merihcare.et`;
 
   if (sendgridKey && !sendgridKey.startsWith("SG.mock")) {
     try {
@@ -78,7 +84,7 @@ async function dispatchEmail(userId: string, title: string, body: string): Promi
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          personalizations: [{ to: [{ email: `${userId}@merihcare.et` }] }],
+          personalizations: [{ to: [{ email: toEmail }] }],
           from: { email: fromEmail, name: "Merihcare Healthcare" },
           subject: title,
           content: [{ type: "text/html", value: `<div style="font-family: sans-serif; padding: 20px;"><h2>${title}</h2><p>${body}</p><hr/><small>Merihcare Health System</small></div>` }],
@@ -89,24 +95,25 @@ async function dispatchEmail(userId: string, title: string, body: string): Promi
         logger.warn(`[SendGrid] Email delivery error: ${err}`);
         return false;
       }
-      logger.log(`[Email] Dispatched via SendGrid → ${userId}: ${title}`);
+      logger.log(`[Email] Dispatched via SendGrid → ${toEmail}: ${title}`);
       return true;
     } catch (err: any) {
       logger.error(`[Email] Error sending email: ${err.message}`);
       return false;
     }
   } else if (smtpHost) {
-    logger.log(`[Email SMTP] Configured on host ${smtpHost} → ${userId}: ${title}`);
+    logger.log(`[Email SMTP] Configured on host ${smtpHost} → ${toEmail}: ${title}`);
     return true;
   } else {
-    logger.log(`[Email dev/stub] → ${userId}: ${title}`);
+    logger.log(`[Email dev/stub] → ${toEmail}: ${title}`);
     return true;
   }
 }
 
-async function dispatchSms(userId: string, body: string): Promise<boolean> {
+async function dispatchSms(userId: string, body: string, recipientPhone?: string): Promise<boolean> {
   const atKey = process.env.AFRICASTALKING_API_KEY;
   const atUsername = process.env.AFRICASTALKING_USERNAME || "sandbox";
+  const targetPhone = recipientPhone || (userId.startsWith("+") ? userId : `+251${userId.replace(/^0/, "")}`);
 
   if (atKey && !atKey.startsWith("mock_")) {
     try {
@@ -116,7 +123,7 @@ async function dispatchSms(userId: string, body: string): Promise<boolean> {
 
       const params = new URLSearchParams();
       params.append("username", atUsername);
-      params.append("to", userId.startsWith("+") ? userId : `+251${userId.replace(/^0/, "")}`);
+      params.append("to", targetPhone);
       params.append("message", `[Merihcare] ${body}`);
 
       const res = await fetch(endpoint, {
@@ -134,14 +141,14 @@ async function dispatchSms(userId: string, body: string): Promise<boolean> {
         logger.warn(`[SMS AfricaTalking] Dispatch failed: ${res.status} ${errText}`);
         return false;
       }
-      logger.log(`[SMS AfricaTalking] SMS sent → ${userId}: ${body}`);
+      logger.log(`[SMS AfricaTalking] SMS sent → ${targetPhone}: ${body}`);
       return true;
     } catch (err: any) {
       logger.error(`[SMS] Failed to send SMS: ${err.message}`);
       return false;
     }
   } else {
-    logger.log(`[SMS dev/stub] → ${userId}: ${body}`);
+    logger.log(`[SMS dev/stub] → ${targetPhone}: ${body}`);
     return true;
   }
 }
@@ -156,6 +163,9 @@ export class NotificationsService {
     @InjectRepository(NotificationDeliveryAttemptEntity)
     private readonly deliveryRepo: Repository<NotificationDeliveryAttemptEntity>,
     private readonly realtimeService: RealtimeService,
+    @Optional()
+    @InjectRepository(UserEntity)
+    private readonly userRepo?: Repository<UserEntity>,
   ) {}
 
   // ─── Core Dispatcher ──────────────────────────────────────────────
@@ -171,6 +181,26 @@ export class NotificationsService {
       return existing;
     }
 
+    // Resolve recipient email and phone (from options or database lookup)
+    let recipientEmail = opts.recipientEmail || opts.data?.recipientEmail;
+    let recipientPhone = opts.recipientPhone || opts.data?.recipientPhone;
+
+    if ((!recipientEmail || !recipientPhone) && this.userRepo) {
+      try {
+        const user = await this.userRepo.findOne({ where: { id: userId } });
+        if (user) {
+          if (!recipientEmail && user.email) recipientEmail = user.email;
+          if (!recipientPhone && user.phone) recipientPhone = user.phone;
+        }
+      } catch { /* graceful fallback */ }
+    }
+
+    const payloadData = {
+      ...(opts.data || {}),
+      ...(recipientEmail ? { recipientEmail } : {}),
+      ...(recipientPhone ? { recipientPhone } : {}),
+    };
+
     // 1. Persist in-app notification
     const notification = new NotificationEntity();
     notification.id = `notif-${crypto.randomUUID()}`;
@@ -178,7 +208,7 @@ export class NotificationsService {
     notification.type = opts.type;
     notification.title = opts.title;
     notification.body = opts.body;
-    notification.data = opts.data ? JSON.stringify(opts.data) : null;
+    notification.data = Object.keys(payloadData).length > 0 ? JSON.stringify(payloadData) : null;
     notification.isRead = false;
     notification.channel = "in_app";
     notification.priority = opts.priority || "normal";
@@ -199,17 +229,17 @@ export class NotificationsService {
     await this.attemptDelivery(notification, "in_app", true);
 
     if (isCritical || prefs.push) {
-      const ok = await dispatchPush(userId, opts.title, opts.body, opts.data, prefs.pushToken).catch(() => false);
+      const ok = await dispatchPush(userId, opts.title, opts.body, payloadData, prefs.pushToken).catch(() => false);
       await this.attemptDelivery(notification, "push", ok, ok ? null : "FCM dispatch failed");
     }
 
     if (isCritical || prefs.email) {
-      const ok = await dispatchEmail(userId, opts.title, opts.body).catch(() => false);
+      const ok = await dispatchEmail(userId, opts.title, opts.body, recipientEmail).catch(() => false);
       await this.attemptDelivery(notification, "email", ok, ok ? null : "Email dispatch failed");
     }
 
     if (isCritical || prefs.sms) {
-      const ok = await dispatchSms(userId, opts.body).catch(() => false);
+      const ok = await dispatchSms(userId, opts.body, recipientPhone).catch(() => false);
       await this.attemptDelivery(notification, "sms", ok, ok ? null : "SMS dispatch failed");
     }
 
@@ -258,11 +288,16 @@ export class NotificationsService {
       });
       if (!notification) continue;
 
+      let dataObj: any = {};
+      try { dataObj = notification.data ? JSON.parse(notification.data) : {}; } catch {}
+      const retryEmail = dataObj.recipientEmail;
+      const retryPhone = dataObj.recipientPhone;
+
       let ok = false;
       try {
-        if (attempt.channel === "push") ok = await dispatchPush(attempt.userId, notification.title, notification.body);
-        else if (attempt.channel === "email") ok = await dispatchEmail(attempt.userId, notification.title, notification.body);
-        else if (attempt.channel === "sms") ok = await dispatchSms(attempt.userId, notification.body);
+        if (attempt.channel === "push") ok = await dispatchPush(attempt.userId, notification.title, notification.body, dataObj);
+        else if (attempt.channel === "email") ok = await dispatchEmail(attempt.userId, notification.title, notification.body, retryEmail);
+        else if (attempt.channel === "sms") ok = await dispatchSms(attempt.userId, notification.body, retryPhone);
         else ok = true;
       } catch { ok = false; }
 

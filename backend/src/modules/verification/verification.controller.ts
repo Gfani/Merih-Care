@@ -48,7 +48,7 @@ export class SanctionProviderDto {
 export class VerificationController {
   constructor(private readonly verificationService: VerificationService) {}
 
-  @Get()
+  @Get(["", "pending"])
   async getVerifications() {
     return this.verificationService.getVerificationQueue();
   }

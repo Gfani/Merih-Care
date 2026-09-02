@@ -4,6 +4,7 @@ import { NotificationsService } from "./notifications.service";
 import { NotificationsController } from "./notifications.controller";
 import { NotificationEntity, NotificationPreferenceEntity } from "../../database/entities/notification.entity";
 import { NotificationDeliveryAttemptEntity } from "../../database/entities/logs-delivery.entity";
+import { UserEntity } from "../../database/entities/user.entity";
 import { AuthModule } from "../auth/auth.module";
 import { RealtimeModule } from "../realtime/realtime.module";
 
@@ -13,6 +14,7 @@ import { RealtimeModule } from "../realtime/realtime.module";
       NotificationEntity,
       NotificationPreferenceEntity,
       NotificationDeliveryAttemptEntity,
+      UserEntity,
     ]),
     forwardRef(() => AuthModule),
     RealtimeModule,

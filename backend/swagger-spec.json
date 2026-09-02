@@ -597,6 +597,17 @@
         }
       }
     },
+    "/api/v1/verification/pending": {
+      "get": {
+        "operationId": "VerificationController_getVerifications",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/verification/expiring-licenses": {
       "get": {
         "operationId": "VerificationController_getExpiringLicenses",
@@ -1820,7 +1831,66 @@
         }
       }
     },
+    "/api/v1/medical": {
+      "get": {
+        "operationId": "MedicalRecordsController_getMyRecords",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/medical-records/{patientId}": {
+      "get": {
+        "operationId": "MedicalRecordsController_getRecords",
+        "parameters": [
+          {
+            "name": "patientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "post": {
+        "operationId": "MedicalRecordsController_createRecord",
+        "parameters": [
+          {
+            "name": "patientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRecordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/medical/{patientId}": {
       "get": {
         "operationId": "MedicalRecordsController_getRecords",
         "parameters": [
@@ -1889,6 +1959,27 @@
         }
       }
     },
+    "/api/v1/medical/consent/grant": {
+      "post": {
+        "operationId": "MedicalRecordsController_grantConsent",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantConsentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/medical-records/consent/revoke/{providerId}": {
       "delete": {
         "operationId": "MedicalRecordsController_revokeConsent",
@@ -1909,7 +2000,48 @@
         }
       }
     },
+    "/api/v1/medical/consent/revoke/{providerId}": {
+      "delete": {
+        "operationId": "MedicalRecordsController_revokeConsent",
+        "parameters": [
+          {
+            "name": "providerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/medical-records/policy/accept": {
+      "post": {
+        "operationId": "MedicalRecordsController_acceptPolicy",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptPolicyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/medical/policy/accept": {
       "post": {
         "operationId": "MedicalRecordsController_acceptPolicy",
         "parameters": [],
@@ -1951,7 +2083,48 @@
         }
       }
     },
+    "/api/v1/medical/incidents": {
+      "post": {
+        "operationId": "MedicalRecordsController_reportIncident",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportIncidentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/medical-records/{patientId}/export": {
+      "get": {
+        "operationId": "MedicalRecordsController_exportData",
+        "parameters": [
+          {
+            "name": "patientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/medical/{patientId}/export": {
       "get": {
         "operationId": "MedicalRecordsController_exportData",
         "parameters": [
@@ -1991,6 +2164,26 @@
         }
       }
     },
+    "/api/v1/medical/{patientId}/delete-account": {
+      "delete": {
+        "operationId": "MedicalRecordsController_deleteAccount",
+        "parameters": [
+          {
+            "name": "patientId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/medical-records/admin/backup": {
       "post": {
         "operationId": "MedicalRecordsController_backupDatabase",
@@ -2002,7 +2195,29 @@
         }
       }
     },
+    "/api/v1/medical/admin/backup": {
+      "post": {
+        "operationId": "MedicalRecordsController_backupDatabase",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/medical-records/upload/medical-file": {
+      "post": {
+        "operationId": "MedicalRecordsController_uploadMedicalFile",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/medical/upload/medical-file": {
       "post": {
         "operationId": "MedicalRecordsController_uploadMedicalFile",
         "parameters": [],

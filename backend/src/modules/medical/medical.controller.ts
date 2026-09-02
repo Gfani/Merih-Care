@@ -55,7 +55,7 @@ export class ReportIncidentDto {
   description: string;
 }
 
-@Controller("medical-records")
+@Controller(["medical-records", "medical"])
 @UseGuards(JwtAuthGuard)
 export class MedicalRecordsController {
   constructor(private readonly medicalRecordsService: MedicalRecordsService) {}

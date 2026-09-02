@@ -42,8 +42,10 @@ class NotificationService {
     // Handle foreground messages
     FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
 
-    // Initial token fetch and backend synchronization
-    await syncTokenWithBackend();
+    // Pre-cache FCM token (actual registration occurs post-login)
+    try {
+      _cachedFcmToken = await messaging.getToken();
+    } catch (_) {}
 
     // Listen for FCM token refresh events
     messaging.onTokenRefresh.listen((newToken) {
@@ -55,13 +57,24 @@ class NotificationService {
   String? _cachedFcmToken;
   String? get cachedFcmToken => _cachedFcmToken;
 
-  /// Synchronize FCM token with backend (called on startup & post-login)
+  /// Synchronize FCM token with backend (called explicitly post-login)
   Future<bool> syncTokenWithBackend() async {
     try {
       final token = _cachedFcmToken ?? await FirebaseMessaging.instance.getToken();
       if (token == null) return false;
       _cachedFcmToken = token;
       return await ApiClient().registerPushToken(token);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Unregister FCM token from backend (called explicitly during logout)
+  Future<bool> unregisterToken() async {
+    try {
+      final res = await ApiClient().unregisterPushToken();
+      _cachedFcmToken = null;
+      return res;
     } catch (_) {
       return false;
     }
