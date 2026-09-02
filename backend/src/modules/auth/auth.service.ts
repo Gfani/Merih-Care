@@ -265,6 +265,7 @@ export class AuthService {
     if (user) {
       const verifyOtp = crypto.randomInt(100000, 999999).toString();
       user.emailVerificationToken = this.hashToken(verifyOtp);
+      user.emailVerificationExpires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
       await this.userRepo.save(user);
 
       // Dispatch email verification code via notification service
@@ -287,8 +288,12 @@ export class AuthService {
     if (!user || user.emailVerificationToken !== hashed) {
       throw new Error("Invalid email verification token");
     }
+    if (user.emailVerificationExpires && new Date(user.emailVerificationExpires) < new Date()) {
+      throw new Error("Email verification token has expired");
+    }
     user.emailVerified = true;
     user.emailVerificationToken = null;
+    user.emailVerificationExpires = null;
     await this.userRepo.save(user);
     return { success: true };
   }

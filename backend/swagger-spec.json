@@ -880,6 +880,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "date",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {

@@ -77,11 +77,40 @@ describe("Auth & User Security Checklist Tests", () => {
       mockUser.id = "u-1";
       mockUser.email = "doctor@merihcare.et";
       mockUser.emailVerificationToken = (authService as any).hashToken("571923");
+      mockUser.emailVerificationExpires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
       mockUserRepo.findOne.mockResolvedValue(mockUser);
 
       const result = await authService.confirmEmailVerification("doctor@merihcare.et", "571923");
       expect(result.success).toBe(true);
       expect(mockUser.emailVerified).toBe(true);
+      expect(mockUser.emailVerificationToken).toBeNull();
+      expect(mockUser.emailVerificationExpires).toBeNull();
+    });
+
+    it("should reject expired email verification token", async () => {
+      const mockUser = new UserEntity();
+      mockUser.id = "u-1";
+      mockUser.email = "doctor@merihcare.et";
+      mockUser.emailVerificationToken = (authService as any).hashToken("571923");
+      mockUser.emailVerificationExpires = new Date(Date.now() - 1000).toISOString();
+      mockUserRepo.findOne.mockResolvedValue(mockUser);
+
+      await expect(
+        authService.confirmEmailVerification("doctor@merihcare.et", "571923")
+      ).rejects.toThrow("Email verification token has expired");
+    });
+
+    it("should reject invalid email verification token", async () => {
+      const mockUser = new UserEntity();
+      mockUser.id = "u-1";
+      mockUser.email = "doctor@merihcare.et";
+      mockUser.emailVerificationToken = (authService as any).hashToken("571923");
+      mockUser.emailVerificationExpires = new Date(Date.now() + 100000).toISOString();
+      mockUserRepo.findOne.mockResolvedValue(mockUser);
+
+      await expect(
+        authService.confirmEmailVerification("doctor@merihcare.et", "000000")
+      ).rejects.toThrow("Invalid email verification token");
     });
   });
 

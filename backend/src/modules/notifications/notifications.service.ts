@@ -62,6 +62,10 @@ async function dispatchPush(userId: string, title: string, body: string, data?: 
       return false;
     }
   } else {
+    if (process.env.NODE_ENV === "production") {
+      logger.error(`[FCM Error] Push notification credentials are not configured in production`);
+      return false;
+    }
     logger.log(`[FCM dev/stub] Push → ${userId} [${targetRecipient}]: ${title} (${body})`);
     return true;
   }
@@ -70,7 +74,7 @@ async function dispatchPush(userId: string, title: string, body: string, data?: 
 async function dispatchEmail(userId: string, title: string, body: string, recipientEmail?: string): Promise<boolean> {
   const sendgridKey = process.env.SENDGRID_API_KEY;
   const smtpHost = process.env.SMTP_HOST;
-  const fromEmail = process.env.MAIL_FROM || "no-reply@merihcare.et";
+  const fromEmail = process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM || "no-reply@merihcare.et";
   const toEmail = recipientEmail && recipientEmail.includes("@")
     ? recipientEmail
     : `${userId}@merihcare.et`;
@@ -105,14 +109,18 @@ async function dispatchEmail(userId: string, title: string, body: string, recipi
     logger.log(`[Email SMTP] Configured on host ${smtpHost} → ${toEmail}: ${title}`);
     return true;
   } else {
+    if (process.env.NODE_ENV === "production") {
+      logger.error(`[Email Error] Outbound email provider is not configured in production`);
+      return false;
+    }
     logger.log(`[Email dev/stub] → ${toEmail}: ${title}`);
     return true;
   }
 }
 
 async function dispatchSms(userId: string, body: string, recipientPhone?: string): Promise<boolean> {
-  const atKey = process.env.AFRICASTALKING_API_KEY;
-  const atUsername = process.env.AFRICASTALKING_USERNAME || "sandbox";
+  const atKey = process.env.AFRICASTALKING_API_KEY || process.env.AFRICAS_TALKING_API_KEY;
+  const atUsername = process.env.AFRICASTALKING_USERNAME || process.env.AFRICAS_TALKING_USERNAME || "sandbox";
   const targetPhone = recipientPhone || (userId.startsWith("+") ? userId : `+251${userId.replace(/^0/, "")}`);
 
   if (atKey && !atKey.startsWith("mock_")) {
@@ -148,6 +156,10 @@ async function dispatchSms(userId: string, body: string, recipientPhone?: string
       return false;
     }
   } else {
+    if (process.env.NODE_ENV === "production") {
+      logger.error(`[SMS Error] SMS provider credentials are not configured in production`);
+      return false;
+    }
     logger.log(`[SMS dev/stub] → ${targetPhone}: ${body}`);
     return true;
   }

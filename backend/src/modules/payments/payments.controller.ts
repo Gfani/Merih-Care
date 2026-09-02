@@ -63,14 +63,15 @@ export class PaymentsController {
   @Post("initialize")
   @UseGuards(JwtAuthGuard)
   async initializePayment(@Body() body: InitializePaymentDto, @Req() req: any) {
-    const actorId = req.user?.id || "unknown";
-    return this.paymentsService.initializePayment(body.appointmentId, actorId);
+    const actorId = req.user?.id || req.user?.sub;
+    const actorEmail = req.user?.email;
+    return this.paymentsService.initializePayment(body.appointmentId, actorId, actorEmail);
   }
 
   @Post("process-direct")
   @UseGuards(JwtAuthGuard)
   async processDirect(@Body() body: ProcessDirectPaymentDto, @Req() req: any) {
-    const actorId = req.user?.id || "patient";
+    const actorId = req.user?.id || req.user?.sub || "patient";
     return this.paymentsService.processDirectPayment(body.appointmentId, body.method, actorId, body.accountNumber);
   }
 
@@ -86,10 +87,9 @@ export class PaymentsController {
     @Headers("x-chapa-signature") chapaSignature: string,
     @Req() req: any
   ) {
-    // In NestJS, to compute HMAC on the raw request body, we can pass the rawBody parsed
-    // or use the stringified body if standard parser is used.
+    const sig = chapaSignature || req.headers["chapa-signature"] || req.headers["x-chapa-signature"] || "";
     const rawBody = req.rawBody || JSON.stringify(body);
-    return this.paymentsService.handleWebhook(body, rawBody, chapaSignature);
+    return this.paymentsService.handleWebhook(body, rawBody, sig);
   }
 
   @Post(":id/refund")

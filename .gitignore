@@ -43,6 +43,9 @@ lerna-debug.log*
 
 # Environment & Secrets
 .env
+.env.*
+.env.production
+.env.staging
 .env.local
 .env.development.local
 .env.test.local
@@ -50,6 +53,7 @@ lerna-debug.log*
 *.env
 backend/.env
 admin-web/.env
+!*.example
 
 # Diagnostic & Coverage reports
 coverage/

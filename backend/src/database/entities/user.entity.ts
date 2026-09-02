@@ -49,6 +49,9 @@ export class UserEntity {
   emailVerificationToken: string;
 
   @Column({ nullable: true })
+  emailVerificationExpires: string;
+
+  @Column({ nullable: true })
   passwordResetToken: string;
 
   @Column({ nullable: true })

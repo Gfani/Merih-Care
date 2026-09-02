@@ -24,11 +24,17 @@ export class PresenceService implements OnModuleInit, OnModuleDestroy {
         const { createClient } = require("redis");
         this.redisClient = createClient({ url: process.env.REDIS_URL });
         await this.redisClient.connect();
-        this.logger.log("[Presence] Redis presence backend connected");
+        this.logger.log("[Presence] Redis presence backend connected and authenticated");
       } catch (err: any) {
+        if (process.env.REDIS_REQUIRED === "true") {
+          this.logger.error(`[Presence CRITICAL] Redis is required but connection failed: ${err.message}`);
+          throw new Error(`PresenceService failed to connect to required Redis instance: ${err.message}`);
+        }
         this.logger.warn(`[Presence] Redis connection failed (${err.message}). Using in-memory fallback.`);
         this.redisClient = null;
       }
+    } else if (process.env.REDIS_REQUIRED === "true") {
+      throw new Error("PresenceService: REDIS_URL is required when REDIS_REQUIRED=true");
     }
 
     // Periodic stale socket cleanup sweeper (every 30s)

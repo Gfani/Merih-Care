@@ -130,9 +130,12 @@ export class HealthService {
       : 2;
     const queueStatus: "up" | "down" = "up";
 
+    const redisRequired = process.env.REDIS_REQUIRED === "true";
     const overallStatus: "up" | "degraded" | "down" =
       dbStatus === "up" && storageWritable && redisStatus === "up"
         ? "up"
+        : redisRequired && redisStatus === "down"
+        ? "down"
         : dbStatus === "up"
         ? "degraded"
         : "down";

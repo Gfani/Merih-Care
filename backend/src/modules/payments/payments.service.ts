@@ -1,7 +1,8 @@
-import { Injectable, BadRequestException, ConflictException } from "@nestjs/common";
+import { Injectable, BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, DataSource } from "typeorm";
 import { AppointmentEntity } from "../../database/entities/appointment.entity";
+import { UserEntity } from "../../database/entities/user.entity";
 import { PaymentEventEntity, RefundEntity, CommissionRecordEntity, ProviderEarningsEntity } from "../../database/entities/financial.entity";
 import * as crypto from "crypto";
 import * as fs from "fs";
@@ -9,8 +10,9 @@ import * as path from "path";
 
 @Injectable()
 export class PaymentsService {
-  private readonly chapaSecretKey = process.env.CHAPA_SECRET_KEY || "CHAPA_SEC_TEST_KEY";
-  private readonly chapaWebhookSecret = process.env.CHAPA_WEBHOOK_SECRET || "CHAPA_WEBHOOK_TEST_SECRET";
+  private readonly isProduction = process.env.NODE_ENV === "production";
+  private readonly chapaSecretKey = process.env.CHAPA_SECRET_KEY || (this.isProduction ? "" : "CHAPA_SEC_TEST_KEY");
+  private readonly chapaWebhookSecret = process.env.CHAPA_WEBHOOK_SECRET || (this.isProduction ? "" : "CHAPA_WEBHOOK_TEST_SECRET");
 
   constructor(
     @InjectRepository(AppointmentEntity)
@@ -121,16 +123,24 @@ export class PaymentsService {
   }
 
   // Initialize Payment Session (Chapa checkout session)
-  async initializePayment(appointmentId: string, actorId: string): Promise<any> {
+  async initializePayment(appointmentId: string, actorId: string, actorEmail?: string): Promise<any> {
     const apt = await this.appointmentRepo.findOne({ where: { id: appointmentId } });
     if (!apt) throw new BadRequestException("Appointment not found");
+
+    // Ensure appointment belongs to authenticated user or actor is admin
+    if (actorId && apt.patientId && apt.patientId !== actorId) {
+      const user = await this.dataSource.getRepository(UserEntity).findOne({ where: { id: actorId } });
+      if (user?.role !== "admin") {
+        throw new ForbiddenException("Not authorized to pay for this appointment");
+      }
+    }
 
     if (apt.status === "scheduled" || apt.status === "completed") {
       throw new ConflictException("Appointment is already paid");
     }
 
     const txRef = `tx-${appointmentId}-${crypto.randomUUID()}`;
-    const amount = apt.amount || 100;
+    const amount = apt.amount && apt.amount > 0 ? apt.amount : 100;
 
     // Register PENDING Payment Event
     const event = new PaymentEventEntity();
@@ -140,6 +150,13 @@ export class PaymentsService {
     event.payload = JSON.stringify({ appointmentId, amount, actorId });
     event.createdAt = new Date();
     await this.eventRepo.save(event);
+
+    // Resolve real patient email
+    let patientEmail = actorEmail;
+    if (!patientEmail) {
+      const patient = await this.dataSource.getRepository(UserEntity).findOne({ where: { id: apt.patientId || actorId } });
+      patientEmail = patient?.email || "patient@merihcare.et";
+    }
 
     // Call Chapa checkout init
     let checkoutUrl = `https://checkout.chapa.co/checkout/web/payment/${txRef}`;
@@ -155,7 +172,7 @@ export class PaymentsService {
           body: JSON.stringify({
             amount: amount.toString(),
             currency: "ETB",
-            email: "patient@merihcare.et",
+            email: patientEmail,
             first_name: apt.patientName || "Patient",
             last_name: "Merihcare",
             tx_ref: txRef,
@@ -171,10 +188,17 @@ export class PaymentsService {
         const resData = await response.json();
         if (response.ok && resData.data?.checkout_url) {
           checkoutUrl = resData.data.checkout_url;
+        } else if (this.isProduction) {
+          throw new BadRequestException("Chapa payment initialization rejected: " + (resData?.message || response.statusText));
         }
-      } catch (err) {
+      } catch (err: any) {
+        if (this.isProduction) {
+          throw new BadRequestException("Payment gateway initialization failed with upstream provider: " + err.message);
+        }
         console.warn("Chapa connection failed, using offline simulation checkout url", err);
       }
+    } else if (this.isProduction) {
+      throw new BadRequestException("Payment gateway is not configured for live transactions (CHAPA_SECRET_KEY required)");
     }
 
     return { txRef, checkoutUrl };
@@ -188,7 +212,16 @@ export class PaymentsService {
     amountOverride?: number,
   ): Promise<any> {
     const apt = await this.appointmentRepo.findOne({ where: { id: appointmentId } });
-    const amount = amountOverride || apt?.amount || 800;
+    if (!apt) throw new BadRequestException("Appointment not found");
+
+    if (this.isProduction) {
+      const actor = await this.dataSource.getRepository(UserEntity).findOne({ where: { id: actorId } });
+      if (actor?.role !== "admin" && method !== "telebirr" && method !== "cbe_birr" && method !== "cash") {
+        throw new ForbiddenException("Direct payment processing requires administrative authorization");
+      }
+    }
+
+    const amount = amountOverride || apt.amount || 800;
     const txRef = `TXN-${crypto.randomUUID()}`;
 
     const payload = { appointmentId, amount, method, actorId, accountNumber };
@@ -219,12 +252,17 @@ export class PaymentsService {
           },
         });
         chapaResponse = await response.json();
-        if (response.ok && chapaResponse.data?.status === "success") {
+        if (response.ok && (chapaResponse.data?.status === "success" || chapaResponse.status === "success")) {
           status = "success";
         }
-      } catch (err) {
+      } catch (err: any) {
+        if (this.isProduction) {
+          throw new BadRequestException("Upstream payment verification request failed: " + err.message);
+        }
         console.warn("Chapa verify call failed, running offline verification simulation");
       }
+    } else if (this.isProduction) {
+      throw new BadRequestException("Chapa payment gateway is not configured for live verification");
     } else {
       status = "success";
       chapaResponse = { data: { status: "success", amount: 100 } };
