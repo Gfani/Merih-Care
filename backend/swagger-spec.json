@@ -1009,6 +1009,26 @@
         }
       }
     },
+    "/api/v1/payments/receipt/{txRef}": {
+      "get": {
+        "operationId": "PaymentsController_getReceipt",
+        "parameters": [
+          {
+            "name": "txRef",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/payments/initialize": {
       "post": {
         "operationId": "PaymentsController_initializePayment",

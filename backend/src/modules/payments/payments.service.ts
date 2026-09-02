@@ -377,4 +377,32 @@ export class PaymentsService {
       return refund;
     });
   }
+
+  async getReceipt(txRef: string): Promise<any> {
+    const event = await this.eventRepo.findOne({
+      where: { paymentId: txRef, eventType: "charge_succeeded" },
+    });
+    let payload: any = {};
+    if (event?.payload) {
+      try { payload = JSON.parse(event.payload); } catch {}
+    }
+
+    const aptId = payload?.appointmentId || txRef.split("-")[1];
+    const apt = aptId ? await this.appointmentRepo.findOne({ where: { id: aptId } }) : null;
+
+    return {
+      receiptNumber: `REC-${txRef.replace(/[^a-zA-Z0-9]/g, "").slice(-8).toUpperCase()}`,
+      transactionReference: txRef,
+      appointmentId: aptId,
+      patientName: apt?.patientName || payload.first_name || "Patient",
+      providerName: apt?.providerName || "Assigned Provider",
+      service: apt?.service || "Healthcare Consultation",
+      amount: payload.amount || apt?.amount || 0,
+      currency: "ETB",
+      status: "PAID",
+      date: event?.createdAt || new Date().toISOString(),
+      issuer: "Merihcare Healthcare Services",
+      taxId: "TIN-00928194",
+    };
+  }
 }

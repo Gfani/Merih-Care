@@ -54,6 +54,12 @@ export class PaymentsController {
     return this.paymentsService.getTransactions();
   }
 
+  @Get("receipt/:txRef")
+  @UseGuards(JwtAuthGuard)
+  async getReceipt(@Param("txRef") txRef: string) {
+    return this.paymentsService.getReceipt(txRef);
+  }
+
   @Post("initialize")
   @UseGuards(JwtAuthGuard)
   async initializePayment(@Body() body: InitializePaymentDto, @Req() req: any) {
