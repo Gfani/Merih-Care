@@ -36,4 +36,17 @@ class ApiClient {
       ),
     );
   }
+
+  /// Register device FCM push token with backend
+  Future<bool> registerPushToken(String token, {String platform = 'android'}) async {
+    try {
+      final res = await dio.post('/notifications/device-token', data: {
+        'token': token,
+        'platform': platform,
+      });
+      return res.statusCode == 200 || res.statusCode == 201;
+    } catch (_) {
+      return false;
+    }
+  }
 }
