@@ -222,6 +222,180 @@
         }
       }
     },
+    "/api/v1/notifications": {
+      "get": {
+        "operationId": "NotificationsController_getNotifications",
+        "parameters": [
+          {
+            "name": "page",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/unread-count": {
+      "get": {
+        "operationId": "NotificationsController_getUnreadCount",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/{id}/read": {
+      "patch": {
+        "operationId": "NotificationsController_markRead",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/read-all": {
+      "patch": {
+        "operationId": "NotificationsController_markAllRead",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/preferences": {
+      "get": {
+        "operationId": "NotificationsController_getPreferences",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "put": {
+        "operationId": "NotificationsController_updatePreferences",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePreferencesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/device-token": {
+      "post": {
+        "operationId": "NotificationsController_registerPushToken",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      },
+      "delete": {
+        "operationId": "NotificationsController_unregisterPushToken",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/register-device": {
+      "post": {
+        "operationId": "NotificationsController_registerDeviceAlias",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/schedule": {
+      "post": {
+        "operationId": "NotificationsController_scheduleNotification",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/delivery-logs": {
+      "get": {
+        "operationId": "NotificationsController_getDeliveryLogs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/send": {
+      "post": {
+        "operationId": "NotificationsController_send",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendNotificationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/users": {
       "get": {
         "operationId": "UsersController_getUsers",
@@ -337,7 +511,79 @@
     "/api/v1/providers": {
       "get": {
         "operationId": "ProvidersController_getProviders",
+        "parameters": [
+          {
+            "name": "lat",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lon",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fuzz",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "post": {
+        "operationId": "ProvidersController_createProvider",
         "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/providers/{id}": {
+      "get": {
+        "operationId": "ProvidersController_getProviderById",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "put": {
+        "operationId": "ProvidersController_updateProvider",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -1213,6 +1459,15 @@
       }
     },
     "/api/v1/payouts/batches": {
+      "get": {
+        "operationId": "PayoutsController_getPayoutBatches",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
       "post": {
         "operationId": "PayoutsController_createBatchSettlement",
         "parameters": [],
@@ -1574,160 +1829,6 @@
         ],
         "responses": {
           "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications": {
-      "get": {
-        "operationId": "NotificationsController_getNotifications",
-        "parameters": [
-          {
-            "name": "page",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/unread-count": {
-      "get": {
-        "operationId": "NotificationsController_getUnreadCount",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/{id}/read": {
-      "patch": {
-        "operationId": "NotificationsController_markRead",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/read-all": {
-      "patch": {
-        "operationId": "NotificationsController_markAllRead",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/preferences": {
-      "get": {
-        "operationId": "NotificationsController_getPreferences",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      },
-      "put": {
-        "operationId": "NotificationsController_updatePreferences",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdatePreferencesDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/device-token": {
-      "post": {
-        "operationId": "NotificationsController_registerPushToken",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/schedule": {
-      "post": {
-        "operationId": "NotificationsController_scheduleNotification",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/delivery-logs": {
-      "get": {
-        "operationId": "NotificationsController_getDeliveryLogs",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/send": {
-      "post": {
-        "operationId": "NotificationsController_send",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SendNotificationDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
             "description": ""
           }
         }
@@ -2825,6 +2926,17 @@
           }
         }
       }
+    },
+    "/api/v1/health/app-version": {
+      "get": {
+        "operationId": "HealthController_getAppVersion",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
     }
   },
   "info": {
@@ -2875,6 +2987,48 @@
       "EmailVerificationConfirmDto": {
         "type": "object",
         "properties": {}
+      },
+      "UpdatePreferencesDto": {
+        "type": "object",
+        "properties": {
+          "push": {
+            "type": "boolean"
+          },
+          "email": {
+            "type": "boolean"
+          },
+          "sms": {
+            "type": "boolean"
+          },
+          "appointmentReminders": {
+            "type": "boolean"
+          },
+          "chatMessages": {
+            "type": "boolean"
+          },
+          "paymentUpdates": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SendNotificationDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "title",
+          "body"
+        ]
       },
       "UpdateUserRoleDto": {
         "type": "object",
@@ -3238,48 +3392,6 @@
         },
         "required": [
           "reason"
-        ]
-      },
-      "UpdatePreferencesDto": {
-        "type": "object",
-        "properties": {
-          "push": {
-            "type": "boolean"
-          },
-          "email": {
-            "type": "boolean"
-          },
-          "sms": {
-            "type": "boolean"
-          },
-          "appointmentReminders": {
-            "type": "boolean"
-          },
-          "chatMessages": {
-            "type": "boolean"
-          },
-          "paymentUpdates": {
-            "type": "boolean"
-          }
-        }
-      },
-      "SendNotificationDto": {
-        "type": "object",
-        "properties": {
-          "userId": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "body": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "userId",
-          "title",
-          "body"
         ]
       },
       "CreateRecordDto": {

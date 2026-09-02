@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { NotificationsService } from "./notifications.service";
 import { NotificationsController } from "./notifications.controller";
@@ -14,7 +14,7 @@ import { RealtimeModule } from "../realtime/realtime.module";
       NotificationPreferenceEntity,
       NotificationDeliveryAttemptEntity,
     ]),
-    AuthModule,
+    forwardRef(() => AuthModule),
     RealtimeModule,
   ],
   controllers: [NotificationsController],
