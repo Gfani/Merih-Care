@@ -39,6 +39,7 @@ export class PresenceService implements OnModuleInit, OnModuleDestroy {
 
     // Periodic stale socket cleanup sweeper (every 30s)
     this.cleanupInterval = setInterval(() => this.sweepStaleSessions(45000), 30000);
+    this.cleanupInterval.unref();
   }
 
   async onModuleDestroy() {

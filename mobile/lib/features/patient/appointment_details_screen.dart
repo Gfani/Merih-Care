@@ -32,21 +32,12 @@ class _AppointmentDetailsScreenState extends ConsumerState<AppointmentDetailsScr
           _loading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         setState(() {
-          _appt = {
-            'id': widget.appointmentId,
-            'provider': {'name': 'Dr. Meron Alemu', 'specialty': 'General Care', 'phone': '+251 911 223 344'},
-            'date': '2026-08-30',
-            'time': '10:00 AM',
-            'status': 'scheduled',
-            'address': 'Addis Ababa, Bole Subcity, H.No 1202',
-            'notes': 'Flu-like symptoms, fever since yesterday.',
-            'amount': 250,
-          };
           _loading = false;
         });
+        toast('Unable to load appointment details. Please check your connection.', 'error');
       }
     }
   }
@@ -59,12 +50,10 @@ class _AppointmentDetailsScreenState extends ConsumerState<AppointmentDetailsScr
         toast('Appointment cancelled successfully', 'info');
         context.pop();
       }
-    } catch (_) {
-      // Mock local update
-      setState(() {
-        _appt?['status'] = 'cancelled';
-      });
-      toast('Appointment status updated (Offline Simulation)', 'info');
+    } catch (e) {
+      if (mounted) {
+        toast('Failed to cancel appointment. Please check your network and try again.', 'error');
+      }
     }
   }
 

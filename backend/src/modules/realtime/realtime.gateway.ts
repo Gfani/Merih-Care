@@ -100,9 +100,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     }
 
     // Server heartbeat — emit ping every 25 s to all connected namespace clients
-    setInterval(() => {
+    const heartbeatTimer = setInterval(() => {
       server.emit("ping", { ts: new Date().toISOString() });
     }, 25000);
+    heartbeatTimer.unref();
   }
 
   handleConnection(socket: Socket) {
@@ -219,6 +220,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     // Start admin metrics broadcast if not already running
     if (!adminMetricsInterval) {
       adminMetricsInterval = setInterval(() => this.broadcastAdminMetrics(), 10000);
+      adminMetricsInterval.unref();
       this.broadcastAdminMetrics(); // immediate first push
     }
 
@@ -259,13 +261,14 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     this.realtimeService.emitLocationUpdate(data.appointmentId, userId, data.lat, data.lng, ts);
 
     // Schedule stale detection after 90 s
-    setTimeout(() => {
+    const staleTimer = setTimeout(() => {
       const current = socketUserMap.get(socket.id);
       const lastAt = current?.lastLocationAt.get(data.appointmentId) ?? 0;
       if (Date.now() - lastAt >= 90000) {
         this.realtimeService.emitLocationStale(data.appointmentId, userId);
       }
     }, 90000);
+    staleTimer.unref();
 
     return { ok: true, ts };
   }

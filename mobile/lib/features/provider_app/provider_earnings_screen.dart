@@ -37,19 +37,10 @@ class _ProviderEarningsScreenState extends ConsumerState<ProviderEarningsScreen>
           _loading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         setState(() {
-          _earningsData = {
-            'totalEarnings': 14800.0,
-            'payoutsPending': 1200.0,
-            'balance': 3500.0,
-            'history': [
-              { 'id': 'pay1', 'date': '2026-08-28', 'amount': 2500.0, 'status': 'completed', 'description': 'Payout withdrawal request (completed)' },
-              { 'id': 'pay2', 'date': '2026-08-20', 'amount': 1200.0, 'status': 'pending', 'description': 'Payout withdrawal request (pending)' },
-              { 'id': 'pay3', 'date': '2026-08-15', 'amount': 3000.0, 'status': 'completed', 'description': 'Payout withdrawal request (completed)' },
-            ]
-          };
+          _error = 'Failed to load earnings data. Please check your connection.';
           _loading = false;
         });
       }
@@ -82,23 +73,10 @@ class _ProviderEarningsScreenState extends ConsumerState<ProviderEarningsScreen>
         );
         _loadEarnings();
       }
-    } catch (_) {
-      // Mock / Offline response
+    } catch (e) {
       if (mounted) {
-        setState(() {
-          final history = _earningsData?['history'] as List<dynamic>? ?? [];
-          _earningsData = {
-            ..._earningsData!,
-            'balance': 0.0,
-            'payoutsPending': (_earningsData?['payoutsPending'] ?? 0.0) + balance,
-            'history': [
-              { 'id': 'pay_new', 'date': '2026-08-29', 'amount': balance, 'status': 'pending', 'description': 'Payout withdrawal request (pending)' },
-              ...history,
-            ]
-          };
-        });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Payout request submitted (offline simulation)'), backgroundColor: Colors.orange),
+          const SnackBar(content: Text('Failed to submit payout request. Please try again later.'), backgroundColor: Colors.red),
         );
       }
     } finally {

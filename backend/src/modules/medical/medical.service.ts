@@ -243,9 +243,15 @@ export class MedicalRecordsService {
 
     // AES-256-CBC Encrypted DB backup
     const iv = crypto.randomBytes(16);
+    const key = process.env.ENCRYPTION_KEY;
+    if (process.env.NODE_ENV === "production") {
+      if (!key || key.includes("fallback") || key.includes("change_me")) {
+        throw new Error("[SECURITY CRITICAL] ENCRYPTION_KEY must be configured in production for medical backups");
+      }
+    }
     const encKey = crypto
       .createHash("sha256")
-      .update(process.env.ENCRYPTION_KEY || "merihcare-fallback-encryption-key-1234567")
+      .update(key || "merihcare-fallback-encryption-key-1234567")
       .digest();
 
     const cipher = crypto.createCipheriv("aes-256-cbc", encKey, iv);

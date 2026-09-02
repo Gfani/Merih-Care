@@ -40,13 +40,11 @@ class _RescheduleScreenState extends ConsumerState<RescheduleScreen> {
         );
         context.pop();
       }
-    } catch (_) {
-      // Offline / error fallback
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Reschedule confirmed (offline simulation)'), backgroundColor: Colors.orange),
+          const SnackBar(content: Text('Failed to reschedule. Please check your connection and try again.'), backgroundColor: Colors.red),
         );
-        context.pop();
       }
     } finally {
       if (mounted) setState(() => _submitting = false);

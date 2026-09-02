@@ -106,11 +106,32 @@ async function dispatchEmail(userId: string, title: string, body: string, recipi
       return false;
     }
   } else if (smtpHost) {
-    logger.log(`[Email SMTP] Configured on host ${smtpHost} → ${toEmail}: ${title}`);
-    return true;
+    try {
+      const nodemailer = require("nodemailer");
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: parseInt(process.env.SMTP_PORT || "587", 10),
+        secure: process.env.SMTP_SECURE === "true",
+        auth: process.env.SMTP_USER ? {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASSWORD,
+        } : undefined,
+      });
+      await transporter.sendMail({
+        from: fromEmail,
+        to: toEmail,
+        subject: title,
+        html: `<div style="font-family: sans-serif; padding: 20px;"><h2>${title}</h2><p>${body}</p><hr/><small>Merihcare Health System</small></div>`,
+      });
+      logger.log(`[Email SMTP] Dispatched via ${smtpHost} → ${toEmail}: ${title}`);
+      return true;
+    } catch (err: any) {
+      logger.error(`[Email SMTP] Dispatch failed on ${smtpHost}: ${err.message}`);
+      return false;
+    }
   } else {
     if (process.env.NODE_ENV === "production") {
-      logger.error(`[Email Error] Outbound email provider is not configured in production`);
+      logger.error(`[Email Error] No live email provider configured (SENDGRID_API_KEY or SMTP_HOST required in production)`);
       return false;
     }
     logger.log(`[Email dev/stub] → ${toEmail}: ${title}`);
@@ -275,6 +296,10 @@ export class NotificationsService {
     attempt.nextRetryAt = success ? null : this.calcNextRetry(0);
     attempt.createdAt = new Date().toISOString();
     await this.deliveryRepo.save(attempt);
+
+    if (!success && (notification.priority === "critical" || channel === "email" || channel === "sms")) {
+      logger.warn(`[DELIVERY FAILED] Channel '${channel}' failed for notification ${notification.id} (${notification.type}) to user ${notification.userId}: ${errorMessage || "Provider unconfigured or unavailable"}`);
+    }
   }
 
   private calcNextRetry(retryCount: number): string {

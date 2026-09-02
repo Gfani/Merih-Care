@@ -214,16 +214,42 @@ export class PaymentsService {
     const apt = await this.appointmentRepo.findOne({ where: { id: appointmentId } });
     if (!apt) throw new BadRequestException("Appointment not found");
 
-    if (this.isProduction) {
-      const actor = await this.dataSource.getRepository(UserEntity).findOne({ where: { id: actorId } });
-      if (actor?.role !== "admin" && method !== "telebirr" && method !== "cbe_birr" && method !== "cash") {
-        throw new ForbiddenException("Direct payment processing requires administrative authorization");
-      }
-    }
-
     const amount = amountOverride || apt.amount || 800;
     const txRef = `TXN-${crypto.randomUUID()}`;
 
+    // Verify actor authority
+    let isAdmin = false;
+    try {
+      const actor = await this.dataSource.getRepository(UserEntity).findOne({ where: { id: actorId } });
+      isAdmin = actor?.role === "admin" || actor?.adminRole === "finance_admin";
+    } catch {
+      isAdmin = actorId === "u-admin" || actorId === "admin";
+    }
+
+    // Patients cannot self-approve successful payments.
+    // If initiated by non-admin patient, record as pending verification.
+    if (!isAdmin) {
+      const event = new PaymentEventEntity();
+      event.id = `evt-${crypto.randomUUID()}`;
+      event.paymentId = txRef;
+      event.eventType = "charge_pending";
+      event.payload = JSON.stringify({ appointmentId, amount, method, actorId, accountNumber, pendingVerification: true });
+      event.createdAt = new Date();
+      await this.eventRepo.save(event);
+
+      return {
+        success: true,
+        transactionId: txRef,
+        status: "pending_verification",
+        message: "Payment receipt submitted. Pending administrative verification.",
+        method: method === "telebirr" ? "Telebirr" : method === "cbe_birr" ? "CBE Birr" : "Cash",
+        amount,
+        appointmentId,
+        date: new Date().toISOString().split("T")[0],
+      };
+    }
+
+    // Only authenticated admins / finance officers can directly mark manual/cash payments as immediately successful
     const payload = { appointmentId, amount, method, actorId, accountNumber };
     await this.processSuccessfulPayment(txRef, payload);
 
