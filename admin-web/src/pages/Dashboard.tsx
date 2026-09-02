@@ -7,11 +7,16 @@ import {
 } from "recharts";
 import { AdminMapView } from "./LiveMap";
 
+import { useRealtimeSocket } from "../hooks/useRealtimeSocket";
+
 export default function DashboardSection() {
   const PIE_COLORS = ["#0d7c6a", "#1b6fba", "#d97706", "#dc2626", "#7c3aed"];
   const [stats, setStats] = useState<any>(null);
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const token = localStorage.getItem("admin_token");
+  const { on, off, joinRoom, isLive } = useRealtimeSocket({ token });
 
   useEffect(() => {
     const loadData = async () => {
@@ -29,6 +34,33 @@ export default function DashboardSection() {
     };
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (token) {
+      joinRoom("join_admin", {});
+    }
+
+    const handleAdminMetrics = (payload: any) => {
+      const data = payload?.data || payload;
+      if (data) {
+        setStats((prev: any) => ({
+          ...prev,
+          kpis: {
+            ...prev?.kpis,
+            activeRequests: data.pendingRequests ?? prev?.kpis?.activeRequests,
+            activeAppointments: data.activeAppointments ?? prev?.kpis?.activeAppointments,
+            totalProviders: data.onlineProviders ?? prev?.kpis?.totalProviders,
+            totalPatients: data.onlinePatients ?? prev?.kpis?.totalPatients,
+          },
+        }));
+      }
+    };
+
+    on("admin_metrics", handleAdminMetrics);
+    return () => {
+      off("admin_metrics", handleAdminMetrics);
+    };
+  }, [token, on, off, joinRoom]);
 
   const isDemo = api.isDemoMode();
 

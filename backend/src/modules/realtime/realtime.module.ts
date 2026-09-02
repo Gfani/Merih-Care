@@ -4,6 +4,7 @@ import { JwtModule } from "@nestjs/jwt";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { RealtimeGateway } from "./realtime.gateway";
 import { RealtimeService } from "./realtime.service";
+import { PresenceService } from "./presence.service";
 import { LocationEntity } from "../../database/entities/location.entity";
 import { AppointmentEntity } from "../../database/entities/appointment.entity";
 
@@ -18,7 +19,7 @@ import { AppointmentEntity } from "../../database/entities/appointment.entity";
       inject: [ConfigService],
     }),
   ],
-  providers: [RealtimeGateway, RealtimeService],
-  exports: [RealtimeService],
+  providers: [RealtimeGateway, RealtimeService, PresenceService],
+  exports: [RealtimeService, PresenceService],
 })
 export class RealtimeModule {}

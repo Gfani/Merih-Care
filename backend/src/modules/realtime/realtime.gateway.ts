@@ -12,14 +12,20 @@ import { Server, Socket } from "socket.io";
 import { JwtService } from "@nestjs/jwt";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
+import { Optional } from "@nestjs/common";
 import { RealtimeService } from "./realtime.service";
+import { PresenceService } from "./presence.service";
 import { LocationEntity } from "../../database/entities/location.entity";
 import { AppointmentEntity } from "../../database/entities/appointment.entity";
 
-// In-memory tracking
+// In-memory socket tracking
 const socketUserMap = new Map<string, { userId: string; role: string; rooms: Set<string>; lastPong: number; lastLocationAt: Map<string, number> }>();
 const adminSocketCount = { count: 0 };
 let adminMetricsInterval: NodeJS.Timeout | null = null;
+
+// Flood protection tracking: socketId -> timestamps of recent events
+const socketEventRateMap = new Map<string, number[]>();
+const MAX_EVENTS_PER_SECOND = 20;
 
 const allowedOrigins = process.env.NODE_ENV === "production"
   ? (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : ["https://admin.merihcare.et", "https://app.merihcare.et"])
@@ -38,6 +44,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   @WebSocketServer()
   server: Server;
 
+  private presence: PresenceService;
+
   constructor(
     private readonly realtimeService: RealtimeService,
     private readonly jwtService: JwtService,
@@ -45,7 +53,11 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     private readonly locationRepo: Repository<LocationEntity>,
     @InjectRepository(AppointmentEntity)
     private readonly appointmentRepo: Repository<AppointmentEntity>,
-  ) {}
+    @Optional()
+    presenceService?: PresenceService,
+  ) {
+    this.presence = presenceService || new PresenceService();
+  }
 
   afterInit(server: Server) {
     // Hand the server reference to the injectable service
@@ -112,6 +124,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       lastLocationAt: new Map(),
     });
 
+    this.presence.registerSession(socket.id, userId, role, [personalRoom]);
+    this.realtimeService.emitUserPresence(userId, role, "online");
+
     // Emit connection established — client must receive this to show LIVE badge
     socket.emit("connection_established", {
       v: 1,
@@ -123,14 +138,21 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   handleDisconnect(socket: Socket) {
     const info = socketUserMap.get(socket.id);
-    if (info?.role === "admin") {
-      adminSocketCount.count = Math.max(0, adminSocketCount.count - 1);
-      if (adminSocketCount.count === 0 && adminMetricsInterval) {
-        clearInterval(adminMetricsInterval);
-        adminMetricsInterval = null;
+    if (info) {
+      if (info.role === "admin") {
+        adminSocketCount.count = Math.max(0, adminSocketCount.count - 1);
+        if (adminSocketCount.count === 0 && adminMetricsInterval) {
+          clearInterval(adminMetricsInterval);
+          adminMetricsInterval = null;
+        }
+      }
+      this.presence.unregisterSession(socket.id);
+      if (!this.presence.isOnline(info.userId)) {
+        this.realtimeService.emitUserPresence(info.userId, info.role, "offline");
       }
     }
     socketUserMap.delete(socket.id);
+    socketEventRateMap.delete(socket.id);
   }
 
   // ─── Heartbeat ──────────────────────────────────────────────────
@@ -139,6 +161,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   handlePong(@ConnectedSocket() socket: Socket) {
     const info = socketUserMap.get(socket.id);
     if (info) info.lastPong = Date.now();
+    this.presence.heartbeat(socket.id);
   }
 
   // ─── Room Join Events ────────────────────────────────────────────
@@ -250,13 +273,16 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   // ─── Presence Inquiries ──────────────────────────────────────────
 
   isUserOnline(userId: string): boolean {
-    return [...socketUserMap.values()].some((s) => s.userId === userId);
+    return this.presence.isOnline(userId) || [...socketUserMap.values()].some((s) => s.userId === userId);
   }
 
   getOnlineUserCount(): { providers: number; patients: number; total: number } {
-    const providers = [...socketUserMap.values()].filter((s) => s.role === "provider").length;
-    const patients = [...socketUserMap.values()].filter((s) => s.role === "patient").length;
-    return { providers, patients, total: socketUserMap.size };
+    const counts = this.presence.getOnlineCounts();
+    return {
+      providers: counts.providers,
+      patients: counts.patients,
+      total: counts.totalUsers || socketUserMap.size,
+    };
   }
 
   // ─── Session Restore (Reconnect) ─────────────────────────────────

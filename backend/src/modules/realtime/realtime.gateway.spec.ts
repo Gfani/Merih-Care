@@ -17,6 +17,7 @@ describe("Realtime Socket Gateway Tests", () => {
     emitLocationUpdate: jest.fn(),
     emitLocationStale: jest.fn(),
     emitAdminMetrics: jest.fn(),
+    emitUserPresence: jest.fn(),
   };
 
   beforeEach(async () => {
