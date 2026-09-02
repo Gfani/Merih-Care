@@ -206,6 +206,32 @@ export class ChatService {
     await this.messageRepo.save(message);
   }
 
+  async editMessage(messageId: string, userId: string, newText: string): Promise<MessageEntity> {
+    const message = await this.messageRepo.findOne({ where: { id: messageId } });
+    if (!message) throw new NotFoundException("Message not found");
+    if (message.senderId !== userId) throw new ForbiddenException("Cannot edit another user's message");
+    if (message.isDeleted) throw new BadRequestException("Cannot edit a deleted message");
+
+    message.text = newText;
+    message.editedAt = new Date().toISOString();
+    return this.messageRepo.save(message);
+  }
+
+  async searchMessages(conversationId: string, userId: string, query: string): Promise<MessageEntity[]> {
+    if (!(await this.isParticipant(conversationId, userId))) {
+      throw new ForbiddenException("Not a participant");
+    }
+
+    return this.messageRepo
+      .createQueryBuilder("msg")
+      .where("msg.conversationId = :conversationId", { conversationId })
+      .andWhere("msg.isDeleted = false")
+      .andWhere("msg.text LIKE :query", { query: `%${query}%` })
+      .orderBy("msg.createdAt", "DESC")
+      .take(50)
+      .getMany();
+  }
+
   // ─── Attachments ─────────────────────────────────────────────────
 
   async getAttachments(conversationId: string, userId: string): Promise<MessageAttachmentEntity[]> {

@@ -184,10 +184,28 @@ export class ChatController {
     return this.chatService.reportMessage(messageId, req.user?.id, body.reason);
   }
 
+  @Patch("messages/:id")
+  async editMessage(
+    @Param("id") messageId: string,
+    @Body("text") text: string,
+    @Req() req: any
+  ) {
+    return this.chatService.editMessage(messageId, req.user?.id, text);
+  }
+
   @Delete("messages/:id")
   async deleteMessage(@Param("id") messageId: string, @Req() req: any) {
     await this.chatService.deleteMessage(messageId, req.user?.id);
     return { success: true };
+  }
+
+  @Get("conversations/:id/search")
+  async searchMessages(
+    @Param("id") conversationId: string,
+    @Query("q") query: string,
+    @Req() req: any
+  ) {
+    return this.chatService.searchMessages(conversationId, req.user?.id, query || "");
   }
 
   // Legacy

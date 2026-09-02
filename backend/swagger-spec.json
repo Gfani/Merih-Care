@@ -1454,6 +1454,24 @@
       }
     },
     "/api/v1/chat/messages/{id}": {
+      "patch": {
+        "operationId": "ChatController_editMessage",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
       "delete": {
         "operationId": "ChatController_deleteMessage",
         "parameters": [
@@ -1461,6 +1479,34 @@
             "name": "id",
             "required": true,
             "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/chat/conversations/{id}/search": {
+      "get": {
+        "operationId": "ChatController_searchMessages",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "required": true,
+            "in": "query",
             "schema": {
               "type": "string"
             }
