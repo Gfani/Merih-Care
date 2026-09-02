@@ -2059,6 +2059,26 @@
         }
       }
     },
+    "/api/v1/emergency/{id}/reject": {
+      "put": {
+        "operationId": "EmergencyController_reject",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/emergency/{id}/escalate": {
       "post": {
         "operationId": "EmergencyController_escalate",

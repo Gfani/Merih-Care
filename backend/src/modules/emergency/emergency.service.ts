@@ -187,4 +187,30 @@ export class EmergencyService {
 
     return { success: true, escalationId: escalation.id, level: escalation.level };
   }
+
+  async rejectEmergency(id: string, providerId: string, reason?: string): Promise<any> {
+    const alert = await this.emergencyRepo.findOne({ where: { id } });
+    if (!alert) throw new NotFoundException("Emergency case not found");
+
+    const escalation = new EmergencyEscalationHistoryEntity();
+    escalation.id = `esc-${crypto.randomUUID()}`;
+    escalation.emergencyId = id;
+    escalation.level = "PROVIDER_REJECTED";
+    escalation.reason = reason || `Provider ${providerId} rejected dispatch`;
+    escalation.escalatedBy = providerId;
+    escalation.createdAt = new Date().toISOString();
+    await this.escalationRepo.save(escalation);
+
+    // Re-broadcast alert to available providers
+    this.realtimeService.emitToRoom("providers", "emergency_alert", {
+      emergencyId: id,
+      severity: alert.type,
+      location: alert.location,
+      status: "active",
+      note: "Previous responder unavailable — re-broadcasting",
+      ts: new Date().toISOString(),
+    });
+
+    return { success: true, reBroadcast: true };
+  }
 }

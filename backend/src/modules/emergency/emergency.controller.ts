@@ -120,6 +120,14 @@ export class EmergencyController {
     return this.emergencyService.resolveEmergency(id, actorId, body.clinicalSummary);
   }
 
+  @Put(":id/reject")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("provider")
+  async reject(@Param("id") id: string, @Body("reason") reason: string, @Req() req: any) {
+    const providerId = req.user?.id || "provider";
+    return this.emergencyService.rejectEmergency(id, providerId, reason);
+  }
+
   @Post(":id/escalate")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("admin")
