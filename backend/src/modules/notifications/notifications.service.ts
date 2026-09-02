@@ -367,6 +367,28 @@ export class NotificationsService {
     return this.preferenceRepo.save(existing);
   }
 
+  async registerDeviceToken(userId: string, token: string, platform = "android"): Promise<any> {
+    let prefs = await this.preferenceRepo.findOne({ where: { userId } });
+    if (!prefs) {
+      prefs = new NotificationPreferenceEntity();
+      prefs.userId = userId;
+      prefs.inApp = true;
+      prefs.push = true;
+      prefs.email = true;
+      prefs.sms = false;
+      prefs.appointmentReminders = true;
+      prefs.chatMessages = true;
+      prefs.paymentUpdates = true;
+      prefs.emergencyAlerts = true;
+    }
+    prefs.pushToken = token;
+    prefs.devicePlatform = platform;
+    prefs.push = true;
+    prefs.updatedAt = new Date().toISOString();
+    await this.preferenceRepo.save(prefs);
+    return { success: true, userId, platform: prefs.devicePlatform };
+  }
+
   // Multi-Channel Template Rendering
   renderTemplate(templateKey: string, variables: Record<string, any>) {
     const generator = NOTIFICATION_TEMPLATES[templateKey];

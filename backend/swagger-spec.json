@@ -1593,6 +1593,17 @@
         }
       }
     },
+    "/api/v1/notifications/device-token": {
+      "post": {
+        "operationId": "NotificationsController_registerPushToken",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/notifications/schedule": {
       "post": {
         "operationId": "NotificationsController_scheduleNotification",

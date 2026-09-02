@@ -101,6 +101,14 @@ export class NotificationsController {
     return this.notificationsService.updatePreferences(req.user?.id, body);
   }
 
+  @Post("device-token")
+  async registerPushToken(
+    @Body() body: { token: string; platform?: string },
+    @Req() req: any
+  ) {
+    return this.notificationsService.registerDeviceToken(req.user?.id, body.token, body.platform);
+  }
+
   @Post("schedule")
   async scheduleNotification(
     @Body() body: { scheduledFor: string; type: any; title: string; body: string; data?: any },

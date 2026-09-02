@@ -72,5 +72,11 @@ export class NotificationPreferenceEntity {
   emergencyAlerts: boolean;
 
   @Column({ nullable: true })
+  pushToken: string;
+
+  @Column({ nullable: true })
+  devicePlatform: string;
+
+  @Column({ nullable: true })
   updatedAt: string;
 }
