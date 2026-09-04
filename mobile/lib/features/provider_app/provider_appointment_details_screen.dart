@@ -43,18 +43,8 @@ class _ProviderAppointmentDetailsScreenState extends ConsumerState<ProviderAppoi
     } catch (_) {
       if (mounted) {
         setState(() {
-          _appointment = {
-            'id': widget.appointmentId,
-            'patientName': 'Hanna Solomon',
-            'patientPhone': '+251911234567',
-            'service': 'Physiotherapy Session',
-            'date': '2026-08-29',
-            'time': '10:00 AM',
-            'location': 'Bole Sub City, House 412, Addis Ababa',
-            'amount': 350.0,
-            'status': 'scheduled',
-            'notes': 'Patient recovering from minor stroke. Needs lower limb exercise.',
-          };
+          _appointment = null;
+          _error = 'Unable to load appointment details. Please try again.';
           _loading = false;
         });
       }
@@ -179,7 +169,9 @@ class _ProviderAppointmentDetailsScreenState extends ConsumerState<ProviderAppoi
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
                                           Text(
-                                            _appointment?['patientName'] ?? 'Patient Name',
+                                            _appointment?['patient']?['name'] ??
+                                                _appointment?['patientName'] ??
+                                                'Patient',
                                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                                           ),
                                           IconButton(

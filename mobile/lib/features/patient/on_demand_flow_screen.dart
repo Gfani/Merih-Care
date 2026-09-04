@@ -713,7 +713,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
                     children: [
                       Icon(Icons.directions_car, size: 40, color: AppTheme.primaryColor),
                       SizedBox(height: 4),
-                      Text('Dr. Meron is 1.2 km away on Bole Road', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textSecondary)),
+                      Text('Healthcare provider is en route to your location', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textSecondary)),
                     ],
                   ),
                 ),
@@ -800,7 +800,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
             child: const Icon(Icons.doorbell_outlined, color: Color(0xFF7C3AED), size: 48),
           ),
           const SizedBox(height: 16),
-          const Text('Dr. Meron Alemu Has Arrived!', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const Text('Healthcare Provider Has Arrived!', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
           const Text('Please greet the provider and grant entry to begin treatment.', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
           const SizedBox(height: 24),
@@ -993,7 +993,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
             controller: _reviewController,
             maxLines: 3,
             decoration: const InputDecoration(
-              hintText: 'Share your experience (e.g. Dr. Meron was punctual, gentle, and thorough)...',
+              hintText: 'Share your experience with the healthcare provider...',
             ),
           ),
           const SizedBox(height: 24),

@@ -143,7 +143,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            AvatarWidget(name: fullName, radius: 20),
+                            InkWell(
+                              onTap: () => context.push('/profile-settings'),
+                              borderRadius: BorderRadius.circular(20),
+                              child: AvatarWidget(name: fullName, radius: 20),
+                            ),
                           ],
                         ),
                       ],
@@ -288,47 +292,62 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
                     const SizedBox(height: 16),
 
-                    // ─── Active Service Card (Pulsing live status) ────────────────────────
-                    InkWell(
-                      onTap: () => context.push('/appointment/appt-101'),
-                      borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-                      child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryColor,
-                          borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: const BoxDecoration(
-                                        color: Color(0xFF4ADE80),
-                                        shape: BoxShape.circle,
+                    // ─── Active Service Card (Rendered only if real appointments exist) ───
+                    if (_upcoming.isNotEmpty) ...[
+                      InkWell(
+                        onTap: () => context.push('/appointment/${_upcoming.first['id']}'),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColor,
+                            borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: const BoxDecoration(
+                                          color: Color(0xFF4ADE80),
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        (_upcoming.first['status'] ?? 'Scheduled').toString().toUpperCase(),
+                                        style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${_upcoming.first['service'] ?? 'Consultation'} · ${_upcoming.first['date'] ?? 'Scheduled'}',
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                  ),
+                                  if (_upcoming.first['provider'] != null && _upcoming.first['provider']['name'] != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2),
+                                      child: Text(
+                                        _upcoming.first['provider']['name'].toString(),
+                                        style: const TextStyle(color: Colors.white70, fontSize: 11),
                                       ),
                                     ),
-                                    const SizedBox(width: 6),
-                                    const Text('Active Service', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                const Text('Doctor Home Visit · Today 10:00', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                                const SizedBox(height: 2),
-                                const Text('Dr. Meron Alemu · On the way (ETA 12 min)', style: TextStyle(color: Colors.white70, fontSize: 11)),
-                              ],
-                            ),
-                            const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 16),
-                          ],
+                                ],
+                              ),
+                              const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 16),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 16),
+                    ],
 
                     const SizedBox(height: 20),
 

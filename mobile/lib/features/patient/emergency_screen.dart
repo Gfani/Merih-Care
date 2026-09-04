@@ -56,7 +56,7 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> with SingleTi
       if (mounted) {
         setState(() {
           _searching = false;
-          _status = 'Emergency Unit Dispatched to $locDesc! Dr. Meron Alemu is on the way.';
+          _status = 'Emergency Medical Unit Dispatched to $locDesc! First responder is en route.';
         });
         _startEtaCountdown();
       }

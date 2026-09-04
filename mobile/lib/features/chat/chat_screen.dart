@@ -54,7 +54,7 @@ class _ChatScreenState extends State<ChatScreen> {
         title: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Dr. Meron Alemu', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            Text('Care Specialist', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
             Text('Online', style: TextStyle(fontSize: 10, color: Colors.green)),
           ],
         ),

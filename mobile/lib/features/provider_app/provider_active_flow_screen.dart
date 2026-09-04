@@ -38,13 +38,13 @@ class _ProviderActiveFlowScreenState extends ConsumerState<ProviderActiveFlowScr
   final TextEditingController _prescriptionsController = TextEditingController(text: 'Amoxicillin 500mg PO TID x 5 days');
 
   final Map<String, dynamic> _requestData = {
-    'id': 'req-901',
-    'patientName': 'Tigist Bekele',
-    'patientPhone': '+251 91 234 5678',
-    'service': 'Doctor Home Visit',
-    'address': 'Bole Subcity, Kebele 03, House 452, Addis Ababa',
-    'distanceKm': 2.4,
-    'etaMinutes': 12,
+    'id': 'req-active',
+    'patientName': 'Patient',
+    'patientPhone': '',
+    'service': 'Home Care Visit',
+    'address': 'Patient Location, Addis Ababa',
+    'distanceKm': 2.0,
+    'etaMinutes': 10,
     'grossFee': 800.0,
     'commissionRate': 0.15,
   };

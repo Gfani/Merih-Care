@@ -177,6 +177,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  void updateUser(Map<String, dynamic> user) {
+    state = state.copyWith(user: user);
+  }
+
   Future<void> logout() async {
     await SecureStorage.instance.deleteToken();
     state = AuthState(status: AuthStatus.unauthenticated);

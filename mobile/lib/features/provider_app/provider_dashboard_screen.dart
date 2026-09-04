@@ -102,7 +102,10 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
     final auth = ref.watch(authProvider);
     final locationState = ref.watch(locationProvider);
     final user = auth.user;
-    final fullName = user?['name'] ?? 'Dr. Meron Alemu';
+    final rawName = user?['name']?.toString().trim();
+    final fullName = (rawName != null && rawName.isNotEmpty)
+        ? rawName
+        : (user?['email'] != null ? user!['email'].toString().split('@')[0] : 'Healthcare Provider');
     final firstName = fullName.split(' ')[0];
 
     return Scaffold(
@@ -134,7 +137,11 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
                             ),
                           ],
                         ),
-                        AvatarWidget(name: fullName, radius: 22, verified: true),
+                        InkWell(
+                          onTap: () => context.push('/profile-settings'),
+                          borderRadius: BorderRadius.circular(22),
+                          child: AvatarWidget(name: fullName, radius: 22, verified: true),
+                        ),
                       ],
                     ),
 

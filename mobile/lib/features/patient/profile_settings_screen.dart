@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../auth/auth_provider.dart';
+import '../../core/network/network_providers.dart';
 import '../../app.dart';
 
 class ProfileSettingsScreen extends ConsumerStatefulWidget {
@@ -17,10 +18,36 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
   String _selectedLanguage = 'en';
 
   @override
+  void initState() {
+    super.initState();
+    Future.microtask(() => _fetchProfile());
+  }
+
+  Future<void> _fetchProfile() async {
+    try {
+      final client = ref.read(apiClientProvider);
+      final response = await client.dio.get('/auth/profile');
+      final dynamic data = response.data;
+      if (data is Map<String, dynamic> && mounted) {
+        ref.read(authProvider.notifier).updateUser(data);
+      }
+    } catch (_) {}
+  }
+
+  @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
     final user = auth.user ?? {};
     final theme = Theme.of(context);
+
+    final displayName = (user['name'] != null && user['name'].toString().trim().isNotEmpty)
+        ? user['name'].toString().trim()
+        : (user['email'] != null ? user['email'].toString().split('@')[0] : 'User');
+    final displayEmail = (user['email'] != null && user['email'].toString().isNotEmpty)
+        ? user['email'].toString()
+        : (user['phone'] != null ? user['phone'].toString() : 'No email associated');
+    final role = (user['role'] ?? 'patient').toString().toUpperCase();
+    final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : 'U';
 
     return Scaffold(
       appBar: AppBar(title: const Text('Account Settings')),
@@ -37,9 +64,9 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                 children: [
                   CircleAvatar(
                     radius: 28,
-                    backgroundColor: theme.primaryColor.withOpacity(0.1),
+                    backgroundColor: theme.primaryColor.withValues(alpha: 0.1),
                     child: Text(
-                      (user['name'] ?? 'P')[0].toUpperCase(),
+                      initial,
                       style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold, fontSize: 18),
                     ),
                   ),
@@ -48,8 +75,40 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(user['name'] ?? 'Patient Name', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        Text(user['email'] ?? 'patient@merihcare.et', style: const TextStyle(color: Color(0xFF8A9AAA), fontSize: 12)),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                displayName,
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: theme.primaryColor.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                role,
+                                style: TextStyle(
+                                  color: theme.primaryColor,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(displayEmail, style: const TextStyle(color: Color(0xFF8A9AAA), fontSize: 12)),
+                        if (user['phone'] != null && user['phone'].toString().isNotEmpty && user['email'] != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(user['phone'].toString(), style: const TextStyle(color: Color(0xFF8A9AAA), fontSize: 11)),
+                          ),
                       ],
                     ),
                   ),

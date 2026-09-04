@@ -18,28 +18,6 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
   Map<String, dynamic>? _provider;
   bool _loading = true;
 
-  final Map<String, dynamic> _fallbackProvider = {
-    'id': 'p-201',
-    'name': 'Dr. Meron Alemu',
-    'title': 'General Practitioner (MD)',
-    'specialty': 'Doctor Home Visit',
-    'avatar': 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=200&h=200&fit=crop&auto=format',
-    'rating': 4.9,
-    'reviewCount': 38,
-    'experience': 8,
-    'pricePerVisit': 800,
-    'distance': '1.2 km away',
-    'serviceArea': 'Bole, Kazanchis, Old Airport, Sarbet',
-    'languages': ['Amharic', 'English', 'Afaan Oromoo'],
-    'qualifications': ['MD - Addis Ababa University (Black Lion Hospital)', 'Board Certified General Medicine', 'Advanced Life Support (ACLS)'],
-    'verified': true,
-    'bio': 'Dr. Meron Alemu is a dedicated general practitioner with 8+ years of clinical experience in home healthcare. She specializes in chronic disease management (hypertension, diabetes), post-operative recovery, and personalized home wellness consultations.',
-    'reviews': [
-      {'author': 'Tigist Bekele', 'rating': 5.0, 'date': 'Yesterday', 'comment': 'Dr. Meron arrived on time, was extremely thorough, and prescribed effective treatments.'},
-      {'author': 'Dawit Haile', 'rating': 4.8, 'date': '3 days ago', 'comment': 'Very kind and attentive with my elderly father. Highly recommended!'},
-    ],
-  };
-
   @override
   void initState() {
     super.initState();
@@ -51,9 +29,9 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
       final client = ref.read(apiClientProvider);
       final response = await client.dio.get('/providers/${widget.providerId}');
       final dynamic raw = response.data;
-      final Map<String, dynamic> data = (raw is Map<String, dynamic> && raw.containsKey('data') && raw['data'] is Map<String, dynamic>)
+      final Map<String, dynamic>? data = (raw is Map<String, dynamic> && raw.containsKey('data') && raw['data'] is Map<String, dynamic>)
           ? raw['data'] as Map<String, dynamic>
-          : (raw is Map<String, dynamic> ? raw : _fallbackProvider);
+          : (raw is Map<String, dynamic> ? raw : null);
       if (mounted) {
         setState(() {
           _provider = data;
@@ -63,7 +41,7 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
     } catch (_) {
       if (mounted) {
         setState(() {
-          _provider = _fallbackProvider;
+          _provider = null;
           _loading = false;
         });
       }
@@ -79,14 +57,32 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
       );
     }
 
-    final p = _provider ?? _fallbackProvider;
-    final name = p['name'] ?? p['user']?['name'] ?? 'Provider';
+    if (_provider == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Provider Profile')),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.person_off_outlined, size: 56, color: AppTheme.textMuted),
+              const SizedBox(height: 12),
+              const Text('Healthcare provider profile not found', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              ElevatedButton(onPressed: () => context.pop(), child: const Text('Go Back')),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final p = _provider!;
+    final name = p['name'] ?? p['user']?['name'] ?? 'Healthcare Provider';
     final title = p['title'] ?? p['specialty'] ?? 'Healthcare Specialist';
-    final rating = (p['rating'] as num?)?.toDouble() ?? 4.9;
-    final reviewCount = p['reviewCount'] as int? ?? 38;
-    final experience = p['experience'] ?? 8;
+    final rating = (p['rating'] as num?)?.toDouble() ?? 5.0;
+    final reviewCount = p['reviewCount'] as int? ?? 0;
+    final experience = p['experience'] ?? 0;
     final price = p['pricePerVisit'] ?? p['hourlyRate'] ?? 800;
-    final bio = p['bio'] ?? 'Dedicated healthcare professional.';
+    final bio = p['bio'] ?? 'Verified healthcare professional providing home medical care.';
     final languages = (p['languages'] as List?) ?? ['Amharic', 'English'];
     final qualifications = (p['qualifications'] as List?) ?? ['Licensed Medical Clinician'];
     final reviews = (p['reviews'] as List?) ?? [];

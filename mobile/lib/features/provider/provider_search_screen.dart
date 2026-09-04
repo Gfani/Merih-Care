@@ -54,58 +54,17 @@ class _ProviderSearchScreenState extends ConsumerState<ProviderSearchScreen> {
         'search': _searchController.text.trim(),
       });
       if (mounted) {
+        final dynamic raw = response.data;
+        final List list = raw is List ? raw : (raw is Map && raw['data'] is List ? raw['data'] : []);
         setState(() {
-          _providers = response.data;
+          _providers = list;
           _loading = false;
         });
       }
     } catch (_) {
       if (mounted) {
         setState(() {
-          _providers = [
-            {
-              'id': 'p-201',
-              'name': 'Dr. Meron Alemu',
-              'title': 'General Practitioner (MD)',
-              'specialty': 'Doctor Visit',
-              'rating': 4.9,
-              'reviewCount': 38,
-              'experience': 8,
-              'pricePerVisit': 800,
-              'distance': '1.2 km away',
-              'avatar': 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=200&h=200&fit=crop&auto=format',
-              'verified': true,
-              'bio': 'Specialized physician offering comprehensive home checkups for chronic illness, elderly care, and routine health.',
-            },
-            {
-              'id': 'p-202',
-              'name': 'Hiwot Girma',
-              'title': 'Registered Home Nurse (BSc)',
-              'specialty': 'Nursing Care',
-              'rating': 4.8,
-              'reviewCount': 52,
-              'experience': 6,
-              'pricePerVisit': 450,
-              'distance': '2.5 km away',
-              'avatar': 'https://images.unsplash.com/photo-1594824813681-427f71b95f2d?w=200&h=200&fit=crop&auto=format',
-              'verified': true,
-              'bio': 'Post-op care, IV infusions, wound dressing, catheter care, and vital signs monitoring.',
-            },
-            {
-              'id': 'p-203',
-              'name': 'Yohannes Tadesse',
-              'title': 'Licensed Physiotherapist (DPT)',
-              'specialty': 'Physiotherapy',
-              'rating': 5.0,
-              'reviewCount': 24,
-              'experience': 10,
-              'pricePerVisit': 600,
-              'distance': '3.1 km away',
-              'avatar': 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=200&h=200&fit=crop&auto=format',
-              'verified': true,
-              'bio': 'Physical rehabilitation, mobility restoration, stroke recovery, and musculoskeletal pain relief.',
-            },
-          ];
+          _providers = [];
           _loading = false;
         });
       }
