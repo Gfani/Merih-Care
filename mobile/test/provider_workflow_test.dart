@@ -3,15 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('Provider Workflow Tests', () {
     test('Should handle provider availability schedule and status toggles', () {
-      var isAvailable = true;
-      var currentStatus = isAvailable ? 'available' : 'busy';
+      String getStatus(bool available) => available ? 'available' : 'busy';
 
-      expect(currentStatus, 'available');
-
-      // Provider accepts urgent dispatch
-      isAvailable = false;
-      currentStatus = isAvailable ? 'available' : 'busy';
-      expect(currentStatus, 'busy');
+      expect(getStatus(true), 'available');
+      expect(getStatus(false), 'busy');
     });
 
     test('Should structure and format visit clinical notes', () {
@@ -37,8 +32,8 @@ void main() {
       const grossEarnings = 1000.0;
       const commissionRate = 0.15; // 15% platform commission
 
-      final platformFee = grossEarnings * commissionRate;
-      final netEarnings = grossEarnings - platformFee;
+      const platformFee = grossEarnings * commissionRate;
+      const netEarnings = grossEarnings - platformFee;
 
       expect(platformFee, 150.0);
       expect(netEarnings, 850.0);

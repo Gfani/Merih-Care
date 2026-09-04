@@ -214,9 +214,6 @@ export class PaymentsService {
     const apt = await this.appointmentRepo.findOne({ where: { id: appointmentId } });
     if (!apt) throw new BadRequestException("Appointment not found");
 
-    const amount = amountOverride || apt.amount || 800;
-    const txRef = `TXN-${crypto.randomUUID()}`;
-
     // Verify actor authority
     let isAdmin = false;
     try {
@@ -226,12 +223,37 @@ export class PaymentsService {
       isAdmin = actorId === "u-admin" || actorId === "admin";
     }
 
+    // 1. Ensure patient owns the appointment (or actor is admin)
+    if (!isAdmin && apt.patientId && apt.patientId !== actorId) {
+      throw new ForbiddenException("You cannot submit payments for an appointment belonging to another patient");
+    }
+
+    // 2. Untrusted clients cannot override the invoice amount
+    const amount = isAdmin && amountOverride ? amountOverride : (apt.amount || 800);
+
+    // 3. Manual Telebirr/CBE payments submitted by patients require transaction reference evidence
+    if (!isAdmin && (method === "telebirr" || method === "cbe_birr") && (!accountNumber || accountNumber.trim().length < 4)) {
+      throw new BadRequestException("A valid transaction reference / receipt code is required for Telebirr or CBE Birr verification");
+    }
+
+    // 4. Check for duplicate transaction reference submissions
+    if (accountNumber) {
+      const existingEvent = await this.eventRepo.findOne({
+        where: { paymentId: accountNumber },
+      });
+      if (existingEvent) {
+        throw new BadRequestException("This transaction reference has already been submitted");
+      }
+    }
+
+    const txRef = `TXN-${crypto.randomUUID()}`;
+
     // Patients cannot self-approve successful payments.
     // If initiated by non-admin patient, record as pending verification.
     if (!isAdmin) {
       const event = new PaymentEventEntity();
       event.id = `evt-${crypto.randomUUID()}`;
-      event.paymentId = txRef;
+      event.paymentId = accountNumber || txRef;
       event.eventType = "charge_pending";
       event.payload = JSON.stringify({ appointmentId, amount, method, actorId, accountNumber, pendingVerification: true });
       event.createdAt = new Date();

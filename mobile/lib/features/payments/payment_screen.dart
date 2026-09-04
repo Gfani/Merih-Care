@@ -19,7 +19,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   final _phoneController = TextEditingController(text: '0911223344');
   String _selectedMethod = 'telebirr';
   bool _loading = false;
-  Map<String, dynamic>? _appointment;
   double _amount = 800.0;
   String _serviceName = 'Doctor Home Visit';
 

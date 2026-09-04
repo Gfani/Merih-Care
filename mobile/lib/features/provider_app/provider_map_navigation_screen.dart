@@ -169,22 +169,23 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
                               backgroundColor: Colors.white,
                               foregroundColor: theme.primaryColor,
                               tooltip: 'Auto-detect current GPS location',
-                              onPressed: () async {
-                                final detected = await ref.read(locationProvider.notifier).autoDetectCurrentLocation();
-                                if (detected != null && mounted) {
-                                  setState(() {
-                                    _distance = 2.0;
-                                    _eta = 7;
-                                  });
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('📍 GPS Recenetred: ${detected.shortAddress}'),
-                                      backgroundColor: theme.primaryColor,
-                                      duration: const Duration(seconds: 2),
-                                    ),
-                                  );
-                                }
-                              },
+                                onPressed: () async {
+                                  final detected = await ref.read(locationProvider.notifier).autoDetectCurrentLocation();
+                                  if (!mounted) return;
+                                  if (detected != null) {
+                                    setState(() {
+                                      _distance = 2.0;
+                                      _eta = 7;
+                                    });
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('📍 GPS Recenetred: ${detected.shortAddress}'),
+                                        backgroundColor: theme.primaryColor,
+                                        duration: const Duration(seconds: 2),
+                                      ),
+                                    );
+                                  }
+                                },
                               child: const Icon(Icons.my_location, size: 20),
                             ),
                           ),

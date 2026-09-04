@@ -65,12 +65,22 @@ export class AppointmentsService {
     const result = await this.dataSource.transaction(async (manager) => {
       // Prevent double booking if provider is pre-assigned
       if (data.providerId) {
+        // Acquire pessimistic lock on provider row to serialize concurrent booking transactions
+        try {
+          await manager.findOne(ProviderEntity, {
+            where: { id: data.providerId },
+            lock: { mode: "pessimistic_write" },
+          });
+        } catch {
+          // Fallback if underlying DB driver does not support row locks in test mode
+        }
+
         const collision = await manager.findOne(AppointmentEntity, {
           where: {
             providerId: data.providerId,
             date: data.date,
             time: data.time,
-            status: In(["scheduled", "accepted", "on_the_way", "arrived", "in_progress"]),
+            status: In(["requested", "scheduled", "accepted", "on_the_way", "arrived", "in_progress"]),
           },
         });
         if (collision) {

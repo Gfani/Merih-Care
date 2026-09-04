@@ -99,6 +99,37 @@ describe("Double-Booking Prevention Tests", () => {
         }),
       ).rejects.toThrow(ConflictException);
     });
+
+    it("should reject second concurrent booking when first booking occupies the slot in transaction", async () => {
+      let firstCalled = false;
+      mockTransactionManager.findOne.mockImplementation((entity: any) => {
+        if (entity === AppointmentEntity) {
+          if (!firstCalled) {
+            firstCalled = true;
+            return Promise.resolve(null);
+          }
+          return Promise.resolve({ id: "apt-winner", providerId: "prov-1", date: "2026-08-30", time: "10:00 AM" });
+        }
+        return Promise.resolve(null);
+      });
+
+      const firstBooking = await service.createAppointment({
+        patientId: "patient-1",
+        providerId: "prov-1",
+        date: "2026-08-30",
+        time: "10:00 AM",
+      });
+      expect(firstBooking).toBeDefined();
+
+      await expect(
+        service.createAppointment({
+          patientId: "patient-2",
+          providerId: "prov-1",
+          date: "2026-08-30",
+          time: "10:00 AM",
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
   });
 
   describe("rescheduleAppointment collision check", () => {

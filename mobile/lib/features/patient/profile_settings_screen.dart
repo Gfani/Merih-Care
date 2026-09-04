@@ -146,8 +146,9 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                       leading: const Icon(Icons.logout, color: Colors.red),
                       title: const Text('Sign Out', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.red)),
                       onTap: () async {
+                        final router = GoRouter.of(context);
                         await ref.read(authProvider.notifier).logout();
-                        if (mounted) context.go('/login');
+                        router.go('/login');
                       },
                     ),
                   ),

@@ -71,6 +71,7 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
       await client.dio.put('/appointments/$aptId/status', data: {
         'status': 'accepted',
       });
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Care request accepted! Proceeding to patient location.'),
@@ -79,8 +80,8 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
       );
       _loadDashboardData();
       context.push('/provider/active-request');
-    } catch (e) {
-      print('[PROVIDER] Accept error: $e');
+    } catch (_) {
+      if (!mounted) return;
       context.push('/provider/active-request');
     }
   }
@@ -111,11 +112,13 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
           children: [
             const OfflineBanner(),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+              child: _loading
+                  ? const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()))
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                     // ─── Header: Greeting & Avatar ────────────────────────────────────────
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
