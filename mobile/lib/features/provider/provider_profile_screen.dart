@@ -25,6 +25,7 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
   }
 
   Future<void> _loadProfile() async {
+    setState(() => _loading = true);
     try {
       final client = ref.read(apiClientProvider);
       final response = await client.dio.get('/providers/${widget.providerId}');
@@ -38,7 +39,8 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
           _loading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      print('[PROVIDER_PROFILE] Error loading provider profile: $e');
       if (mounted) {
         setState(() {
           _provider = null;
@@ -61,15 +63,38 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
       return Scaffold(
         appBar: AppBar(title: const Text('Provider Profile')),
         body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.person_off_outlined, size: 56, color: AppTheme.textMuted),
-              const SizedBox(height: 12),
-              const Text('Healthcare provider profile not found', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              ElevatedButton(onPressed: () => context.pop(), child: const Text('Go Back')),
-            ],
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.person_off_outlined, size: 56, color: AppTheme.textMuted),
+                const SizedBox(height: 12),
+                const Text('Healthcare provider profile not found', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                const Text(
+                  'The requested provider may be offline or unavailable at this moment.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () => context.pop(),
+                      child: const Text('Go Back'),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: _loadProfile,
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -227,7 +252,7 @@ class _ProviderProfileScreenState extends ConsumerState<ProviderProfileScreen> {
         padding: const EdgeInsets.all(16),
         child: SafeArea(
           child: ElevatedButton(
-            onPressed: () => context.push('/booking?providerId=${widget.providerId}'),
+            onPressed: () => context.push('/booking?providerId=${_provider?['id'] ?? widget.providerId}'),
             child: const Text('Book Home Appointment'),
           ),
         ),

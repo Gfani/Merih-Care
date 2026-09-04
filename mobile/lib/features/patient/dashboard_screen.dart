@@ -431,25 +431,72 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       onAction: () => context.push('/search-provider'),
                     ),
                     const SizedBox(height: 10),
-                    SizedBox(
-                      height: 130,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _providers.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 10),
-                        itemBuilder: (context, index) {
-                          final provider = _providers[index];
-                          return SizedBox(
-                            width: 220,
-                            child: ProviderCardWidget(
-                              provider: provider,
-                              compact: true,
-                              onTap: () => context.push('/provider/${provider['id']}'),
+                    _providers.isEmpty
+                        ? Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppTheme.borderColor),
                             ),
-                          );
-                        },
-                      ),
-                    ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.medical_services_outlined, color: AppTheme.primaryColor, size: 24),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Verified Providers Nearby',
+                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textPrimary),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      const Text(
+                                        'Browse all licensed clinicians ready for home visits.',
+                                        style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: () => context.push('/search-provider'),
+                                  child: const Text('Browse', style: TextStyle(fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            ),
+                          )
+                        : SizedBox(
+                            height: 130,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: _providers.length,
+                              separatorBuilder: (_, __) => const SizedBox(width: 10),
+                              itemBuilder: (context, index) {
+                                final provider = _providers[index];
+                                final name = provider['name'] ?? provider['user']?['name'] ?? 'Healthcare Provider';
+                                return SizedBox(
+                                  width: 220,
+                                  child: ProviderCardWidget(
+                                    provider: {
+                                      ...provider,
+                                      'name': name,
+                                    },
+                                    compact: true,
+                                    onTap: () => context.push('/provider/${provider['id']}'),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
                     const SizedBox(height: 20),
                   ],
                 ),

@@ -166,6 +166,102 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                 ],
               ),
             ),
+            if (user['role'] == 'provider') ...[
+              const SizedBox(height: 24),
+              const Text('HEALTHCARE PROVIDER PORTAL', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF8A9AAA), fontSize: 11)),
+              const SizedBox(height: 8),
+              Card(
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.badge_outlined, color: Color(0xFF0D7C6A)),
+                      title: const Text('Professional Profile', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      subtitle: const Text('Title, bio, services, and consultation visit fee', style: TextStyle(fontSize: 11)),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => context.push('/provider/profile'),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.schedule_outlined, color: Color(0xFF0D7C6A)),
+                      title: const Text('Availability & Hours', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      subtitle: const Text('Manage your working shifts and online dispatch status', style: TextStyle(fontSize: 11)),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => context.push('/provider/availability'),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF0D7C6A)),
+                      title: const Text('Earnings & Payouts', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      subtitle: const Text('Review weekly gross income, commissions, and bank payouts', style: TextStyle(fontSize: 11)),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => context.push('/provider/earnings'),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.verified_user_outlined, color: Color(0xFF0D7C6A)),
+                      title: const Text('Medical Credentials', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      subtitle: const Text('Upload professional license and government accreditation', style: TextStyle(fontSize: 11)),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => context.push('/provider/credentials'),
+                    ),
+                  ],
+                ),
+              ),
+            ] else ...[
+              const SizedBox(height: 24),
+              const Text('PATIENT CARE', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF8A9AAA), fontSize: 11)),
+              const SizedBox(height: 8),
+              Card(
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.calendar_month_outlined, color: Color(0xFF0D7C6A)),
+                      title: const Text('My Appointments', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      subtitle: const Text('Track upcoming home visits and booking history', style: TextStyle(fontSize: 11)),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => context.push('/appointments'),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.folder_shared_outlined, color: Color(0xFF0D7C6A)),
+                      title: const Text('Medical Records', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      subtitle: const Text('View lab tests, prescriptions, and visit summaries', style: TextStyle(fontSize: 11)),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => context.push('/medical-records'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+            const Text('APP EXPERIENCE & ROLE SWITCHER', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF8A9AAA), fontSize: 11)),
+            const SizedBox(height: 8),
+            Card(
+              child: ListTile(
+                leading: Icon(
+                  user['role'] == 'provider' ? Icons.personal_injury_outlined : Icons.health_and_safety_outlined,
+                  color: theme.primaryColor,
+                ),
+                title: Text(
+                  user['role'] == 'provider' ? 'Switch to Patient Mode' : 'Switch to Healthcare Provider Mode',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(
+                  user['role'] == 'provider'
+                      ? 'Browse providers and book home health care as a patient'
+                      : 'Accept patient dispatch calls and manage clinical schedule',
+                  style: const TextStyle(fontSize: 11),
+                ),
+                trailing: const Icon(Icons.swap_horiz, color: Color(0xFF0D7C6A)),
+                onTap: () {
+                  if (user['role'] == 'provider') {
+                    context.go('/dashboard');
+                  } else {
+                    context.go('/provider-dashboard');
+                  }
+                },
+              ),
+            ),
             const SizedBox(height: 24),
             const Text('ACCOUNT CONTROL', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF8A9AAA), fontSize: 11)),
             const SizedBox(height: 8),

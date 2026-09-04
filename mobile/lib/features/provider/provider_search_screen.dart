@@ -49,10 +49,16 @@ class _ProviderSearchScreenState extends ConsumerState<ProviderSearchScreen> {
     setState(() => _loading = true);
     try {
       final client = ref.read(apiClientProvider);
-      final response = await client.dio.get('/providers', queryParameters: {
-        if (_selectedSpecialty != null && _selectedSpecialty != 'All') 'specialty': _selectedSpecialty,
-        'search': _searchController.text.trim(),
-      });
+      final queryParams = <String, dynamic>{};
+      if (_selectedSpecialty != null && _selectedSpecialty != 'All') {
+        queryParams['specialty'] = _selectedSpecialty;
+      }
+      final term = _searchController.text.trim();
+      if (term.isNotEmpty) {
+        queryParams['search'] = term;
+      }
+
+      final response = await client.dio.get('/providers', queryParameters: queryParams);
       if (mounted) {
         final dynamic raw = response.data;
         final List list = raw is List ? raw : (raw is Map && raw['data'] is List ? raw['data'] : []);
@@ -61,7 +67,8 @@ class _ProviderSearchScreenState extends ConsumerState<ProviderSearchScreen> {
           _loading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      print('[PROVIDER_SEARCH] Error loading providers: $e');
       if (mounted) {
         setState(() {
           _providers = [];
@@ -190,24 +197,59 @@ class _ProviderSearchScreenState extends ConsumerState<ProviderSearchScreen> {
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : filtered.isEmpty
-                      ? const Center(
-                          child: Text('No providers found matching your criteria.', style: TextStyle(color: AppTheme.textMuted)),
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24.0),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.search_off_outlined, size: 52, color: AppTheme.textMuted),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'No healthcare providers found',
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                                ),
+                                const SizedBox(height: 6),
+                                const Text(
+                                  'Try adjusting your search keywords or specialty filter.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                                ),
+                                const SizedBox(height: 16),
+                                OutlinedButton.icon(
+                                  onPressed: () {
+                                    setState(() {
+                                      _searchController.clear();
+                                      _selectedSpecialty = 'All';
+                                      _minRating = 0.0;
+                                    });
+                                    _loadProviders();
+                                  },
+                                  icon: const Icon(Icons.refresh, size: 16),
+                                  label: const Text('Reset All Filters'),
+                                ),
+                              ],
+                            ),
+                          ),
                         )
-                      : ListView.separated(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: filtered.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final provider = filtered[index];
-                            final name = provider['name'] ?? provider['user']?['name'] ?? 'Provider';
-                            return ProviderCardWidget(
-                              provider: {
-                                ...provider,
-                                'name': name,
-                              },
-                              onTap: () => context.push('/provider/${provider['id']}'),
-                            );
-                          },
+                      : RefreshIndicator(
+                          onRefresh: _loadProviders,
+                          child: ListView.separated(
+                            padding: const EdgeInsets.all(16),
+                            itemCount: filtered.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: 12),
+                            itemBuilder: (context, index) {
+                              final provider = filtered[index];
+                              final name = provider['name'] ?? provider['user']?['name'] ?? 'Healthcare Provider';
+                              return ProviderCardWidget(
+                                provider: {
+                                  ...provider,
+                                  'name': name,
+                                },
+                                onTap: () => context.push('/provider/${provider['id']}'),
+                              );
+                            },
+                          ),
                         ),
             ),
           ],

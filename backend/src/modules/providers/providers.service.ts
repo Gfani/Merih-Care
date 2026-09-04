@@ -39,7 +39,9 @@ export class ProvidersService {
     offset = 0,
     userLat?: number,
     userLon?: number,
-    verified?: string
+    verified?: string,
+    search?: string,
+    specialty?: string
   ): Promise<any[]> {
     const where: any = {};
     if (verified !== undefined) {
@@ -53,7 +55,7 @@ export class ProvidersService {
       order: { createdAt: "DESC" as any },
     });
 
-    return providers.map((p) => {
+    let results = providers.map((p) => {
       const copy: any = { ...p, services: p.services };
 
       // Compute dynamic distance if coordinates available
@@ -67,6 +69,27 @@ export class ProvidersService {
       }
       return copy;
     });
+
+    if (specialty && specialty !== "All") {
+      const lower = specialty.toLowerCase();
+      results = results.filter(
+        (p) =>
+          (p.title && p.title.toLowerCase().includes(lower)) ||
+          (p.services && p.services.some((s: string) => s.toLowerCase().includes(lower)))
+      );
+    }
+
+    if (search && search.trim().length > 0) {
+      const lower = search.trim().toLowerCase();
+      results = results.filter(
+        (p) =>
+          (p.name && p.name.toLowerCase().includes(lower)) ||
+          (p.title && p.title.toLowerCase().includes(lower)) ||
+          (p.services && p.services.some((s: string) => s.toLowerCase().includes(lower)))
+      );
+    }
+
+    return results;
   }
 
   async getProviderById(id: string): Promise<ProviderEntity> {
@@ -78,6 +101,38 @@ export class ProvidersService {
       throw new NotFoundException(`Provider with ID ${id} not found`);
     }
     return provider;
+  }
+
+  async getProviderByUserId(userId: string): Promise<ProviderEntity | null> {
+    return this.providerRepo.findOne({
+      where: { userId },
+      relations: ["user"],
+    });
+  }
+
+  async updateProviderByUserId(userId: string, data: Partial<ProviderEntity>): Promise<ProviderEntity> {
+    let provider = await this.providerRepo.findOne({ where: { userId } });
+    if (!provider) {
+      provider = new ProviderEntity();
+      provider.id = `prov-${crypto.randomUUID()}`;
+      provider.userId = userId;
+      provider.name = data.name || "Healthcare Provider";
+      provider.title = data.title || "Healthcare Specialist";
+      provider.status = "active";
+      provider.available = true;
+    }
+    if (data.name !== undefined) provider.name = data.name;
+    if (data.title !== undefined) provider.title = data.title;
+    if (data.pricePerVisit !== undefined) provider.pricePerVisit = data.pricePerVisit;
+    if (data.available !== undefined) provider.available = data.available;
+    if (data.latitude !== undefined) provider.latitude = data.latitude;
+    if (data.longitude !== undefined) provider.longitude = data.longitude;
+    if (data.services !== undefined) provider.services = data.services;
+    if (data.avatar !== undefined) provider.avatar = data.avatar;
+    if (data.experience !== undefined) provider.experience = data.experience;
+    if (data.status !== undefined) provider.status = data.status;
+
+    return this.providerRepo.save(provider);
   }
 
   async createProvider(data: Partial<ProviderEntity>): Promise<ProviderEntity> {

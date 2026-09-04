@@ -5,11 +5,12 @@ import { AuthService } from "./auth.service";
 import { AuthController } from "./auth.controller";
 import { UserEntity } from "../../database/entities/user.entity";
 import { SessionEntity } from "../../database/entities/session.entity";
+import { ProviderEntity } from "../../database/entities/provider.entity";
 import { NotificationsModule } from "../notifications/notifications.module";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([UserEntity, SessionEntity]),
+    TypeOrmModule.forFeature([UserEntity, SessionEntity, ProviderEntity]),
     forwardRef(() => NotificationsModule),
     JwtModule.register({
       secret: process.env.JWT_SECRET || "super_secret_jwt_key_change_me_in_production",

@@ -86,8 +86,16 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
     }
   }
 
-  void _toggleOnline() {
-    setState(() => _isOnline = !_isOnline);
+  Future<void> _toggleOnline() async {
+    final next = !_isOnline;
+    setState(() => _isOnline = next);
+    try {
+      final client = ref.read(apiClientProvider);
+      await client.dio.put('/providers/me', data: {'available': next});
+    } catch (e) {
+      print('[PROVIDER] Failed to sync availability: $e');
+    }
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(_isOnline ? 'You are now Online and receiving patient dispatches.' : 'You are now Offline.'),

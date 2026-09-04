@@ -30,6 +30,7 @@ import '../../features/provider_app/provider_appointment_details_screen.dart';
 import '../../features/provider_app/provider_map_navigation_screen.dart';
 import '../../features/provider_app/provider_earnings_screen.dart';
 import '../../features/provider_app/provider_active_flow_screen.dart';
+import '../../features/provider_app/provider_edit_profile_screen.dart';
 
 class RouterNotifier extends ChangeNotifier {
   final Ref _ref;
@@ -92,10 +93,6 @@ final appRouter = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
-        path: '/provider/:id',
-        builder: (ctx, state) => ProviderProfileScreen(providerId: state.pathParameters['id']!),
-      ),
-      GoRoute(
         path: '/booking',
         builder: (ctx, state) => BookingScreen(providerId: state.uri.queryParameters['providerId'] ?? ''),
       ),
@@ -125,6 +122,7 @@ final appRouter = Provider<GoRouter>((ref) {
 
       // Provider App Routes
       GoRoute(path: '/provider-dashboard', builder: (ctx, _) => const ProviderDashboardScreen()),
+      GoRoute(path: '/provider/profile', builder: (ctx, _) => const ProviderEditProfileScreen()),
       GoRoute(path: '/provider/active-request', builder: (ctx, _) => const ProviderActiveFlowScreen()),
       GoRoute(path: '/provider/credentials', builder: (ctx, _) => const CredentialsUploadScreen()),
       GoRoute(path: '/provider/availability', builder: (ctx, _) => const ProviderAvailabilityScreen()),
@@ -137,6 +135,16 @@ final appRouter = Provider<GoRouter>((ref) {
         builder: (ctx, state) => ProviderMapNavigationScreen(appointmentId: state.pathParameters['id']!),
       ),
       GoRoute(path: '/provider/earnings', builder: (ctx, _) => const ProviderEarningsScreen()),
+
+      // Provider Profile (Patient view & alias)
+      GoRoute(
+        path: '/providers/:id',
+        builder: (ctx, state) => ProviderProfileScreen(providerId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/provider/:id',
+        builder: (ctx, state) => ProviderProfileScreen(providerId: state.pathParameters['id']!),
+      ),
     ],
   );
 });

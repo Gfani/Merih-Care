@@ -3,6 +3,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { UserEntity } from "../../database/entities/user.entity";
 import { SessionEntity } from "../../database/entities/session.entity";
+import { ProviderEntity } from "../../database/entities/provider.entity";
 import * as bcrypt from "bcryptjs";
 import * as crypto from "crypto";
 import { JwtService } from "@nestjs/jwt";
@@ -19,6 +20,9 @@ export class AuthService {
     @Optional()
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService?: NotificationsService,
+    @Optional()
+    @InjectRepository(ProviderEntity)
+    private readonly providerRepo?: Repository<ProviderEntity>,
   ) {}
 
   private hashToken(token: string): string {
@@ -105,7 +109,27 @@ export class AuthService {
       user.isApproved = true;
     }
 
-    return this.userRepo.save(user);
+    const savedUser = await this.userRepo.save(user);
+
+    if (role === "provider" && this.providerRepo) {
+      try {
+        const provider = new ProviderEntity();
+        provider.id = "prov-" + crypto.randomUUID();
+        provider.userId = savedUser.id;
+        provider.name = savedUser.name;
+        provider.title = "Healthcare Specialist";
+        provider.pricePerVisit = 800;
+        provider.available = true;
+        provider.status = "active";
+        provider.verified = false;
+        provider.services = ["Doctor Visit", "Home Nursing"];
+        await this.providerRepo.save(provider);
+      } catch (err) {
+        console.error("[AUTH] Failed to auto-create provider entity:", err);
+      }
+    }
+
+    return savedUser;
   }
 
   async createSession(userId: string, userAgent: string, ipAddress: string): Promise<any> {
@@ -133,6 +157,11 @@ export class AuthService {
     session.lastActive = new Date().toISOString();
     await this.sessionRepo.save(session);
 
+    let providerData = null;
+    if (user.role === "provider" && this.providerRepo) {
+      providerData = await this.providerRepo.findOne({ where: { userId: user.id } }).catch(() => null);
+    }
+
     return {
       access_token: accessToken,
       refresh_token: refreshToken,
@@ -143,6 +172,7 @@ export class AuthService {
         role: user.role,
         adminRole: user.adminRole,
         mfaEnabled: user.mfaEnabled,
+        provider: providerData,
       }
     };
   }
@@ -302,6 +332,12 @@ export class AuthService {
     const user = await this.userRepo.findOne({ where: { id } });
     if (!user) return null;
     const { password, ...result } = user;
+    if (user.role === "provider" && this.providerRepo) {
+      const provider = await this.providerRepo.findOne({ where: { userId: id } }).catch(() => null);
+      if (provider) {
+        (result as any).provider = provider;
+      }
+    }
     return result;
   }
 
