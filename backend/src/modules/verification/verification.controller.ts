@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, UseGuards, Body, Req } from "@nestjs/common";
+import { Controller, Get, Post, Put, Param, UseGuards, Body, Req } from "@nestjs/common";
 import { VerificationService } from "./verification.service";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 import { RolesGuard } from "../../shared/guards/roles.guard";
@@ -66,6 +66,21 @@ export class VerificationController {
   ) {
     const actorId = req.user?.id || "u-admin";
     return this.verificationService.assignReviewer(id, body.reviewerId, actorId);
+  }
+
+  @Put(":id")
+  async updateVerificationDecision(
+    @Param("id") id: string,
+    @Body() body: any,
+    @Req() req: any
+  ) {
+    const actorId = req.user?.id || req.user?.sub || "u-admin";
+    if (body.status === "verified" || body.status === "approved") {
+      return this.verificationService.approveProvider(id, actorId);
+    } else if (body.status === "rejected") {
+      return this.verificationService.rejectProvider(id, body.notes || "Application rejected", actorId);
+    }
+    return this.verificationService.requestCorrections(id, body.notes || "Corrections required", actorId);
   }
 
   @Post(":id/approve")

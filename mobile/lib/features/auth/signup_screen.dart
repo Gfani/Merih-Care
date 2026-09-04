@@ -157,7 +157,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       : () async {
                           if (_formKey.currentState!.validate()) {
                             setState(() => _loading = true);
-                            final ok = await ref.read(authProvider.notifier).signup(
+                            final result = await ref.read(authProvider.notifier).signup(
                                   _nameController.text.trim(),
                                   _emailController.text.trim(),
                                   _passwordController.text,
@@ -167,9 +167,37 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                             if (mounted) {
                               setState(() => _loading = false);
                             }
-                            if (ok && mounted) {
-                              if (_role == 'provider') {
-                                context.go('/provider-dashboard');
+                            if (!mounted) return;
+
+                            if (result.success) {
+                              if (result.pendingApproval || _role == 'provider') {
+                                await showDialog(
+                                  context: context,
+                                  barrierDismissible: false,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Row(
+                                      children: [
+                                        Icon(Icons.verified_user_outlined, color: Color(0xFF0F766E)),
+                                        SizedBox(width: 8),
+                                        Text('Application Received'),
+                                      ],
+                                    ),
+                                    content: Text(
+                                      result.message ??
+                                          'Your healthcare provider registration has been submitted for administrator review. '
+                                          'You will be granted access once your credentials have been verified and approved.',
+                                    ),
+                                    actions: [
+                                      ElevatedButton(
+                                        onPressed: () {
+                                          Navigator.of(ctx).pop();
+                                          context.go('/login');
+                                        },
+                                        child: const Text('Back to Sign In'),
+                                      ),
+                                    ],
+                                  ),
+                                );
                               } else {
                                 context.go('/dashboard');
                               }

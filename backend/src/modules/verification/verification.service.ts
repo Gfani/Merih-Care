@@ -1,9 +1,10 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { ProviderEntity } from "../../database/entities/provider.entity";
 import { VerificationReviewEntity } from "../../database/entities/verification.entity";
 import { VerificationHistoryEntity } from "../../database/entities/verification.entity";
+import { UserEntity } from "../../database/entities/user.entity";
 
 @Injectable()
 export class VerificationService {
@@ -14,6 +15,9 @@ export class VerificationService {
     private readonly reviewRepo: Repository<VerificationReviewEntity>,
     @InjectRepository(VerificationHistoryEntity)
     private readonly historyRepo: Repository<VerificationHistoryEntity>,
+    @Optional()
+    @InjectRepository(UserEntity)
+    private readonly userRepo?: Repository<UserEntity>,
   ) {}
 
   async getVerificationQueue(): Promise<any[]> {
@@ -29,7 +33,22 @@ export class VerificationService {
     if (provider) {
       provider.verified = true;
       provider.status = "verified";
+      provider.available = true;
       const savedProvider = await this.providerRepo.save(provider);
+
+      // Unlock associated user account
+      if (provider.userId && this.userRepo) {
+        try {
+          const user = await this.userRepo.findOne({ where: { id: provider.userId } });
+          if (user) {
+            user.isApproved = true;
+            user.status = "active";
+            await this.userRepo.save(user);
+          }
+        } catch (e) {
+          console.error("[VERIFICATION] Error approving user account:", e);
+        }
+      }
 
       // Save Review Audit
       const review = new VerificationReviewEntity();
@@ -60,7 +79,22 @@ export class VerificationService {
     if (provider) {
       provider.verified = false;
       provider.status = "rejected";
+      provider.available = false;
       const savedProvider = await this.providerRepo.save(provider);
+
+      // Update associated user account
+      if (provider.userId && this.userRepo) {
+        try {
+          const user = await this.userRepo.findOne({ where: { id: provider.userId } });
+          if (user) {
+            user.isApproved = false;
+            user.status = "rejected";
+            await this.userRepo.save(user);
+          }
+        } catch (e) {
+          console.error("[VERIFICATION] Error updating rejected user account:", e);
+        }
+      }
 
       // Save Review Audit
       const review = new VerificationReviewEntity();

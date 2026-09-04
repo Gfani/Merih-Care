@@ -44,8 +44,10 @@ export class ProvidersService {
     specialty?: string
   ): Promise<any[]> {
     const where: any = {};
-    if (verified !== undefined) {
+    if (verified !== undefined && verified !== "all") {
       where.verified = verified === "true";
+    } else if (verified === undefined) {
+      where.verified = true;
     }
 
     const providers = await this.providerRepo.find({

@@ -105,8 +105,12 @@ export class AuthService {
         user.adminRole = "super_admin";
         user.permissions = "all";
       }
+    } else if (role === "provider") {
+      user.isApproved = false; // Healthcare providers require administrator verification and approval
+      user.status = "pending_verification";
     } else {
       user.isApproved = true;
+      user.status = "active";
     }
 
     const savedUser = await this.userRepo.save(user);
@@ -119,8 +123,8 @@ export class AuthService {
         provider.name = savedUser.name;
         provider.title = "Healthcare Specialist";
         provider.pricePerVisit = 800;
-        provider.available = true;
-        provider.status = "active";
+        provider.available = false; // Disabled until admin approval
+        provider.status = "pending_verification";
         provider.verified = false;
         provider.services = ["Doctor Visit", "Home Nursing"];
         await this.providerRepo.save(provider);

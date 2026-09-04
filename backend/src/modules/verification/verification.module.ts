@@ -5,6 +5,7 @@ import { VerificationController } from "./verification.controller";
 import { ProviderEntity } from "../../database/entities/provider.entity";
 import { VerificationReviewEntity } from "../../database/entities/verification.entity";
 import { VerificationHistoryEntity } from "../../database/entities/verification.entity";
+import { UserEntity } from "../../database/entities/user.entity";
 import { AuthModule } from "../auth/auth.module";
 
 @Module({
@@ -12,7 +13,8 @@ import { AuthModule } from "../auth/auth.module";
     TypeOrmModule.forFeature([
       ProviderEntity, 
       VerificationReviewEntity, 
-      VerificationHistoryEntity
+      VerificationHistoryEntity,
+      UserEntity,
     ]),
     AuthModule,
   ],

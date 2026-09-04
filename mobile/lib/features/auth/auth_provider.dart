@@ -33,6 +33,18 @@ class AuthState {
   }
 }
 
+class SignupResult {
+  final bool success;
+  final bool pendingApproval;
+  final String? message;
+
+  const SignupResult({
+    required this.success,
+    this.pendingApproval = false,
+    this.message,
+  });
+}
+
 class AuthNotifier extends StateNotifier<AuthState> {
   final Ref _ref;
 
@@ -125,7 +137,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<bool> signup(String name, String email, String password, String phone, {String role = 'patient'}) async {
+  Future<SignupResult> signup(String name, String email, String password, String phone, {String role = 'patient'}) async {
     state = state.copyWith(errorMessage: null);
     try {
       print('[AUTH] signup: registering $email as $role...');
@@ -149,16 +161,31 @@ class AuthNotifier extends StateNotifier<AuthState> {
           ? (data['user'] as Map<String, dynamic>)
           : <String, dynamic>{'name': name, 'email': email, 'phone': phone, 'role': role};
 
-      if (token.isNotEmpty) {
-        await SecureStorage.instance.writeToken(token);
+      final bool isPending = role == 'provider' || token.isEmpty || user['isApproved'] == false;
+      final String? msg = (data['message'] ?? (rawData is Map<String, dynamic> ? rawData['message'] : null))?.toString();
+
+      if (isPending) {
+        print('[AUTH] signup: provider registered pending admin approval.');
+        state = AuthState(
+          status: AuthStatus.unauthenticated,
+          token: null,
+          user: user,
+        );
+        return SignupResult(
+          success: true,
+          pendingApproval: true,
+          message: msg ?? 'Registration submitted successfully. Your provider account is pending administrator approval before you can log in.',
+        );
       }
+
+      await SecureStorage.instance.writeToken(token);
       print('[AUTH] signup: token written. Authenticated: $email, role=${user['role']}');
       state = AuthState(
         status: AuthStatus.authenticated,
         token: token,
         user: user,
       );
-      return true;
+      return const SignupResult(success: true, pendingApproval: false);
     } on DioException catch (e) {
       print('[AUTH] signup DioError: status=${e.response?.statusCode}, body=${e.response?.data}');
       final dynamic body = e.response?.data;
@@ -169,11 +196,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
         msg = e.message!;
       }
       state = state.copyWith(errorMessage: msg);
-      return false;
+      return SignupResult(success: false, message: msg);
     } catch (e) {
       print('[AUTH] signup error: $e');
       state = state.copyWith(errorMessage: e.toString());
-      return false;
+      return SignupResult(success: false, message: e.toString());
     }
   }
 
