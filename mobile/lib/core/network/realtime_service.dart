@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:socket_io_client/socket_io_client.dart' as io;
+import 'io_client_base.dart';
 
 enum RealtimeConnectionState { disconnected, connecting, connected, authFailed }
 
@@ -30,7 +31,7 @@ class MobileRealtimeService {
   io.Socket? _realtimeSocket;
   io.Socket? _chatSocket;
   String? _token;
-  String _baseUrl = 'http://10.0.2.2:3000'; // Default emulator host for NestJS
+  String _baseUrl = defaultRealtimeUrl;
 
   final _connectionStateController = StreamController<RealtimeConnectionState>.broadcast();
   final _appointmentUpdatesController = StreamController<Map<String, dynamic>>.broadcast();
