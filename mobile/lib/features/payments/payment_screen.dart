@@ -73,7 +73,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       final dynamic data = res.data;
       if (data is Map<String, dynamic>) {
         setState(() {
-          _appointment = data;
           if (data['amount'] != null) {
             _amount = (data['amount'] is num) ? (data['amount'] as num).toDouble() : 800.0;
           }
