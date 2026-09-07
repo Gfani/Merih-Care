@@ -20,6 +20,27 @@ export class VerificationService {
     private readonly userRepo?: Repository<UserEntity>,
   ) {}
 
+  private normalizeDocUrl(url?: string): string {
+    if (!url || !url.trim()) return "";
+    const trimmed = url.trim();
+    if (trimmed.includes("/api/v1/uploads/view")) return trimmed;
+
+    let fileKey = trimmed;
+    if (fileKey.includes("/signed/")) {
+      fileKey = fileKey.split("/signed/")[1];
+      if (fileKey.includes("?")) fileKey = fileKey.split("?")[0];
+      fileKey = decodeURIComponent(fileKey);
+    } else if (fileKey.includes("/credentials/")) {
+      fileKey = "credentials/" + fileKey.split("/credentials/")[1];
+    } else if (fileKey.startsWith("http://") || fileKey.startsWith("https://")) {
+      fileKey = fileKey.split("/").pop() || fileKey;
+    }
+
+    const port = process.env.PORT || 3000;
+    const apiBase = process.env.API_BASE_URL || `http://localhost:${port}/api/v1`;
+    return `${apiBase}/uploads/view/${encodeURIComponent(fileKey)}`;
+  }
+
   async getVerificationQueue(): Promise<any[]> {
     const providers = await this.providerRepo.find({ where: { verified: false } });
     return Promise.all(
@@ -34,6 +55,9 @@ export class VerificationService {
           phone: user?.phone || "",
           joinedDate: user?.dateJoined || (p.createdAt ? p.createdAt.toISOString().split("T")[0] : ""),
           services: p.services,
+          cvUrl: this.normalizeDocUrl(p.cvUrl),
+          licenseDocumentUrl: this.normalizeDocUrl(p.licenseDocumentUrl),
+          idDocumentUrl: this.normalizeDocUrl(p.idDocumentUrl),
         };
       })
     );

@@ -243,6 +243,9 @@ export class AuthService {
     }
 
     if (role === "provider") {
+      if (providerDetails && typeof providerDetails.licenseNumber === "string" && !providerDetails.licenseNumber.trim()) {
+        throw new Error("Medical license or registration number is required");
+      }
       const generatedLicense = "MC-PRV-" + Math.floor(100000 + Math.random() * 900000);
       const licenseNumber =
         providerDetails?.licenseNumber && providerDetails.licenseNumber.trim()

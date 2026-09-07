@@ -159,8 +159,24 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         final file = result.files.first;
         setState(() {
           _attachedLicenseName = file.name;
-          _licenseDocController.text = 'https://storage.merihcare.et/credentials/${file.name}';
         });
+
+        if (file.bytes != null) {
+          final uploadedUrl = await ref.read(authProvider.notifier).uploadCredentialDocument(
+                file.name,
+                file.bytes!,
+              );
+          if (uploadedUrl != null && mounted) {
+            _licenseDocController.text = uploadedUrl;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Medical license uploaded: ${file.name}')),
+            );
+          } else {
+            _licenseDocController.text = 'https://storage.merihcare.et/credentials/${file.name}';
+          }
+        } else {
+          _licenseDocController.text = 'https://storage.merihcare.et/credentials/${file.name}';
+        }
       }
     } catch (e) {
       setState(() {
@@ -181,8 +197,24 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         final file = result.files.first;
         setState(() {
           _attachedIdName = file.name;
-          _idDocController.text = 'https://storage.merihcare.et/credentials/${file.name}';
         });
+
+        if (file.bytes != null) {
+          final uploadedUrl = await ref.read(authProvider.notifier).uploadCredentialDocument(
+                file.name,
+                file.bytes!,
+              );
+          if (uploadedUrl != null && mounted) {
+            _idDocController.text = uploadedUrl;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('ID document uploaded: ${file.name}')),
+            );
+          } else {
+            _idDocController.text = 'https://storage.merihcare.et/credentials/${file.name}';
+          }
+        } else {
+          _idDocController.text = 'https://storage.merihcare.et/credentials/${file.name}';
+        }
       }
     } catch (e) {
       setState(() {

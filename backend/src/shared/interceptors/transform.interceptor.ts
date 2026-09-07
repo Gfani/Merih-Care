@@ -17,8 +17,15 @@ export class TransformInterceptor<T> implements NestInterceptor<T, StandardRespo
     const request = ctx.getRequest<Request>();
     const correlationId = (request.headers["x-correlation-id"] as string) || request["id"] || `corr-${Date.now()}`;
 
-    // If swagger spec or health check, do not envelope
-    if (request.url?.includes("/api/docs") || request.url?.includes("/swagger") || request.url?.includes("/health")) {
+    // If swagger spec, health check, or upload streaming endpoints, do not envelope
+    if (
+      request.url?.includes("/api/docs") ||
+      request.url?.includes("/swagger") ||
+      request.url?.includes("/health") ||
+      request.url?.includes("/uploads/view") ||
+      request.url?.includes("/uploads/download") ||
+      request.url?.includes("/uploads/raw")
+    ) {
       return next.handle();
     }
 

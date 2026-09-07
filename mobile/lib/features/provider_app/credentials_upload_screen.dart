@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
@@ -63,12 +65,21 @@ class _CredentialsUploadScreenState extends ConsumerState<CredentialsUploadScree
     });
 
     try {
-      // In real scenario, prepare FormData and call client.dio.post('/uploads', data: formData);
-      // Let's mock a delay and post profile status updates or mock API
-      await Future.delayed(const Duration(seconds: 2));
-
       final client = ref.read(apiClientProvider);
-      // Inform backend that credentials have been uploaded (or mock update status to pending_verification)
+
+      List<int>? bytes = _pickedFile!.bytes;
+      if (bytes == null && _pickedFile!.path != null) {
+        bytes = await File(_pickedFile!.path!).readAsBytes();
+      }
+
+      if (bytes != null) {
+        final formData = FormData.fromMap({
+          'file': MultipartFile.fromBytes(bytes, filename: _pickedFile!.name),
+        });
+        await client.dio.post('/uploads/credential', data: formData);
+      }
+
+      // Inform backend that credentials have been uploaded
       try {
         await client.dio.put('/users/profile/update-status', data: {
           'status': 'pending_verification',

@@ -7,13 +7,15 @@ export function Modal({
   onClose, 
   title, 
   children, 
-  footer 
+  footer,
+  maxWidth = "sm:max-w-md",
 }: { 
   open: boolean; 
   onClose: () => void; 
   title?: string; 
   children: React.ReactNode; 
   footer?: React.ReactNode;
+  maxWidth?: string;
 }) {
   const lastActiveElement = useRef<HTMLElement | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -86,7 +88,7 @@ export function Modal({
       <div 
         ref={modalRef}
         tabIndex={-1}
-        className="relative bg-white dark:bg-slate-800 rounded-t-[20px] sm:rounded-[16px] w-full sm:max-w-md shadow-xl animate-slide-up focus:outline-none"
+        className={`relative bg-white dark:bg-slate-800 rounded-t-[20px] sm:rounded-[16px] w-full ${maxWidth} shadow-xl animate-slide-up focus:outline-none`}
       >
         {title && (
           <div className="flex items-center justify-between px-5 py-4 border-b border-[#e2e8ee] dark:border-slate-700">

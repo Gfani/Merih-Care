@@ -3,12 +3,16 @@ import {
   Post,
   Get,
   Query,
+  Param,
+  Res,
   UseGuards,
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  NotFoundException,
   Req,
 } from "@nestjs/common";
+import { Response } from "express";
 import { UploadsService } from "./uploads.service";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 import { FileInterceptor } from "@nestjs/platform-express";
@@ -95,5 +99,65 @@ export class UploadsController {
       throw new BadRequestException("fileKey query parameter is required");
     }
     return this.uploadsService.generatePresignedUrl(fileKey);
+  }
+
+  @Get("view/:fileKey(*)")
+  async viewFileWithKey(
+    @Param("fileKey") fileKey: string,
+    @Res() res: Response
+  ) {
+    return this.serveFile(fileKey, false, res);
+  }
+
+  @Get("view")
+  async viewFileWithQuery(
+    @Query("fileKey") fileKey: string,
+    @Query("url") url: string,
+    @Res() res: Response
+  ) {
+    const key = fileKey || url || "";
+    return this.serveFile(key, false, res);
+  }
+
+  @Get("download/:fileKey(*)")
+  async downloadFileWithKey(
+    @Param("fileKey") fileKey: string,
+    @Res() res: Response
+  ) {
+    return this.serveFile(fileKey, true, res);
+  }
+
+  @Get("download")
+  async downloadFileWithQuery(
+    @Query("fileKey") fileKey: string,
+    @Query("url") url: string,
+    @Res() res: Response
+  ) {
+    const key = fileKey || url || "";
+    return this.serveFile(key, true, res);
+  }
+
+  private serveFile(fileKey: string, asAttachment: boolean, res: Response) {
+    if (!fileKey) {
+      throw new BadRequestException("File key or URL is required");
+    }
+
+    const { filePath, buffer, fileName, mimeType } = this.uploadsService.resolveFile(fileKey);
+
+    const disposition = asAttachment ? "attachment" : "inline";
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader(
+      "Content-Disposition",
+      `${disposition}; filename="${encodeURIComponent(fileName)}"`
+    );
+    res.setHeader("Cache-Control", "public, max-age=3600");
+
+    if (filePath) {
+      return res.sendFile(filePath);
+    } else if (buffer) {
+      return res.end(buffer);
+    } else {
+      throw new NotFoundException("Document could not be located");
+    }
   }
 }
