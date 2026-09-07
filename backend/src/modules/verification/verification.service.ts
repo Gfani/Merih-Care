@@ -22,10 +22,21 @@ export class VerificationService {
 
   async getVerificationQueue(): Promise<any[]> {
     const providers = await this.providerRepo.find({ where: { verified: false } });
-    return providers.map(p => ({
-      ...p,
-      services: p.services
-    }));
+    return Promise.all(
+      providers.map(async (p) => {
+        let user: UserEntity | null = null;
+        if (this.userRepo && p.userId) {
+          user = await this.userRepo.findOne({ where: { id: p.userId } });
+        }
+        return {
+          ...p,
+          email: user?.email || "",
+          phone: user?.phone || "",
+          joinedDate: user?.dateJoined || (p.createdAt ? p.createdAt.toISOString().split("T")[0] : ""),
+          services: p.services,
+        };
+      })
+    );
   }
 
   async approveProvider(id: string, actorId: string): Promise<ProviderEntity> {

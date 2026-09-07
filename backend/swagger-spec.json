@@ -3326,6 +3326,17 @@
         }
       }
     },
+    "/api/v1/uploads/credential": {
+      "post": {
+        "operationId": "UploadsController_uploadCredential",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/uploads": {
       "post": {
         "operationId": "UploadsController_uploadFile",

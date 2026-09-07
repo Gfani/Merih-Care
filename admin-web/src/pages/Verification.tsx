@@ -10,6 +10,7 @@ export default function VerificationSection() {
 
   const [docModal, setDocModal] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
+  const [selectedDocProvider, setSelectedDocProvider] = useState<any>(null);
 
   const [fixModal, setFixModal] = useState(false);
   const [fixComment, setFixComment] = useState("");
@@ -165,33 +166,86 @@ export default function VerificationSection() {
             ) : (
               pending.map(provider => (
                 <Card key={provider.id} className="p-5">
-                  <div className="flex items-start gap-3 mb-4 pb-4 border-b border-[#f0f4f7] dark:border-slate-700">
+                  <div className="flex items-start gap-3 mb-3 pb-3 border-b border-[#f0f4f7] dark:border-slate-700">
                     <Avatar src={provider.avatar} name={provider.name} size="lg" />
                     <div className="flex-1">
                       <p className="font-semibold text-[#18232e] dark:text-white">{provider.name}</p>
-                      <p className="text-sm text-[#8a9aaa] dark:text-slate-400">{provider.title}</p>
-                      <div className="mt-1">
+                      <p className="text-xs text-[#8a9aaa] dark:text-slate-400">
+                        {provider.title || "Healthcare Provider"} {provider.specialty ? `• ${provider.specialty}` : ""}
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
                         <StatusBadge status={provider.status === "needs_fix" ? "needs_fix" : "pending"} />
+                        {provider.licenseNumber && (
+                          <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-teal-50 dark:bg-teal-900/40 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
+                            License: {provider.licenseNumber}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
-                  <div className="space-y-2 mb-4">
-                    <p className="text-xs font-semibold text-[#8a9aaa] dark:text-slate-400 uppercase tracking-wide">Submitted Documents</p>
-                    {["Professional License", "National ID", "Academic Certificate", "Police Clearance"].map(doc => (
-                      <div key={doc} className="flex items-center justify-between text-sm py-1.5 border-b border-[#f0f4f7] dark:border-slate-700 last:border-0">
-                        <span className="text-[#4a5a6a] dark:text-slate-300">{doc}</span>
+
+                  {/* Professional Credentials Overview */}
+                  <div className="grid grid-cols-2 gap-2 text-xs mb-3.5 p-2.5 bg-[#f8fafc] dark:bg-slate-800/80 rounded-lg border border-[#eef2f6] dark:border-slate-700">
+                    <div>
+                      <span className="text-[#8a9aaa] dark:text-slate-400 text-[10px] uppercase font-bold block">Experience</span>
+                      <span className="font-medium text-[#18232e] dark:text-white">
+                        {provider.experience ? `${provider.experience} years` : "Not specified"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[#8a9aaa] dark:text-slate-400 text-[10px] uppercase font-bold block">Affiliation</span>
+                      <span className="font-medium text-[#18232e] dark:text-white truncate block">
+                        {provider.hospitalAffiliation || "Private Practice"}
+                      </span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-[#8a9aaa] dark:text-slate-400 text-[10px] uppercase font-bold block">Education</span>
+                      <span className="font-medium text-[#18232e] dark:text-white block">
+                        {provider.education || "Medical Qualification"}
+                      </span>
+                    </div>
+                    {(provider.email || provider.phone) && (
+                      <div className="col-span-2 border-t border-[#e2e8f0] dark:border-slate-700 pt-1.5 mt-0.5">
+                        <span className="text-[#8a9aaa] dark:text-slate-400 text-[10px] uppercase font-bold block">Contact</span>
+                        <span className="font-medium text-[#18232e] dark:text-white">
+                          {provider.email || ""} {provider.phone ? `• ${provider.phone}` : ""}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Submitted Documents */}
+                  <div className="space-y-1.5 mb-4">
+                    <p className="text-[11px] font-bold text-[#8a9aaa] dark:text-slate-400 uppercase tracking-wide">Submitted Documents</p>
+                    {[
+                      { title: "Curriculum Vitae (CV)", url: provider.cvUrl, required: true },
+                      { title: "Medical License", url: provider.licenseDocumentUrl || provider.licenseNumber, required: true },
+                      { title: "Government ID / Passport", url: provider.idDocumentUrl, required: false },
+                    ].map(doc => (
+                      <div key={doc.title} className="flex items-center justify-between text-xs py-1.5 border-b border-[#f0f4f7] dark:border-slate-700 last:border-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[#4a5a6a] dark:text-slate-300 font-medium">{doc.title}</span>
+                          {doc.required && <span className="text-red-500 font-bold">*</span>}
+                        </div>
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => { setSelectedDoc(doc); setDocModal(true); }}
-                            className="text-xs text-[#1b6fba] dark:text-cyan-400 font-semibold hover:underline cursor-pointer"
+                            onClick={() => {
+                              setSelectedDoc(doc.title);
+                              setSelectedDocProvider(provider);
+                              setDocModal(true);
+                            }}
+                            className="text-xs text-[#0d7c6a] dark:text-cyan-400 font-semibold hover:underline cursor-pointer"
                           >
                             View
                           </button>
-                          <StatusBadge status="pending" />
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${doc.url ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300" : "bg-slate-100 text-slate-500"}`}>
+                            {doc.url ? "Attached" : "Optional"}
+                          </span>
                         </div>
                       </div>
                     ))}
                   </div>
+
                   <div className="flex gap-2">
                     <Button variant="danger" size="sm" className="flex-1" onClick={() => { setSelectedProvider(provider); setRejectReason(""); setRejectModal(true); }}>Reject</Button>
                     <Button variant="outline" size="sm" className="flex-1" onClick={() => { setSelectedFixProvider(provider); setFixComment(""); setFixModal(true); }}>Request Fix</Button>
@@ -293,17 +347,47 @@ export default function VerificationSection() {
       </Modal>
 
       {/* Document View Modal */}
-      <Modal open={docModal} onClose={() => setDocModal(false)} title="Document View">
+      <Modal open={docModal} onClose={() => setDocModal(false)} title={`Credential Document: ${selectedDoc || ""}`}>
         {selectedDoc && (
           <div className="space-y-4 text-center">
-            <p className="text-xs text-[#8a9aaa] dark:text-slate-400 mb-2">Simulated File: {selectedDoc}</p>
-            <div className="w-full h-48 bg-[#f4f7f9] dark:bg-slate-900 rounded-[10px] flex flex-col items-center justify-center border border-[#e2e8ee] dark:border-slate-700">
+            <p className="text-xs text-[#8a9aaa] dark:text-slate-400 mb-1">
+              Applicant: <span className="font-semibold text-[#18232e] dark:text-white">{selectedDocProvider?.name || "Provider Candidate"}</span>
+            </p>
+            <div className="w-full min-h-44 p-4 bg-[#f4f7f9] dark:bg-slate-900 rounded-[10px] flex flex-col items-center justify-center border border-[#e2e8ee] dark:border-slate-700">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-[#0d7c6a] dark:text-cyan-400 mb-2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
-              <p className="text-xs font-semibold text-[#18232e] dark:text-white">Official Verification Certificate</p>
-              <p className="text-[10px] text-[#8a9aaa] dark:text-slate-400 mt-0.5">Digitally Approved by Merihcare Security</p>
+              <p className="text-xs font-bold text-[#18232e] dark:text-white">{selectedDoc}</p>
+              <p className="text-[11px] font-mono text-[#0d7c6a] dark:text-cyan-400 mt-1 max-w-sm truncate px-2">
+                {selectedDoc === "Curriculum Vitae (CV)"
+                  ? (selectedDocProvider?.cvUrl || "curriculum_vitae.pdf")
+                  : selectedDoc === "Medical License"
+                  ? (selectedDocProvider?.licenseDocumentUrl || (selectedDocProvider?.licenseNumber ? `License Number: ${selectedDocProvider.licenseNumber}` : "medical_license.pdf"))
+                  : (selectedDocProvider?.idDocumentUrl || "national_id.pdf")}
+              </p>
+              <span className="mt-2 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">
+                Official Credential File
+              </span>
             </div>
-            <div className="flex justify-end pt-2">
-              <Button size="sm" onClick={() => setDocModal(false)}>Close</Button>
+            <div className="flex justify-end pt-2 gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setDocModal(false)}>Close</Button>
+              {selectedDocProvider && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const docUrl = selectedDoc === "Curriculum Vitae (CV)"
+                      ? selectedDocProvider.cvUrl
+                      : selectedDoc === "Medical License"
+                      ? selectedDocProvider.licenseDocumentUrl
+                      : selectedDocProvider.idDocumentUrl;
+                    if (docUrl && (docUrl.startsWith("http://") || docUrl.startsWith("https://"))) {
+                      window.open(docUrl, "_blank");
+                    } else {
+                      toast(`Viewing verified credential file: ${selectedDoc}`, "info");
+                    }
+                  }}
+                >
+                  Open / Preview File
+                </Button>
+              )}
             </div>
           </div>
         )}

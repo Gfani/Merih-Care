@@ -59,6 +59,29 @@ export class ProviderEntity {
   @Column({ nullable: true })
   distance: string;
 
+  @Column({ nullable: true })
+  @Index()
+  licenseNumber: string;
+
+  @Column({ nullable: true })
+  @Index()
+  specialty: string;
+
+  @Column({ nullable: true })
+  education: string;
+
+  @Column({ nullable: true })
+  hospitalAffiliation: string;
+
+  @Column({ nullable: true })
+  cvUrl: string;
+
+  @Column({ nullable: true })
+  licenseDocumentUrl: string;
+
+  @Column({ nullable: true })
+  idDocumentUrl: string;
+
   @Column("text", { nullable: true })
   servicesRaw: string;
 

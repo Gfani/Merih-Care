@@ -137,18 +137,47 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<SignupResult> signup(String name, String email, String password, String phone, {String role = 'patient'}) async {
+  Future<String?> uploadCredentialDocument(String fileName, List<int> bytes) async {
+    try {
+      final client = _ref.read(apiClientProvider);
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(bytes, filename: fileName),
+      });
+      final response = await client.dio.post('/uploads/credential', data: formData);
+      final dynamic rawData = response.data;
+      final Map<String, dynamic> data = (rawData is Map<String, dynamic> && rawData.containsKey('data'))
+          ? (rawData['data'] as Map<String, dynamic>)
+          : (rawData is Map<String, dynamic> ? rawData : <String, dynamic>{});
+      return data['url']?.toString() ?? data['filePath']?.toString();
+    } catch (e) {
+      print('[AUTH] uploadCredentialDocument error: $e');
+      return null;
+    }
+  }
+
+  Future<SignupResult> signup(
+    String name,
+    String email,
+    String password,
+    String phone, {
+    String role = 'patient',
+    Map<String, dynamic>? providerData,
+  }) async {
     state = state.copyWith(errorMessage: null);
     try {
       print('[AUTH] signup: registering $email as $role...');
       final client = _ref.read(apiClientProvider);
-      final response = await client.dio.post('/auth/signup', data: {
+      final payload = <String, dynamic>{
         'name': name,
         'email': email,
         'password': password,
         'phone': phone,
         'role': role,
-      });
+      };
+      if (providerData != null) {
+        payload.addAll(providerData);
+      }
+      final response = await client.dio.post('/auth/signup', data: payload);
       print('[AUTH] signup: response received: ${response.statusCode}');
 
       final dynamic rawData = response.data;

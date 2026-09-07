@@ -4,6 +4,7 @@ import { JwtService } from "@nestjs/jwt";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import { UserEntity } from "../../database/entities/user.entity";
 import { SessionEntity } from "../../database/entities/session.entity";
+import { ProviderEntity } from "../../database/entities/provider.entity";
 import * as bcrypt from "bcryptjs";
 
 describe("AuthService Unit Tests", () => {
@@ -17,6 +18,12 @@ describe("AuthService Unit Tests", () => {
   };
 
   const mockSessionRepo = {
+    findOne: jest.fn(),
+    save: jest.fn(),
+    find: jest.fn(),
+  };
+
+  const mockProviderRepo = {
     findOne: jest.fn(),
     save: jest.fn(),
     find: jest.fn(),
@@ -42,6 +49,10 @@ describe("AuthService Unit Tests", () => {
         {
           provide: getRepositoryToken(SessionEntity),
           useValue: mockSessionRepo,
+        },
+        {
+          provide: getRepositoryToken(ProviderEntity),
+          useValue: mockProviderRepo,
         },
       ],
     }).compile();
@@ -169,6 +180,83 @@ describe("AuthService Unit Tests", () => {
 
       await expect(service.registerUser("Admin", "admin_new@merihcare.et", "Password123!", "admin"))
         .rejects.toThrow("Admin accounts require a specified admin role");
+    });
+
+    it("should reject disposable or temporary email addresses", async () => {
+      await expect(
+        service.registerUser("Fake User", "doctor@mailinator.com", "SecureDoc2026!", "provider")
+      ).rejects.toThrow("Disposable or temporary email addresses are not permitted");
+
+      await expect(
+        service.registerUser("Fake User 2", "scam@tempmail.com", "SecureDoc2026!", "patient")
+      ).rejects.toThrow("Disposable or temporary email addresses are not permitted");
+    });
+
+    it("should reject passwords that are too short or lack complexity", async () => {
+      await expect(
+        service.registerUser("User", "valid@merihcare.et", "short", "patient")
+      ).rejects.toThrow("Password must be at least 8 characters long");
+
+      await expect(
+        service.registerUser("User", "valid@merihcare.et", "alllowercase123", "patient")
+      ).rejects.toThrow("Password must contain at least 1 uppercase letter");
+    });
+
+    it("should reject provider registration missing mandatory medical credentials", async () => {
+      mockUserRepo.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.registerUser("Dr. Abebe", "abebe.md@merihcare.et", "SecureDoc2026!", "provider", undefined, "+251911223344", {
+          title: "Dr.",
+          specialty: "General Medicine",
+          licenseNumber: "", // Missing
+          education: "MD - AAU",
+          hospitalAffiliation: "Tikur Anbessa",
+          cvUrl: "https://storage.merihcare.et/cv.pdf"
+        })
+      ).rejects.toThrow("Medical license or registration number is required");
+    });
+
+    it("should successfully register provider with full credentials and set pending_verification", async () => {
+      mockUserRepo.findOne.mockResolvedValue(null);
+      mockUserRepo.save.mockImplementation((u) => Promise.resolve(u));
+      mockProviderRepo.save.mockImplementation((p) => Promise.resolve(p));
+
+      const user = await service.registerUser(
+        "Dr. Abebe",
+        "abebe.md@merihcare.et",
+        "SecureDoc2026!",
+        "provider",
+        undefined,
+        "+251911223344",
+        {
+          title: "Dr.",
+          specialty: "Cardiology",
+          licenseNumber: "ETH-MED-99214",
+          experience: 8,
+          education: "MD, Cardiology - AAU",
+          hospitalAffiliation: "Tikur Anbessa Specialized Hospital",
+          cvUrl: "https://storage.merihcare.et/cv.pdf",
+          licenseDocumentUrl: "https://storage.merihcare.et/license.pdf",
+          idDocumentUrl: "https://storage.merihcare.et/id.pdf"
+        }
+      );
+
+      expect(user).toBeDefined();
+      expect(user.role).toBe("provider");
+      expect(user.isApproved).toBe(false);
+      expect(user.status).toBe("pending_verification");
+      expect(mockProviderRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          licenseNumber: "ETH-MED-99214",
+          specialty: "Cardiology",
+          education: "MD, Cardiology - AAU",
+          hospitalAffiliation: "Tikur Anbessa Specialized Hospital",
+          cvUrl: "https://storage.merihcare.et/cv.pdf",
+          status: "pending_verification",
+          verified: false,
+        })
+      );
     });
   });
 

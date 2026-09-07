@@ -9,6 +9,125 @@ import * as crypto from "crypto";
 import { JwtService } from "@nestjs/jwt";
 import { NotificationsService } from "../notifications/notifications.service";
 
+export const DISPOSABLE_EMAIL_DOMAINS = new Set([
+  "mailinator.com",
+  "tempmail.com",
+  "temp-mail.org",
+  "10minutemail.com",
+  "guerrillamail.com",
+  "sharklasers.com",
+  "throwawaymail.com",
+  "yopmail.com",
+  "trashmail.com",
+  "dispostable.com",
+  "getairmail.com",
+  "fake.com",
+  "fakemail.com",
+  "test.com",
+  "example.com",
+  "fakeinbox.com",
+  "crazymailing.com",
+  "inboxkitten.com",
+  "dropmail.me",
+  "mohmal.com",
+  "nada.ltd",
+  "burnermail.io",
+  "mytemp.email",
+  "fakemailgenerator.com",
+  "tempmailaddress.com",
+  "byom.de",
+  "emailondeck.com",
+  "getnada.com",
+  "maildrop.cc",
+  "mintemail.com",
+  "trashmail.net",
+  "dayrep.com",
+  "teleworm.us",
+  "armyspy.com",
+  "cuvox.de",
+  "fleckens.hu",
+  "gustr.com",
+  "jourrapide.com",
+  "rhyta.com",
+  "superrito.com",
+  "spam4.me",
+  "grr.la",
+  "harakirimail.com",
+]);
+
+export const COMMON_WEAK_PASSWORDS = new Set([
+  "password",
+  "12345678",
+  "123456789",
+  "00000000",
+  "qwerty1234",
+  "admin123",
+  "admin1234",
+  "merihcare123",
+  "letmein123",
+]);
+
+export function validateRealEmail(email: string): void {
+  if (!email || typeof email !== "string") {
+    throw new Error("Email address is required");
+  }
+  const normalized = email.trim().toLowerCase();
+  const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+  if (!emailRegex.test(normalized)) {
+    throw new Error("Please enter a valid, well-formed email address");
+  }
+  const parts = normalized.split("@");
+  if (parts.length !== 2) {
+    throw new Error("Invalid email address format");
+  }
+  const [localPart, domain] = parts;
+  if (!localPart || localPart.length > 64 || !domain) {
+    throw new Error("Invalid email address format");
+  }
+  if (DISPOSABLE_EMAIL_DOMAINS.has(domain)) {
+    throw new Error(
+      "Disposable or temporary email addresses are not permitted. Please use a real, permanent email address."
+    );
+  }
+  const domainParts = domain.split(".");
+  const tld = domainParts[domainParts.length - 1];
+  if (!tld || tld.length < 2 || ["local", "test", "example", "invalid", "internal"].includes(tld)) {
+    throw new Error("Email must contain a valid top-level domain (e.g. .com, .et, .org)");
+  }
+}
+
+export function validateStrongPassword(password: string): void {
+  if (!password || password.length < 8) {
+    throw new Error("Password must be at least 8 characters long");
+  }
+  if (password.length > 100) {
+    throw new Error("Password exceeds maximum allowed length");
+  }
+  if (COMMON_WEAK_PASSWORDS.has(password.toLowerCase())) {
+    throw new Error("Password is too common and easily guessable. Please choose a stronger password.");
+  }
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasDigitOrSpecial = /[\d\W]/.test(password);
+  if (!hasUpper || !hasLower || !hasDigitOrSpecial) {
+    throw new Error(
+      "Password must contain at least 1 uppercase letter, 1 lowercase letter, and 1 number or special character"
+    );
+  }
+}
+
+export interface ProviderRegistrationDetails {
+  title?: string;
+  specialty?: string;
+  licenseNumber?: string;
+  experience?: number;
+  education?: string;
+  hospitalAffiliation?: string;
+  cvUrl?: string;
+  licenseDocumentUrl?: string;
+  idDocumentUrl?: string;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -36,7 +155,7 @@ export class AuthService {
   async validateUser(email: string, pass: string): Promise<any> {
     const normalizedEmail = (email || "").trim().toLowerCase();
     let user = await this.userRepo.findOne({ where: { email: normalizedEmail } });
-    if (!user) {
+    if (!user && typeof this.userRepo.createQueryBuilder === "function") {
       user = await this.userRepo
         .createQueryBuilder("user")
         .where("LOWER(user.email) = :email", { email: normalizedEmail })
@@ -95,10 +214,21 @@ export class AuthService {
     return result;
   }
 
-  async registerUser(name: string, email: string, pass: string, role: string, adminRole?: string, phone?: string): Promise<UserEntity> {
+  async registerUser(
+    name: string,
+    email: string,
+    pass: string,
+    role: string,
+    adminRole?: string,
+    phone?: string,
+    providerDetails?: ProviderRegistrationDetails
+  ): Promise<UserEntity> {
+    validateRealEmail(email);
+    validateStrongPassword(pass);
+
     const normalizedEmail = (email || "").trim().toLowerCase();
     let existing = await this.userRepo.findOne({ where: { email: normalizedEmail } });
-    if (!existing) {
+    if (!existing && typeof this.userRepo.createQueryBuilder === "function") {
       existing = await this.userRepo
         .createQueryBuilder("user")
         .where("LOWER(user.email) = :email", { email: normalizedEmail })
@@ -110,6 +240,21 @@ export class AuthService {
 
     if (role === "admin" && !adminRole) {
       throw new Error("Admin accounts require a specified admin role");
+    }
+
+    if (role === "provider" && providerDetails) {
+      if (!providerDetails.licenseNumber || !providerDetails.licenseNumber.trim()) {
+        throw new Error("Medical license or registration number is required for healthcare provider registration");
+      }
+      if (!providerDetails.education || !providerDetails.education.trim()) {
+        throw new Error("Medical education and degree details are required for healthcare provider registration");
+      }
+      if (!providerDetails.hospitalAffiliation || !providerDetails.hospitalAffiliation.trim()) {
+        throw new Error("Hospital or clinic affiliation is required for healthcare provider registration");
+      }
+      if (!providerDetails.cvUrl || !providerDetails.cvUrl.trim()) {
+        throw new Error("CV or resume document is required for healthcare provider registration");
+      }
     }
 
     const hashed = await this.hashPassword(pass);
@@ -147,7 +292,15 @@ export class AuthService {
         provider.id = "prov-" + crypto.randomUUID();
         provider.userId = savedUser.id;
         provider.name = savedUser.name;
-        provider.title = "Healthcare Specialist";
+        provider.title = providerDetails?.title || "Healthcare Specialist";
+        provider.specialty = providerDetails?.specialty || "General Medicine";
+        provider.licenseNumber = providerDetails?.licenseNumber || "";
+        provider.experience = Number(providerDetails?.experience) || 0;
+        provider.education = providerDetails?.education || "";
+        provider.hospitalAffiliation = providerDetails?.hospitalAffiliation || "";
+        provider.cvUrl = providerDetails?.cvUrl || "";
+        provider.licenseDocumentUrl = providerDetails?.licenseDocumentUrl || "";
+        provider.idDocumentUrl = providerDetails?.idDocumentUrl || "";
         provider.pricePerVisit = 800;
         provider.available = false; // Disabled until admin approval
         provider.status = "pending_verification";

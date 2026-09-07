@@ -53,6 +53,41 @@ export class SignUpDto {
   @IsOptional()
   @MaxLength(100)
   department?: string;
+
+  @IsOptional()
+  @MaxLength(100)
+  title?: string;
+
+  @IsOptional()
+  @MaxLength(100)
+  specialty?: string;
+
+  @IsOptional()
+  @MaxLength(100)
+  licenseNumber?: string;
+
+  @IsOptional()
+  experience?: number;
+
+  @IsOptional()
+  @MaxLength(255)
+  education?: string;
+
+  @IsOptional()
+  @MaxLength(255)
+  hospitalAffiliation?: string;
+
+  @IsOptional()
+  @MaxLength(500)
+  cvUrl?: string;
+
+  @IsOptional()
+  @MaxLength(500)
+  licenseDocumentUrl?: string;
+
+  @IsOptional()
+  @MaxLength(500)
+  idDocumentUrl?: string;
 }
 
 export class RefreshDto {
@@ -152,13 +187,26 @@ export class AuthController {
           : `${body.department.toLowerCase()}_admin`;
       }
 
+      const providerDetails = targetRole === "provider" ? {
+        title: body.title,
+        specialty: body.specialty,
+        licenseNumber: body.licenseNumber,
+        experience: body.experience,
+        education: body.education,
+        hospitalAffiliation: body.hospitalAffiliation,
+        cvUrl: body.cvUrl,
+        licenseDocumentUrl: body.licenseDocumentUrl,
+        idDocumentUrl: body.idDocumentUrl,
+      } : undefined;
+
       const user = await this.authService.registerUser(
         body.name,
         body.email,
         body.password,
         targetRole,
         targetAdminRole,
-        body.phone
+        body.phone,
+        providerDetails
       );
 
       if (user.isApproved) {
