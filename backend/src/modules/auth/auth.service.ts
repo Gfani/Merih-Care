@@ -51,21 +51,28 @@ export class AuthService {
       }
     }
 
+    // Check approval status: Healthcare providers must be approved by admin first
+    if (user.role === "provider") {
+      if (!user.isApproved || user.status === "pending_verification") {
+        throw new Error("Account is pending administrator approval");
+      }
+
+      if (this.providerRepo) {
+        const provider = await this.providerRepo.findOne({ where: { userId: user.id } });
+        if (provider && (!provider.verified || provider.status === "pending_verification")) {
+          throw new Error("Account is pending administrator approval");
+        }
+      }
+    } else if (!user.isApproved) {
+      throw new Error("Account is pending administrator approval");
+    }
+
     if (user.status !== "active") {
       throw new Error("Account is suspended");
     }
 
-    if (!user.isApproved) {
-      throw new Error("Account is pending administrator approval");
-    }
-
     const matched = await bcrypt.compare(pass, user.password || "");
-    if (matched) {
-      user.loginAttempts = 0;
-      await this.userRepo.save(user);
-      const { password, ...result } = user;
-      return result;
-    } else {
+    if (!matched) {
       user.loginAttempts += 1;
       if (user.loginAttempts >= 5) {
         const lockoutTime = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
@@ -74,6 +81,11 @@ export class AuthService {
       await this.userRepo.save(user);
       return null;
     }
+
+    user.loginAttempts = 0;
+    await this.userRepo.save(user);
+    const { password, ...result } = user;
+    return result;
   }
 
   async registerUser(name: string, email: string, pass: string, role: string, adminRole?: string, phone?: string): Promise<UserEntity> {

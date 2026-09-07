@@ -49,7 +49,7 @@ class _ProviderSearchScreenState extends ConsumerState<ProviderSearchScreen> {
     setState(() => _loading = true);
     try {
       final client = ref.read(apiClientProvider);
-      final queryParams = <String, dynamic>{};
+      final queryParams = <String, dynamic>{'verified': 'true'};
       if (_selectedSpecialty != null && _selectedSpecialty != 'All') {
         queryParams['specialty'] = _selectedSpecialty;
       }

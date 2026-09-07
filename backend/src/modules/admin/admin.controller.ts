@@ -125,7 +125,7 @@ export class AdminController {
     return { success: true };
   }
 
-  @Get("admin/users/pending")
+  @Get(["admin/users/pending", "admin/pending-approvals"])
   async getPendingAdmins(@Req() req: any) {
     if (req.user.adminRole !== "super_admin") {
       throw new BadRequestException("Only super administrators can view pending administrators");
@@ -133,7 +133,8 @@ export class AdminController {
     return this.adminService.getPendingAdmins();
   }
 
-  @Post("admin/users/:id/approve")
+  @Put(["admin/users/:id/approve", "admin/approvals/:id"])
+  @Post(["admin/users/:id/approve", "admin/approvals/:id"])
   async approveAdmin(@Param("id") targetId: string, @Req() req: any) {
     if (req.user.adminRole !== "super_admin") {
       throw new BadRequestException("Only super administrators can approve accounts");

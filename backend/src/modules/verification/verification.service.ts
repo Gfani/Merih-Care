@@ -29,7 +29,11 @@ export class VerificationService {
   }
 
   async approveProvider(id: string, actorId: string): Promise<ProviderEntity> {
-    const provider = await this.providerRepo.findOne({ where: { id } });
+    let provider = await this.providerRepo.findOne({ where: { id } });
+    if (!provider) {
+      provider = await this.providerRepo.findOne({ where: { userId: id } });
+    }
+
     if (provider) {
       provider.verified = true;
       provider.status = "verified";
@@ -37,13 +41,23 @@ export class VerificationService {
       const savedProvider = await this.providerRepo.save(provider);
 
       // Unlock associated user account
-      if (provider.userId && this.userRepo) {
+      if (this.userRepo) {
         try {
-          const user = await this.userRepo.findOne({ where: { id: provider.userId } });
+          let user: UserEntity | null = null;
+          if (provider.userId) {
+            user = await this.userRepo.findOne({ where: { id: provider.userId } });
+          }
+          if (!user && provider.name) {
+            user = await this.userRepo.findOne({ where: { name: provider.name, role: "provider" } });
+          }
+          if (!user) {
+            user = await this.userRepo.findOne({ where: { id } });
+          }
           if (user) {
             user.isApproved = true;
             user.status = "active";
             await this.userRepo.save(user);
+            console.log(`[VERIFICATION] Approved and activated provider user: ${user.id} (${user.email})`);
           }
         } catch (e) {
           console.error("[VERIFICATION] Error approving user account:", e);
@@ -51,31 +65,69 @@ export class VerificationService {
       }
 
       // Save Review Audit
-      const review = new VerificationReviewEntity();
-      review.id = `rev-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      review.providerId = id;
-      review.reviewerId = actorId;
-      review.decision = "approved";
-      review.notes = "Credentials approved and verified.";
-      await this.reviewRepo.save(review);
+      try {
+        const review = new VerificationReviewEntity();
+        review.id = `rev-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        review.providerId = provider.id;
+        review.reviewerId = actorId;
+        review.decision = "approved";
+        review.notes = "Credentials approved and verified.";
+        await this.reviewRepo.save(review);
+      } catch (err) {
+        console.error("[VERIFICATION] Error saving review audit:", err);
+      }
 
       // Save History Audit
-      const history = new VerificationHistoryEntity();
-      history.id = `hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      history.providerId = id;
-      history.status = "verified";
-      history.changedBy = actorId;
-      history.notes = "Provider credentials approved and verified.";
-      history.createdAt = new Date().toISOString();
-      await this.historyRepo.save(history);
+      try {
+        const history = new VerificationHistoryEntity();
+        history.id = `hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        history.providerId = provider.id;
+        history.status = "verified";
+        history.changedBy = actorId;
+        history.notes = "Provider credentials approved and verified.";
+        history.createdAt = new Date().toISOString();
+        await this.historyRepo.save(history);
+      } catch (err) {
+        console.error("[VERIFICATION] Error saving history audit:", err);
+      }
 
       return savedProvider;
     }
+
+    // Fallback: If id corresponds directly to a user with role === 'provider'
+    if (this.userRepo) {
+      const user = await this.userRepo.findOne({ where: { id } });
+      if (user && user.role === "provider") {
+        user.isApproved = true;
+        user.status = "active";
+        await this.userRepo.save(user);
+
+        let linkedProvider = await this.providerRepo.findOne({ where: { userId: user.id } });
+        if (!linkedProvider) {
+          linkedProvider = new ProviderEntity();
+          linkedProvider.id = "prov-" + Date.now();
+          linkedProvider.userId = user.id;
+          linkedProvider.name = user.name;
+          linkedProvider.title = "Healthcare Specialist";
+          linkedProvider.pricePerVisit = 800;
+          linkedProvider.services = ["Doctor Visit", "Home Nursing"];
+        }
+        linkedProvider.verified = true;
+        linkedProvider.status = "verified";
+        linkedProvider.available = true;
+        return this.providerRepo.save(linkedProvider);
+      }
+    }
+
     return null;
   }
 
   async rejectProvider(id: string, reason: string, actorId: string): Promise<ProviderEntity> {
-    const provider = await this.providerRepo.findOne({ where: { id } });
+    let provider = await this.providerRepo.findOne({ where: { id } });
+    if (!provider) {
+      provider = await this.providerRepo.findOne({ where: { userId: id } });
+    }
+
     if (provider) {
       provider.verified = false;
       provider.status = "rejected";
@@ -83,9 +135,18 @@ export class VerificationService {
       const savedProvider = await this.providerRepo.save(provider);
 
       // Update associated user account
-      if (provider.userId && this.userRepo) {
+      if (this.userRepo) {
         try {
-          const user = await this.userRepo.findOne({ where: { id: provider.userId } });
+          let user: UserEntity | null = null;
+          if (provider.userId) {
+            user = await this.userRepo.findOne({ where: { id: provider.userId } });
+          }
+          if (!user && provider.name) {
+            user = await this.userRepo.findOne({ where: { name: provider.name, role: "provider" } });
+          }
+          if (!user) {
+            user = await this.userRepo.findOne({ where: { id } });
+          }
           if (user) {
             user.isApproved = false;
             user.status = "rejected";
@@ -97,23 +158,31 @@ export class VerificationService {
       }
 
       // Save Review Audit
-      const review = new VerificationReviewEntity();
-      review.id = `rev-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      review.providerId = id;
-      review.reviewerId = actorId;
-      review.decision = "rejected";
-      review.notes = reason;
-      await this.reviewRepo.save(review);
+      try {
+        const review = new VerificationReviewEntity();
+        review.id = `rev-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        review.providerId = provider.id;
+        review.reviewerId = actorId;
+        review.decision = "rejected";
+        review.notes = reason;
+        await this.reviewRepo.save(review);
+      } catch (err) {
+        console.error("[VERIFICATION] Error saving review audit:", err);
+      }
 
       // Save History Audit
-      const history = new VerificationHistoryEntity();
-      history.id = `hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      history.providerId = id;
-      history.status = "rejected";
-      history.changedBy = actorId;
-      history.notes = `Provider verification rejected. Reason: ${reason}`;
-      history.createdAt = new Date().toISOString();
-      await this.historyRepo.save(history);
+      try {
+        const history = new VerificationHistoryEntity();
+        history.id = `hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        history.providerId = provider.id;
+        history.status = "rejected";
+        history.changedBy = actorId;
+        history.notes = `Application rejected: ${reason}`;
+        history.createdAt = new Date().toISOString();
+        await this.historyRepo.save(history);
+      } catch (err) {
+        console.error("[VERIFICATION] Error saving history audit:", err);
+      }
 
       return savedProvider;
     }

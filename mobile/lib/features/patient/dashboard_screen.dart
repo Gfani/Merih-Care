@@ -42,7 +42,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     try {
       final client = ref.read(apiClientProvider);
       final response = await client.dio.get('/appointments');
-      final provRes = await client.dio.get('/providers');
+      final provRes = await client.dio.get('/providers', queryParameters: {'verified': 'true'});
 
       final dynamic aptData = response.data;
       final List allApts = aptData is List ? aptData : (aptData is Map && aptData['data'] is List ? aptData['data'] : []);

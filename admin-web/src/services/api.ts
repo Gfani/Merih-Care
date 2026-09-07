@@ -193,13 +193,23 @@ export const api = {
   },
 
   // ─── PROVIDERS ─────────────────────────────────────────────────────────────
-  async getProviders(params?: { search?: string; specialty?: string; verified?: boolean }): Promise<Provider[]> {
+  async getProviders(params?: { search?: string; specialty?: string; verified?: boolean | string }): Promise<Provider[]> {
     try {
-      const res = await axios.get(`${API_URL}/providers`, { headers: getHeaders(), params });
+      const queryParams = { verified: "all", ...params };
+      const res = await axios.get(`${API_URL}/providers`, { headers: getHeaders(), params: queryParams });
       return res.data;
     } catch (error) {
       if (isDemoMode()) return mockProviders as any;
       throw error;
+    }
+  },
+
+  async getVerificationQueue(): Promise<any[]> {
+    try {
+      const res = await axios.get(`${API_URL}/verification`, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      return this.getProviders({ verified: "false" });
     }
   },
 

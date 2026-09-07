@@ -528,6 +528,26 @@
         }
       }
     },
+    "/api/v1/providers/me": {
+      "get": {
+        "operationId": "ProvidersController_getMyProfile",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "put": {
+        "operationId": "ProvidersController_updateMyProfile",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/providers/{id}": {
       "get": {
         "operationId": "ProvidersController_getProviderById",
@@ -644,6 +664,26 @@
         },
         "responses": {
           "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/verification/{id}": {
+      "put": {
+        "operationId": "VerificationController_updateVerificationDecision",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "description": ""
           }
         }
@@ -2964,8 +3004,19 @@
         }
       }
     },
+    "/api/v1/admin/pending-approvals": {
+      "get": {
+        "operationId": "AdminController_getPendingAdmins",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/admin/users/{id}/approve": {
-      "post": {
+      "put": {
         "operationId": "AdminController_approveAdmin",
         "parameters": [
           {
@@ -2978,7 +3029,27 @@
           }
         ],
         "responses": {
-          "201": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/admin/approvals/{id}": {
+      "put": {
+        "operationId": "AdminController_approveAdmin",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "description": ""
           }
         }

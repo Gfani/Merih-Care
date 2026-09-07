@@ -36,8 +36,8 @@ export default function VerificationSection() {
 
   const loadData = async () => {
     try {
-      const data = await api.getProviders();
-      setProviders(data);
+      const data = await api.getVerificationQueue();
+      setProviders(Array.isArray(data) ? data : []);
     } catch {
       toast("Failed to load verification queue", "error");
     } finally {
@@ -49,7 +49,7 @@ export default function VerificationSection() {
     if (!isSuperAdmin) return;
     try {
       const data = await api.getPendingAdmins();
-      setPendingAdmins(data);
+      setPendingAdmins(Array.isArray(data) ? data : []);
     } catch {
       toast("Failed to load administrative approvals", "error");
     }
@@ -62,7 +62,7 @@ export default function VerificationSection() {
     }
   }, []);
 
-  const pending = providers.filter(p => !p.verified);
+  const pending = providers.filter(p => !p.verified || p.status === "pending_verification" || p.status === "pending" || p.status === "needs_fix");
 
   const handleApprove = async () => {
     if (!selectedProvider) return;
