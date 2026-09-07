@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -117,34 +118,34 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
           _attachedCvName = file.name;
         });
 
-        if (file.bytes != null) {
+        List<int>? bytes = file.bytes;
+        if (bytes == null && file.path != null) {
+          try {
+            bytes = await File(file.path!).readAsBytes();
+          } catch (e) {
+            debugPrint('[SIGNUP] Error reading CV file bytes from disk: $e');
+          }
+        }
+
+        if (bytes != null) {
           final uploadedUrl = await ref.read(authProvider.notifier).uploadCredentialDocument(
                 file.name,
-                file.bytes!,
+                bytes,
               );
           if (uploadedUrl != null && mounted) {
             _cvUrlController.text = uploadedUrl;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('CV uploaded: ${file.name}')),
             );
-          } else {
-            _cvUrlController.text = 'https://storage.merihcare.et/credentials/${file.name}';
+          } else if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Failed to upload CV to server. Please try again.')),
+            );
           }
-        } else {
-          _cvUrlController.text = 'https://storage.merihcare.et/credentials/${file.name}';
         }
       }
     } catch (e) {
       debugPrint('[SIGNUP] Error picking CV file: $e');
-      setState(() {
-        _attachedCvName = 'curriculum_vitae.pdf';
-        _cvUrlController.text = 'https://storage.merihcare.et/credentials/curriculum_vitae.pdf';
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('CV document attached')),
-        );
-      }
     }
   }
 
@@ -161,28 +162,34 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
           _attachedLicenseName = file.name;
         });
 
-        if (file.bytes != null) {
+        List<int>? bytes = file.bytes;
+        if (bytes == null && file.path != null) {
+          try {
+            bytes = await File(file.path!).readAsBytes();
+          } catch (e) {
+            debugPrint('[SIGNUP] Error reading license file bytes from disk: $e');
+          }
+        }
+
+        if (bytes != null) {
           final uploadedUrl = await ref.read(authProvider.notifier).uploadCredentialDocument(
                 file.name,
-                file.bytes!,
+                bytes,
               );
           if (uploadedUrl != null && mounted) {
             _licenseDocController.text = uploadedUrl;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Medical license uploaded: ${file.name}')),
             );
-          } else {
-            _licenseDocController.text = 'https://storage.merihcare.et/credentials/${file.name}';
+          } else if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Failed to upload license to server. Please try again.')),
+            );
           }
-        } else {
-          _licenseDocController.text = 'https://storage.merihcare.et/credentials/${file.name}';
         }
       }
     } catch (e) {
-      setState(() {
-        _attachedLicenseName = 'medical_license.pdf';
-        _licenseDocController.text = 'https://storage.merihcare.et/credentials/medical_license.pdf';
-      });
+      debugPrint('[SIGNUP] Error picking license file: $e');
     }
   }
 
@@ -199,28 +206,34 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
           _attachedIdName = file.name;
         });
 
-        if (file.bytes != null) {
+        List<int>? bytes = file.bytes;
+        if (bytes == null && file.path != null) {
+          try {
+            bytes = await File(file.path!).readAsBytes();
+          } catch (e) {
+            debugPrint('[SIGNUP] Error reading ID file bytes from disk: $e');
+          }
+        }
+
+        if (bytes != null) {
           final uploadedUrl = await ref.read(authProvider.notifier).uploadCredentialDocument(
                 file.name,
-                file.bytes!,
+                bytes,
               );
           if (uploadedUrl != null && mounted) {
             _idDocController.text = uploadedUrl;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('ID document uploaded: ${file.name}')),
             );
-          } else {
-            _idDocController.text = 'https://storage.merihcare.et/credentials/${file.name}';
+          } else if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Failed to upload ID to server. Please try again.')),
+            );
           }
-        } else {
-          _idDocController.text = 'https://storage.merihcare.et/credentials/${file.name}';
         }
       }
     } catch (e) {
-      setState(() {
-        _attachedIdName = 'national_id.pdf';
-        _idDocController.text = 'https://storage.merihcare.et/credentials/national_id.pdf';
-      });
+      debugPrint('[SIGNUP] Error picking ID file: $e');
     }
   }
 
@@ -760,17 +773,13 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                                     'hospitalAffiliation': _hospitalAffiliationController.text.trim(),
                                     'cvUrl': _cvUrlController.text.isNotEmpty
                                         ? _cvUrlController.text.trim()
-                                        : 'https://storage.merihcare.et/credentials/${_attachedCvName ?? "curriculum_vitae.pdf"}',
+                                        : (_attachedCvName != null ? 'credentials/$_attachedCvName' : ''),
                                     'licenseDocumentUrl': _licenseDocController.text.isNotEmpty
                                         ? _licenseDocController.text.trim()
-                                        : (_attachedLicenseName != null
-                                            ? 'https://storage.merihcare.et/credentials/$_attachedLicenseName'
-                                            : null),
+                                        : (_attachedLicenseName != null ? 'credentials/$_attachedLicenseName' : ''),
                                     'idDocumentUrl': _idDocController.text.isNotEmpty
                                         ? _idDocController.text.trim()
-                                        : (_attachedIdName != null
-                                            ? 'https://storage.merihcare.et/credentials/$_attachedIdName'
-                                            : null),
+                                        : (_attachedIdName != null ? 'credentials/$_attachedIdName' : ''),
                                   }
                                 : null;
 

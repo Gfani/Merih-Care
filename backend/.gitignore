@@ -15,7 +15,7 @@ merihcare_db
 *.sqlite3
 *.db
 backups/
-uploads/
+/uploads/
 
 # Environment files
 .env.local

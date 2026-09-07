@@ -207,6 +207,7 @@ ${370 + streamLen}
 
     const candidates = [
       path.join(uploadsBaseDir, cleanKey),
+      path.join(uploadsBaseDir, "credentials", cleanKey),
       path.join(uploadsBaseDir, "credentials", baseName),
       path.join(uploadsBaseDir, baseName),
     ];
@@ -214,7 +215,7 @@ ${370 + streamLen}
     for (const candidate of candidates) {
       if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
         return {
-          filePath: candidate,
+          filePath: path.resolve(candidate),
           fileName: path.basename(candidate),
           mimeType: this.getMimeType(candidate),
         };
@@ -223,17 +224,39 @@ ${370 + streamLen}
 
     try {
       if (fs.existsSync(uploadsBaseDir)) {
+        const checkDir = (dir: string) => {
+          if (!fs.existsSync(dir)) return null;
+          const files = fs.readdirSync(dir);
+          for (const f of files) {
+            const fullP = path.join(dir, f);
+            if (fs.statSync(fullP).isFile()) {
+              if (
+                f === baseName ||
+                f.endsWith("-" + baseName) ||
+                f.toLowerCase() === baseName.toLowerCase() ||
+                f.toLowerCase().endsWith("-" + baseName.toLowerCase())
+              ) {
+                return {
+                  filePath: path.resolve(fullP),
+                  fileName: f,
+                  mimeType: this.getMimeType(f),
+                };
+              }
+            }
+          }
+          return null;
+        };
+
+        const credMatch = checkDir(path.join(uploadsBaseDir, "credentials"));
+        if (credMatch) return credMatch;
+        const rootMatch = checkDir(uploadsBaseDir);
+        if (rootMatch) return rootMatch;
+
         const entries = fs.readdirSync(uploadsBaseDir, { withFileTypes: true });
         for (const entry of entries) {
           if (entry.isDirectory()) {
-            const subPath = path.join(uploadsBaseDir, entry.name, baseName);
-            if (fs.existsSync(subPath) && fs.statSync(subPath).isFile()) {
-              return {
-                filePath: subPath,
-                fileName: baseName,
-                mimeType: this.getMimeType(subPath),
-              };
-            }
+            const subMatch = checkDir(path.join(uploadsBaseDir, entry.name));
+            if (subMatch) return subMatch;
           }
         }
       }

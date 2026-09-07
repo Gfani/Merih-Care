@@ -148,7 +148,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final Map<String, dynamic> data = (rawData is Map<String, dynamic> && rawData.containsKey('data'))
           ? (rawData['data'] as Map<String, dynamic>)
           : (rawData is Map<String, dynamic> ? rawData : <String, dynamic>{});
-      return data['url']?.toString() ?? data['filePath']?.toString();
+      return data['url']?.toString() ?? data['storageKey']?.toString() ?? data['filePath']?.toString();
     } catch (e) {
       print('[AUTH] uploadCredentialDocument error: $e');
       return null;

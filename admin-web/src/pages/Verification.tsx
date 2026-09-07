@@ -1,6 +1,88 @@
 import React, { useState, useEffect } from "react";
 import { Alert, Card, Avatar, StatusBadge, Button, DataTable, ConfirmDialog, Modal, toast, SkeletonCard } from "../components/ui";
 import { api } from "../services/api";
+const BASE_API = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https://api.merihcare.et/api/v1" : "http://localhost:3000/api/v1");
+
+interface DocumentInfo {
+  title: string;
+  raw: string;
+  rawUrl: string;
+  resolvedUrl: string;
+  downloadUrl: string;
+  hasPhysicalFile: boolean;
+  isPdf: boolean;
+  isImage: boolean;
+  isLicenseField: boolean;
+  fileName: string;
+}
+
+function resolveDocumentInfo(docTitle: string, provider: any): DocumentInfo {
+  let rawUrl = "";
+  const isLicenseField = docTitle.toLowerCase().includes("license");
+
+  if (docTitle.toLowerCase().includes("cv") || docTitle.toLowerCase().includes("curriculum")) {
+    rawUrl = provider.cvUrl || provider.cv || "";
+  } else if (isLicenseField) {
+    rawUrl = provider.licenseDocumentUrl || provider.licenseDoc || provider.licenseUrl || "";
+  } else if (docTitle.toLowerCase().includes("id") || docTitle.toLowerCase().includes("passport")) {
+    rawUrl = provider.idDocumentUrl || provider.idDoc || provider.idUrl || "";
+  } else {
+    rawUrl = provider.cvUrl || provider.licenseDocumentUrl || provider.idDocumentUrl || "";
+  }
+
+  const hasPhysicalFile = !!rawUrl && (rawUrl.startsWith("http") || rawUrl.startsWith("/") || rawUrl.includes("/") || rawUrl.includes("."));
+  
+  let resolvedUrl = rawUrl;
+  let downloadUrl = rawUrl;
+
+  if (hasPhysicalFile) {
+    if (rawUrl.includes("/uploads/view/")) {
+      resolvedUrl = rawUrl;
+      downloadUrl = rawUrl.replace("/uploads/view/", "/uploads/download/");
+    } else if (rawUrl.includes("/uploads/download/")) {
+      resolvedUrl = rawUrl.replace("/uploads/download/", "/uploads/view/");
+      downloadUrl = rawUrl;
+    } else if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
+      if (rawUrl.includes("localhost:3000") || rawUrl.includes("api.merihcare.et")) {
+        resolvedUrl = rawUrl;
+        downloadUrl = rawUrl.replace("/view", "/download");
+      } else {
+        resolvedUrl = `${BASE_API}/uploads/view?url=${encodeURIComponent(rawUrl)}`;
+        downloadUrl = `${BASE_API}/uploads/download?url=${encodeURIComponent(rawUrl)}`;
+      }
+    } else {
+      const cleanKey = rawUrl.startsWith("/") ? rawUrl.substring(1) : rawUrl;
+      resolvedUrl = `${BASE_API}/uploads/view/${cleanKey}`;
+      downloadUrl = `${BASE_API}/uploads/download/${cleanKey}`;
+    }
+  }
+
+  const lower = rawUrl.toLowerCase();
+  const isPdf = lower.endsWith(".pdf") || lower.includes(".pdf?") || lower.includes("application/pdf") || (!lower.match(/\.(jpg|jpeg|png|webp|gif)/) && hasPhysicalFile);
+  const isImage = !!lower.match(/\.(jpg|jpeg|png|webp|gif|bmp)/);
+  
+  let fileName = "";
+  if (rawUrl) {
+    const parts = rawUrl.split("/").pop()?.split("?")[0] || "";
+    fileName = parts;
+  }
+  if (!fileName && isLicenseField && provider.licenseNumber) {
+    fileName = `License-${provider.licenseNumber}`;
+  }
+
+  return {
+    title: docTitle,
+    raw: rawUrl,
+    rawUrl,
+    resolvedUrl,
+    downloadUrl,
+    hasPhysicalFile,
+    isPdf: !isImage && isPdf,
+    isImage,
+    isLicenseField,
+    fileName: fileName || `${docTitle.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`,
+  };
+}
 
 export default function VerificationSection() {
   const [selectedProvider, setSelectedProvider] = useState<any>(null);
@@ -18,6 +100,7 @@ export default function VerificationSection() {
 
   const [reviewModal, setReviewModal] = useState(false);
   const [reviewProvider, setReviewProvider] = useState<any>(null);
+  const [reviewDocTab, setReviewDocTab] = useState<string>("Curriculum Vitae (CV)");
 
   const [providers, setProviders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -349,46 +432,7 @@ export default function VerificationSection() {
       {/* Document View Modal */}
       <Modal open={docModal} onClose={() => setDocModal(false)} maxWidth="sm:max-w-4xl" title={`Credential Document: ${selectedDoc || ""}`}>
         {selectedDoc && selectedDocProvider && (() => {
-          let raw = "";
-          const isLicenseField = selectedDoc === "Medical License";
-          if (selectedDoc === "Curriculum Vitae (CV)") {
-            raw = selectedDocProvider.cvUrl || "";
-          } else if (isLicenseField) {
-            raw = selectedDocProvider.licenseDocumentUrl || "";
-          } else {
-            raw = selectedDocProvider.idDocumentUrl || "";
-          }
-
-          let resolvedUrl = "";
-          if (raw && typeof raw === "string") {
-            const trimmed = raw.trim();
-            if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-              if (trimmed.includes("storage.merihcare.et")) {
-                let key = trimmed;
-                if (key.includes("/signed/")) {
-                  key = key.split("/signed/")[1]?.split("?")[0] || "";
-                  key = decodeURIComponent(key);
-                } else if (key.includes("/credentials/")) {
-                  key = "credentials/" + key.split("/credentials/")[1];
-                } else {
-                  key = key.split("/").pop() || "";
-                }
-                resolvedUrl = `http://localhost:3000/api/v1/uploads/view/${encodeURIComponent(key)}`;
-              } else {
-                resolvedUrl = trimmed;
-              }
-            } else if (trimmed.startsWith("/") || trimmed.startsWith("credentials/")) {
-              resolvedUrl = `http://localhost:3000/api/v1/uploads/view/${encodeURIComponent(trimmed)}`;
-            } else if (trimmed.includes(".")) {
-              resolvedUrl = `http://localhost:3000/api/v1/uploads/view/${encodeURIComponent(trimmed)}`;
-            }
-          }
-
-          const hasPhysicalFile = !!resolvedUrl;
-          const downloadUrl = resolvedUrl ? resolvedUrl.replace("/uploads/view", "/uploads/download") : "";
-          const lower = resolvedUrl.toLowerCase();
-          const isImage = hasPhysicalFile && (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".webp") || lower.endsWith(".gif"));
-          const isPdf = hasPhysicalFile && !isImage;
+          const doc = resolveDocumentInfo(selectedDoc, selectedDocProvider);
 
           return (
             <div className="space-y-4">
@@ -409,15 +453,15 @@ export default function VerificationSection() {
 
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">
-                    {hasPhysicalFile ? (isPdf ? "PDF Document" : isImage ? "Scanned Image" : "Official Upload") : "License Record"}
+                    {doc.hasPhysicalFile ? (doc.isPdf ? "PDF Document" : doc.isImage ? "Scanned Image" : "Official Upload") : "License Record"}
                   </span>
-                  {hasPhysicalFile && (
+                  {doc.hasPhysicalFile && (
                     <>
                       <Button
                         size="sm"
                         variant="outline"
                         className="text-xs !py-1 !px-2.5"
-                        onClick={() => window.open(resolvedUrl, "_blank")}
+                        onClick={() => window.open(doc.resolvedUrl, "_blank")}
                       >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mr-1 inline-block">
                           <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
@@ -429,7 +473,7 @@ export default function VerificationSection() {
                       <Button
                         size="sm"
                         className="text-xs !py-1 !px-2.5"
-                        onClick={() => window.open(downloadUrl, "_blank")}
+                        onClick={() => window.open(doc.downloadUrl, "_blank")}
                       >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mr-1 inline-block">
                           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -444,11 +488,11 @@ export default function VerificationSection() {
               </div>
 
               {/* Document Display Canvas */}
-              {hasPhysicalFile ? (
-                isImage ? (
+              {doc.hasPhysicalFile ? (
+                doc.isImage ? (
                   <div className="w-full h-[540px] bg-slate-950 rounded-xl flex items-center justify-center p-3 border border-slate-700 overflow-auto shadow-inner">
                     <img
-                      src={resolvedUrl}
+                      src={doc.resolvedUrl}
                       alt={selectedDoc}
                       className="max-h-full max-w-full object-contain rounded shadow"
                     />
@@ -456,13 +500,13 @@ export default function VerificationSection() {
                 ) : (
                   <div className="w-full h-[540px] rounded-xl overflow-hidden border border-[#e2e8ee] dark:border-slate-700 bg-slate-100 dark:bg-slate-900 shadow-inner">
                     <iframe
-                      src={`${resolvedUrl}#toolbar=1`}
+                      src={`${doc.resolvedUrl}#toolbar=1`}
                       className="w-full h-full border-0"
                       title={selectedDoc}
                     />
                   </div>
                 )
-              ) : isLicenseField && selectedDocProvider.licenseNumber ? (
+              ) : doc.isLicenseField && selectedDocProvider.licenseNumber ? (
                 /* Structured Credential Sheet */
                 <div className="p-6 bg-gradient-to-br from-[#f8fbfb] to-[#edf6f4] dark:from-slate-900 dark:to-slate-800 rounded-xl border border-teal-200 dark:border-teal-800 text-left space-y-4">
                   <div className="flex items-center justify-between border-b border-teal-200/60 dark:border-teal-800/60 pb-3">
@@ -567,7 +611,7 @@ export default function VerificationSection() {
               {/* Modal Footer Controls */}
               <div className="flex items-center justify-between pt-2 border-t border-[#f0f4f7] dark:border-slate-700 text-xs">
                 <span className="text-[#8a9aaa] dark:text-slate-400 truncate max-w-md">
-                  {raw ? `Document Source: ${raw}` : "No file source attached"}
+                  {doc.raw ? `Document Source: ${doc.raw}` : "No file source attached"}
                 </span>
                 <div className="flex gap-2">
                   <Button size="sm" variant="ghost" onClick={() => setDocModal(false)}>Close</Button>
@@ -597,33 +641,290 @@ export default function VerificationSection() {
         </div>
       </Modal>
 
-      {/* Review Details Modal */}
-      <Modal open={reviewModal} onClose={() => setReviewModal(false)} title="Verification Review">
-        {reviewProvider && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <Avatar src={reviewProvider.avatar} name={reviewProvider.name} size="lg" />
-              <div>
-                <h4 className="font-bold text-sm text-[#18232e] dark:text-white">{reviewProvider.name}</h4>
-                <p className="text-xs text-[#8a9aaa] dark:text-slate-400">{reviewProvider.title}</p>
+      {/* Comprehensive Provider Verification Dossier Modal */}
+      <Modal open={reviewModal} onClose={() => setReviewModal(false)} maxWidth="sm:max-w-4xl" title="Provider Verification Dossier">
+        {reviewProvider && (() => {
+          const activeDoc = resolveDocumentInfo(reviewDocTab, reviewProvider);
+
+          return (
+            <div className="space-y-4 max-h-[82vh] overflow-y-auto pr-1">
+              {/* Profile Card Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-gradient-to-r from-[#f8fafc] to-[#f0fdfa] dark:from-slate-800 dark:to-slate-800/60 rounded-xl border border-[#e2e8ee] dark:border-slate-700">
+                <div className="flex items-center gap-3">
+                  <Avatar src={reviewProvider.avatar} name={reviewProvider.name} size="lg" />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-bold text-base text-[#18232e] dark:text-white">{reviewProvider.name}</h4>
+                      <StatusBadge status={reviewProvider.status === "needs_fix" ? "needs_fix" : (reviewProvider.verified ? "verified" : "pending")} />
+                    </div>
+                    <p className="text-xs text-[#4a5a6a] dark:text-slate-300 mt-0.5">
+                      {reviewProvider.title || "Healthcare Practitioner"} • {reviewProvider.specialty || "General Medicine"}
+                    </p>
+                    <p className="text-[11px] font-mono text-[#0d7c6a] dark:text-cyan-400 mt-1">
+                      ID: {reviewProvider.id} {reviewProvider.licenseNumber ? `• License: ${reviewProvider.licenseNumber}` : ""}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-right text-xs text-[#8a9aaa] dark:text-slate-400">
+                  <span className="block font-medium text-[#18232e] dark:text-slate-200">
+                    Application Date
+                  </span>
+                  <span>{reviewProvider.joinedDate || reviewProvider.createdAt?.toString()?.split("T")[0] || "Recent"}</span>
+                </div>
+              </div>
+
+              {/* Complete Clinical & Personal Credentials Matrix */}
+              <div className="space-y-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[#8a9aaa] dark:text-slate-400">
+                  Submitted Practitioner Credentials
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 text-xs">
+                  <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#eef2f6] dark:border-slate-700">
+                    <span className="text-[10px] uppercase font-bold text-[#8a9aaa] dark:text-slate-400 block">License / Council ID</span>
+                    <span className="font-mono font-bold text-[#0d7c6a] dark:text-cyan-400 text-sm">
+                      {reviewProvider.licenseNumber || "Not Provided"}
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#eef2f6] dark:border-slate-700">
+                    <span className="text-[10px] uppercase font-bold text-[#8a9aaa] dark:text-slate-400 block">Clinical Specialty</span>
+                    <span className="font-semibold text-[#18232e] dark:text-white">
+                      {reviewProvider.specialty || "General Medicine"}
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#eef2f6] dark:border-slate-700">
+                    <span className="text-[10px] uppercase font-bold text-[#8a9aaa] dark:text-slate-400 block">Clinical Experience</span>
+                    <span className="font-semibold text-[#18232e] dark:text-white">
+                      {reviewProvider.experience ? `${reviewProvider.experience} Years` : "Not specified"}
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#eef2f6] dark:border-slate-700">
+                    <span className="text-[10px] uppercase font-bold text-[#8a9aaa] dark:text-slate-400 block">Medical Degree / School</span>
+                    <span className="font-semibold text-[#18232e] dark:text-white">
+                      {reviewProvider.education || "Clinical Healthcare Qualification"}
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#eef2f6] dark:border-slate-700">
+                    <span className="text-[10px] uppercase font-bold text-[#8a9aaa] dark:text-slate-400 block">Hospital / Clinic Affiliation</span>
+                    <span className="font-semibold text-[#18232e] dark:text-white">
+                      {reviewProvider.hospitalAffiliation || "Independent Practice"}
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#eef2f6] dark:border-slate-700">
+                    <span className="text-[10px] uppercase font-bold text-[#8a9aaa] dark:text-slate-400 block">Consultation Rate</span>
+                    <span className="font-semibold text-[#18232e] dark:text-white">
+                      {reviewProvider.pricePerVisit ? `${reviewProvider.pricePerVisit} ETB / visit` : "800 ETB / visit"}
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#eef2f6] dark:border-slate-700">
+                    <span className="text-[10px] uppercase font-bold text-[#8a9aaa] dark:text-slate-400 block">Verified Email</span>
+                    <span className="font-medium text-[#18232e] dark:text-white truncate block">
+                      {reviewProvider.email || "No email on record"}
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#eef2f6] dark:border-slate-700">
+                    <span className="text-[10px] uppercase font-bold text-[#8a9aaa] dark:text-slate-400 block">Contact Phone</span>
+                    <span className="font-medium text-[#18232e] dark:text-white">
+                      {reviewProvider.phone || "No phone on record"}
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#eef2f6] dark:border-slate-700">
+                    <span className="text-[10px] uppercase font-bold text-[#8a9aaa] dark:text-slate-400 block">Clinical Services</span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {(reviewProvider.services && reviewProvider.services.length > 0 ? reviewProvider.services : ["Doctor Visit", "Home Nursing"]).map((srv: string) => (
+                        <span key={srv} className="px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-900/40 text-teal-800 dark:text-teal-300 text-[10px] font-semibold">
+                          {srv}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Exact Uploaded Document Viewer Section */}
+              <div className="space-y-3 border-t border-[#e2e8ee] dark:border-slate-700 pt-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-[#8a9aaa] dark:text-slate-400">
+                    Submitted Credential Documents (Exact Uploads)
+                  </p>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                    Live Document Inspection Studio
+                  </span>
+                </div>
+
+                {/* Document Selector Tabs */}
+                <div className="flex gap-2 border-b border-[#e2e8ee] dark:border-slate-700 pb-2">
+                  {[
+                    { title: "Curriculum Vitae (CV)", url: reviewProvider.cvUrl },
+                    { title: "Medical License", url: reviewProvider.licenseDocumentUrl || reviewProvider.licenseNumber },
+                    { title: "Government ID / Passport", url: reviewProvider.idDocumentUrl },
+                  ].map((t) => {
+                    const hasDoc = !!t.url;
+                    const isActive = reviewDocTab === t.title;
+                    return (
+                      <button
+                        key={t.title}
+                        type="button"
+                        onClick={() => setReviewDocTab(t.title)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer ${
+                          isActive
+                            ? "bg-[#0d7c6a] text-white shadow-sm"
+                            : "bg-[#f1f5f9] dark:bg-slate-700 text-[#4a5a6a] dark:text-slate-200 hover:bg-[#e2e8ee]"
+                        }`}
+                      >
+                        <span>{t.title}</span>
+                        <span className={`w-2 h-2 rounded-full ${hasDoc ? "bg-emerald-400" : "bg-slate-400"}`} />
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Active Document Subheader */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-[#f8fafc] dark:bg-slate-900 rounded-lg border border-[#e2e8ee] dark:border-slate-700 text-xs">
+                  <div>
+                    <span className="font-semibold text-[#18232e] dark:text-white mr-2">{reviewDocTab}</span>
+                    <span className="font-mono text-[#8a9aaa] dark:text-slate-400 text-[11px]">
+                      {activeDoc.fileName || (activeDoc.isLicenseField ? `License: ${reviewProvider.licenseNumber}` : "Not Attached")}
+                    </span>
+                  </div>
+
+                  {activeDoc.hasPhysicalFile && (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs !py-1 !px-2"
+                        onClick={() => window.open(activeDoc.resolvedUrl, "_blank")}
+                      >
+                        New Window
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="text-xs !py-1 !px-2"
+                        onClick={() => window.open(activeDoc.downloadUrl, "_blank")}
+                      >
+                        Download
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Embedded Viewer Canvas */}
+                {activeDoc.hasPhysicalFile ? (
+                  activeDoc.isImage ? (
+                    <div className="w-full h-[480px] bg-slate-950 rounded-xl flex items-center justify-center p-3 border border-slate-700 overflow-auto shadow-inner">
+                      <img
+                        src={activeDoc.resolvedUrl}
+                        alt={reviewDocTab}
+                        className="max-h-full max-w-full object-contain rounded shadow"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-full h-[480px] rounded-xl overflow-hidden border border-[#e2e8ee] dark:border-slate-700 bg-slate-100 dark:bg-slate-900 shadow-inner">
+                      <iframe
+                        src={`${activeDoc.resolvedUrl}#toolbar=1`}
+                        className="w-full h-full border-0"
+                        title={reviewDocTab}
+                      />
+                    </div>
+                  )
+                ) : activeDoc.isLicenseField && reviewProvider.licenseNumber ? (
+                  <div className="p-5 bg-gradient-to-br from-[#f8fbfb] to-[#edf6f4] dark:from-slate-900 dark:to-slate-800 rounded-xl border border-teal-200 dark:border-teal-800 text-left space-y-3">
+                    <div className="flex items-center justify-between border-b border-teal-200/60 dark:border-teal-800/60 pb-2">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-[#0d7c6a] dark:text-cyan-400">
+                          Official Verification Certificate
+                        </span>
+                        <h4 className="text-sm font-bold text-[#18232e] dark:text-white">
+                          Ministry of Health & Merihcare Provider License
+                        </h4>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                        Active Registry Record
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="p-2.5 bg-white dark:bg-slate-800 rounded border border-[#e2e8ee] dark:border-slate-700">
+                        <span className="text-[10px] uppercase font-bold text-[#8a9aaa] block">License Number</span>
+                        <span className="font-mono font-bold text-[#0d7c6a] dark:text-cyan-400">{reviewProvider.licenseNumber}</span>
+                      </div>
+                      <div className="p-2.5 bg-white dark:bg-slate-800 rounded border border-[#e2e8ee] dark:border-slate-700">
+                        <span className="text-[10px] uppercase font-bold text-[#8a9aaa] block">Practitioner</span>
+                        <span className="font-semibold text-[#18232e] dark:text-white">{reviewProvider.name}</span>
+                      </div>
+                      <div className="p-2.5 bg-white dark:bg-slate-800 rounded border border-[#e2e8ee] dark:border-slate-700">
+                        <span className="text-[10px] uppercase font-bold text-[#8a9aaa] block">Specialty</span>
+                        <span className="font-medium text-[#18232e] dark:text-white">{reviewProvider.specialty || "Clinical Practice"}</span>
+                      </div>
+                      <div className="p-2.5 bg-white dark:bg-slate-800 rounded border border-[#e2e8ee] dark:border-slate-700">
+                        <span className="text-[10px] uppercase font-bold text-[#8a9aaa] block">Hospital Affiliation</span>
+                        <span className="font-medium text-[#18232e] dark:text-white">{reviewProvider.hospitalAffiliation || "Independent Practice"}</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-6 text-center bg-[#f8fafc] dark:bg-slate-900 rounded-xl border border-dashed border-[#cbd5e1] dark:border-slate-700 space-y-2">
+                    <p className="text-xs font-semibold text-[#18232e] dark:text-white">No digital file attached for {reviewDocTab}</p>
+                    <p className="text-[11px] text-[#8a9aaa] dark:text-slate-400">You can request the provider to upload this document before approving.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Administrative Actions Footer */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[#e2e8ee] dark:border-slate-700">
+                <Button size="sm" variant="ghost" onClick={() => setReviewModal(false)}>Close Dossier</Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => {
+                      setReviewModal(false);
+                      setSelectedProvider(reviewProvider);
+                      setRejectReason("");
+                      setRejectModal(true);
+                    }}
+                  >
+                    Reject
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setReviewModal(false);
+                      setSelectedFixProvider(reviewProvider);
+                      setFixComment("");
+                      setFixModal(true);
+                    }}
+                  >
+                    Request Fix
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setReviewModal(false);
+                      setSelectedProvider(reviewProvider);
+                      setApproveModal(true);
+                    }}
+                  >
+                    <svg width="12" height="10" viewBox="0 0 12 10" fill="none" className="inline-block mr-1">
+                      <path d="M1 5l3 3.5L11 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    Approve Provider
+                  </Button>
+                </div>
               </div>
             </div>
-            <div className="space-y-2 border-t border-[#f0f4f7] dark:border-slate-700 pt-3">
-              <p className="text-xs font-semibold text-[#8a9aaa] dark:text-slate-400 uppercase tracking-wide">Verification Details</p>
-              <div className="flex justify-between text-xs py-1 text-[#4a5a6a] dark:text-slate-300">
-                <span>Application Date</span>
-                <span className="text-[#18232e] dark:text-white">{reviewProvider.joinedDate || "N/A"}</span>
-              </div>
-              <div className="flex justify-between text-xs py-1 text-[#4a5a6a] dark:text-slate-300">
-                <span>Verification State</span>
-                <StatusBadge status={reviewProvider.status} />
-              </div>
-            </div>
-            <div className="flex justify-end pt-2 border-t border-[#f0f4f7] dark:border-slate-700">
-              <Button size="sm" onClick={() => setReviewModal(false)}>Close</Button>
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </Modal>
     </div>
   );
