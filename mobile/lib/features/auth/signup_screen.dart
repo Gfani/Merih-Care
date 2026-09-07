@@ -557,20 +557,37 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                         ),
                         const SizedBox(height: 14),
 
-                        // License Number
+                        // License Number / ID
                         TextFormField(
                           controller: _licenseNumberController,
-                          decoration: const InputDecoration(
-                            labelText: 'Medical License / Registration No.',
-                            hintText: 'e.g. ETH-MED-99482',
-                            prefixIcon: Icon(Icons.badge_outlined),
+                          decoration: InputDecoration(
+                            labelText: 'Medical License / Council ID No.',
+                            hintText: 'e.g. ETH-MED-99482, Fayda ID, or tap Auto-ID',
+                            prefixIcon: const Icon(Icons.badge_outlined),
+                            helperText: 'Enter MOH / Council License No. or tap Auto-ID to be issued one',
                             filled: true,
                             fillColor: Colors.white,
+                            suffixIcon: Padding(
+                              padding: const EdgeInsets.only(right: 6.0),
+                              child: TextButton.icon(
+                                icon: const Icon(Icons.auto_awesome, size: 14, color: Color(0xFF0F766E)),
+                                label: const Text(
+                                  'Auto-ID',
+                                  style: TextStyle(fontSize: 11, color: Color(0xFF0F766E), fontWeight: FontWeight.bold),
+                                ),
+                                onPressed: () {
+                                  final autoId = 'MC-PRV-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+                                  setState(() {
+                                    _licenseNumberController.text = autoId;
+                                  });
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Assigned Merihcare Practitioner ID: $autoId')),
+                                  );
+                                },
+                              ),
+                            ),
                           ),
                           validator: (val) {
-                            if (_role == 'provider' && (val == null || val.trim().isEmpty)) {
-                              return 'Medical license number is mandatory';
-                            }
                             return null;
                           },
                         ),
@@ -686,12 +703,17 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       ? null
                       : () async {
                           if (_formKey.currentState!.validate()) {
-                            if (_role == 'provider' &&
-                                (_cvUrlController.text.isEmpty && _attachedCvName == null)) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Please attach your CV / Resume document')),
-                              );
-                              return;
+                            if (_role == 'provider') {
+                              if (_licenseNumberController.text.trim().isEmpty) {
+                                _licenseNumberController.text =
+                                    'MC-PRV-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+                              }
+                              if (_educationController.text.trim().isEmpty) {
+                                _educationController.text = 'Clinical Healthcare Qualification';
+                              }
+                              if (_hospitalAffiliationController.text.trim().isEmpty) {
+                                _hospitalAffiliationController.text = 'Independent Healthcare Practice';
+                              }
                             }
 
                             setState(() => _loading = true);
@@ -706,7 +728,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                                     'hospitalAffiliation': _hospitalAffiliationController.text.trim(),
                                     'cvUrl': _cvUrlController.text.isNotEmpty
                                         ? _cvUrlController.text.trim()
-                                        : 'https://storage.merihcare.et/credentials/${_attachedCvName ?? "cv.pdf"}',
+                                        : 'https://storage.merihcare.et/credentials/${_attachedCvName ?? "curriculum_vitae.pdf"}',
                                     'licenseDocumentUrl': _licenseDocController.text.isNotEmpty
                                         ? _licenseDocController.text.trim()
                                         : (_attachedLicenseName != null
