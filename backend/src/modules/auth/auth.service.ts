@@ -34,7 +34,14 @@ export class AuthService {
   }
 
   async validateUser(email: string, pass: string): Promise<any> {
-    const user = await this.userRepo.findOne({ where: { email } });
+    const normalizedEmail = (email || "").trim().toLowerCase();
+    let user = await this.userRepo.findOne({ where: { email: normalizedEmail } });
+    if (!user) {
+      user = await this.userRepo
+        .createQueryBuilder("user")
+        .where("LOWER(user.email) = :email", { email: normalizedEmail })
+        .getOne();
+    }
     if (!user) {
       return null;
     }
@@ -89,7 +96,14 @@ export class AuthService {
   }
 
   async registerUser(name: string, email: string, pass: string, role: string, adminRole?: string, phone?: string): Promise<UserEntity> {
-    const existing = await this.userRepo.findOne({ where: { email } });
+    const normalizedEmail = (email || "").trim().toLowerCase();
+    let existing = await this.userRepo.findOne({ where: { email: normalizedEmail } });
+    if (!existing) {
+      existing = await this.userRepo
+        .createQueryBuilder("user")
+        .where("LOWER(user.email) = :email", { email: normalizedEmail })
+        .getOne();
+    }
     if (existing) {
       throw new Error("User already exists");
     }
@@ -102,7 +116,7 @@ export class AuthService {
     const user = new UserEntity();
     user.id = "u-" + crypto.randomUUID();
     user.name = name;
-    user.email = email;
+    user.email = normalizedEmail;
     user.password = hashed;
     user.phone = phone || "";
     user.role = role;
