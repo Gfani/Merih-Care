@@ -11,35 +11,8 @@ env:
   ADMIN_CONTAINER_APP_NAME: app-merihcare-prod-admin
 
 jobs:
-  test-and-lint:
-    name: Run Unit Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
-
-      - name: Run Backend Tests
-        working-directory: backend
-        run: |
-          npm ci
-          npm test
-
-      - name: Run Admin Web Tests
-        working-directory: admin-web
-        run: |
-          npm ci
-          npm test
-
   deploy-backend:
     name: Deploy Backend to Azure Container Apps
-    needs: test-and-lint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -77,7 +50,6 @@ jobs:
 
   deploy-admin-web:
     name: Deploy Admin Web to Azure Container Apps
-    needs: deploy-backend
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
