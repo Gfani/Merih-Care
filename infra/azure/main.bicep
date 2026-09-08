@@ -22,6 +22,9 @@ param backendImage string = ''
 @secure()
 param chapaSecretKey string = ''
 
+@description('Admin Web container image to deploy.')
+param adminWebImage string = ''
+
 // Unique suffix for globally unique resource names
 var uniqueSuffix = uniqueString(resourceGroup().id)
 var acrName = 'cr${replace(environmentName, '-', '')}${take(uniqueSuffix, 6)}'
@@ -31,7 +34,7 @@ var psqlServerName = 'psql-${environmentName}-${take(uniqueSuffix, 6)}'
 var storageAccountName = 'st${replace(environmentName, '-', '')}${take(uniqueSuffix, 6)}'
 var fileShareName = 'uploads'
 var backendAppName = 'app-${environmentName}-backend'
-var staticWebAppName = 'swa-${environmentName}-admin'
+var adminWebAppName = 'app-${environmentName}-admin'
 
 // 1. Azure Container Registry (ACR)
 resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
@@ -310,16 +313,49 @@ resource backendContainerApp 'Microsoft.App/containerApps@2023-05-01' = {
   }
 }
 
-// 7. Azure Static Web App: React / Vite Admin Portal
-resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' = {
-  name: staticWebAppName
-  location: (location == 'westeurope' || location == 'northeurope') ? 'westeurope' : (location == 'centralus' || location == 'eastus2' || location == 'westus2') ? location : 'westeurope'
-  sku: {
-    name: 'Free'
-    tier: 'Free'
-  }
+// 7. Azure Container App: React / Vite Admin Portal (Nginx)
+resource adminWebContainerApp 'Microsoft.App/containerApps@2023-05-01' = {
+  name: adminWebAppName
+  location: location
   properties: {
-    allowConfigFileUpdates: true
+    managedEnvironmentId: containerAppEnv.id
+    configuration: {
+      ingress: {
+        external: true
+        targetPort: 80
+        transport: 'auto'
+        allowInsecure: false
+      }
+      registries: [
+        {
+          server: acr.properties.loginServer
+          username: acr.listCredentials().username
+          passwordSecretRef: 'acr-password'
+        }
+      ]
+      secrets: [
+        {
+          name: 'acr-password'
+          value: acr.listCredentials().passwords[0].value
+        }
+      ]
+    }
+    template: {
+      containers: [
+        {
+          name: 'admin-web'
+          image: empty(adminWebImage) ? 'mcr.microsoft.com/azuredocs/aci-helloworld:latest' : adminWebImage
+          resources: {
+            cpu: json('0.25')
+            memory: '0.5Gi'
+          }
+        }
+      ]
+      scale: {
+        minReplicas: 1
+        maxReplicas: 2
+      }
+    }
   }
 }
 
@@ -328,5 +364,5 @@ output acrLoginServer string = acr.properties.loginServer
 output acrName string = acr.name
 output postgresServerFqdn string = psqlServer.properties.fullyQualifiedDomainName
 output backendUrl string = 'https://${backendContainerApp.properties.configuration.ingress.fqdn}'
-output adminWebUrl string = 'https://${staticWebApp.properties.defaultHostname}'
-output staticWebAppName string = staticWebApp.name
+output adminWebUrl string = 'https://${adminWebContainerApp.properties.configuration.ingress.fqdn}'
+output adminWebAppName string = adminWebContainerApp.name

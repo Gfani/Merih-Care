@@ -75,8 +75,6 @@ ACR_NAME=$(echo "${DEPLOYMENT_OUTPUT}" | jq -r .acrName.value)
 POSTGRES_FQDN=$(echo "${DEPLOYMENT_OUTPUT}" | jq -r .postgresServerFqdn.value)
 BACKEND_APP_URL=$(echo "${DEPLOYMENT_OUTPUT}" | jq -r .backendUrl.value)
 ADMIN_WEB_URL=$(echo "${DEPLOYMENT_OUTPUT}" | jq -r .adminWebUrl.value)
-STATIC_WEB_APP_NAME=$(echo "${DEPLOYMENT_OUTPUT}" | jq -r .staticWebAppName.value)
-SWA_API_KEY=$(az staticwebapp secrets list --name "${STATIC_WEB_APP_NAME}" --resource-group "${RESOURCE_GROUP}" --query properties.apiKey -o tsv 2>/dev/null || true)
 
 echo "Infrastructure deployed successfully!"
 echo "  - ACR: ${ACR_LOGIN_SERVER}"
@@ -85,15 +83,14 @@ echo "  - Backend Container App URL: ${BACKEND_APP_URL}"
 echo "  - Admin Web App URL: ${ADMIN_WEB_URL}"
 
 # 5. Build and Push Backend Container directly in ACR (No local Docker required!)
-echo "[STEP 3/6] Building Backend Container Image in Azure Cloud ACR..."
+echo "[STEP 3/5] Building Backend Container Image in Azure Cloud ACR..."
 BACKEND_IMAGE="${ACR_LOGIN_SERVER}/merihcare-backend:latest"
 az acr build \
   --registry "${ACR_NAME}" \
   --image "merihcare-backend:latest" \
   ../../backend
 
-# 6. Update Container App to use the built image
-echo "[STEP 4/6] Updating Container App to run ${BACKEND_IMAGE}..."
+echo "Updating Backend Container App to run ${BACKEND_IMAGE}..."
 BACKEND_APP_NAME="app-${ENV_NAME}-backend"
 az containerapp update \
   --name "${BACKEND_APP_NAME}" \
@@ -101,20 +98,21 @@ az containerapp update \
   --image "${BACKEND_IMAGE}" \
   -o table
 
-# 7. Build and Deploy Admin Web
-echo "[STEP 5/6] Building and Deploying Admin Web Portal..."
-pushd ../../admin-web > /dev/null
-export VITE_API_URL="${BACKEND_APP_URL}/api/v1"
-npm install
-npm run build
-popd > /dev/null
+# 6. Build and Push Admin Web Container directly in ACR
+echo "[STEP 4/5] Building Admin Web Container in Azure Cloud ACR..."
+ADMIN_IMAGE="${ACR_LOGIN_SERVER}/merihcare-admin-web:latest"
+az acr build \
+  --registry "${ACR_NAME}" \
+  --image "merihcare-admin-web:latest" \
+  ../../admin-web
 
-# Deploy static assets via Azure Static Web Apps CLI (or az staticwebapp)
-if command -v swa > /dev/null 2>&1; then
-  swa deploy ../../admin-web/dist --deployment-token "${SWA_API_KEY}" --env production
-else
-  npx -y @azure/static-web-apps-cli deploy ../../admin-web/dist --deployment-token "${SWA_API_KEY}" --env production
-fi
+echo "[STEP 5/5] Updating Admin Web Container App to run ${ADMIN_IMAGE}..."
+ADMIN_APP_NAME="app-${ENV_NAME}-admin"
+az containerapp update \
+  --name "${ADMIN_APP_NAME}" \
+  --resource-group "${RESOURCE_GROUP}" \
+  --image "${ADMIN_IMAGE}" \
+  -o table
 
 # 8. Summary of Live Deployment
 echo "======================================================================"
