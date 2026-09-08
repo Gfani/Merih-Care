@@ -35,9 +35,9 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
     try { return JSON.parse(raw); } catch { return {}; }
   };
   const adminUser = getAdminUser();
-  const userRole = adminUser.role || "";
-  const userPermissions = adminUser.permissions || [];
-  const canModifyProviders = userRole === "super_admin" || userPermissions.includes("edit:providers") || userPermissions.includes("admin:providers");
+  const isSuperAdmin = adminUser.adminRole === "super_admin" || adminUser.role === "super_admin" || adminUser.permissions === "all";
+  const userPermissions = Array.isArray(adminUser.permissions) ? adminUser.permissions : [];
+  const canModifyProviders = isSuperAdmin || userPermissions.includes("edit:providers") || userPermissions.includes("admin:providers");
 
   const loadProviders = async () => {
     try {

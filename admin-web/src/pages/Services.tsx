@@ -19,6 +19,8 @@ export default function ServicesSection() {
   // Modal / Form state
   const [confirmModal, setConfirmModal] = useState(false);
   const [selectedService, setSelectedService] = useState<any>(null);
+  const [deleteModal, setDeleteModal] = useState(false);
+  const [serviceToDelete, setServiceToDelete] = useState<any>(null);
   const [formModal, setFormModal] = useState(false);
   const [editingService, setEditingService] = useState<any>(null);
   const [name, setName] = useState("");
@@ -32,9 +34,9 @@ export default function ServicesSection() {
     try { return JSON.parse(raw); } catch { return {}; }
   };
   const adminUser = getAdminUser();
-  const userRole = adminUser.role || "";
-  const userPermissions = adminUser.permissions || [];
-  const canModifyServices = userRole === "super_admin" || userPermissions.includes("edit:services") || userPermissions.includes("admin:services");
+  const isSuperAdmin = adminUser.adminRole === "super_admin" || adminUser.role === "super_admin" || adminUser.permissions === "all";
+  const userPermissions = Array.isArray(adminUser.permissions) ? adminUser.permissions : [];
+  const canModifyServices = isSuperAdmin || userPermissions.includes("edit:services") || userPermissions.includes("admin:services");
 
   const loadServices = async () => {
     try {
@@ -73,6 +75,25 @@ export default function ServicesSection() {
     } finally {
       setConfirmModal(false);
       setSelectedService(null);
+    }
+  };
+
+  const handleDeleteClick = (row: any) => {
+    setServiceToDelete(row);
+    setDeleteModal(true);
+  };
+
+  const confirmDeleteService = async () => {
+    if (!serviceToDelete) return;
+    try {
+      await api.deleteService(serviceToDelete.id);
+      toast(`Service "${serviceToDelete.name}" deleted successfully.`, "success");
+      loadServices();
+    } catch (err: any) {
+      toast(err.response?.data?.message || err.message || "Failed to delete service.", "error");
+    } finally {
+      setDeleteModal(false);
+      setServiceToDelete(null);
     }
   };
 
@@ -224,17 +245,27 @@ export default function ServicesSection() {
                 { key: "providerCount", header: "Providers", render: (row) => <span className="font-semibold">{row.providerCount as number || 0}</span> },
                 { key: "status", header: "Status", render: (row) => <StatusBadge status={row.status as any} /> },
                 { key: "actions", header: "Actions", render: (row) => (
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 items-center">
                     <Button size="sm" variant="ghost" disabled={!canModifyServices} className="text-xs !py-1 !px-2 cursor-pointer" onClick={() => handleEditClick(row)}>Edit</Button>
                     <Button 
                       size="sm" 
                       variant="ghost" 
                       disabled={!canModifyServices} 
-                      className="text-xs !py-1 !px-2 text-[#dc2626] hover:!bg-[#fee2e2] disabled:opacity-50 cursor-pointer" 
+                      className="text-xs !py-1 !px-2 text-amber-600 hover:!bg-amber-50 disabled:opacity-50 cursor-pointer" 
                       onClick={() => handleToggleClick(row)}
                     >
                       {(row.status as "active" | "closed") === "active" ? "Deactivate" : "Activate"}
                     </Button>
+                    {isSuperAdmin && (
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        className="text-xs !py-1 !px-2 text-[#dc2626] hover:!bg-[#fee2e2] cursor-pointer" 
+                        onClick={() => handleDeleteClick(row)}
+                      >
+                        Delete
+                      </Button>
+                    )}
                   </div>
                 )},
               ]}
@@ -261,6 +292,16 @@ export default function ServicesSection() {
         message={`Are you sure you want to ${selectedService?.status === "active" ? "deactivate" : "activate"} the service category "${selectedService?.name}"?`}
         confirmLabel={selectedService?.status === "active" ? "Deactivate" : "Activate"}
         confirmVariant={selectedService?.status === "active" ? "danger" : "success"}
+      />
+
+      <ConfirmDialog
+        open={deleteModal}
+        onClose={() => setDeleteModal(false)}
+        onConfirm={confirmDeleteService}
+        title="Delete Service Category"
+        message={`Are you sure you want to permanently delete the service category "${serviceToDelete?.name}"? This action cannot be undone.`}
+        confirmLabel="Delete Service"
+        confirmVariant="danger"
       />
 
       <Modal open={formModal} onClose={() => setFormModal(false)} title={editingService ? "Edit Service Category" : "Add Service Category"}>

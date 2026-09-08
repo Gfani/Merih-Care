@@ -25,9 +25,9 @@ export default function ComplaintsSection() {
     try { return JSON.parse(raw); } catch { return {}; }
   };
   const adminUser = getAdminUser();
-  const userRole = adminUser.role || "";
-  const userPermissions = adminUser.permissions || [];
-  const canResolve = userRole === "super_admin" || userPermissions.includes("edit:complaints") || userPermissions.includes("admin:complaints");
+  const isSuperAdmin = adminUser.adminRole === "super_admin" || adminUser.role === "super_admin" || adminUser.permissions === "all";
+  const userPermissions = Array.isArray(adminUser.permissions) ? adminUser.permissions : [];
+  const canResolve = isSuperAdmin || userPermissions.includes("edit:complaints") || userPermissions.includes("admin:complaints");
 
   const loadComplaints = async () => {
     try {

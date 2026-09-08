@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Body, Param, UseGuards, Query } from "@nestjs/common";
+import { Controller, Get, Put, Delete, Body, Param, UseGuards, Query, Req, ForbiddenException } from "@nestjs/common";
 import { UsersService } from "./users.service";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 import { RolesGuard } from "../../shared/guards/roles.guard";
@@ -14,13 +14,13 @@ export class UpdateUserRoleDto {
 
 @Controller("users")
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles("admin")
+@Roles("admin", "super_admin")
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  async getUsers(@Query() query: PaginationQueryDto) {
-    return this.usersService.getAllUsers();
+  async getUsers(@Query() query: any) {
+    return this.usersService.getAllUsers(query?.role || "all");
   }
 
   @Put(":id/suspend")
@@ -36,5 +36,16 @@ export class UsersController {
   @Put(":id/role")
   async updateUserRole(@Param("id") id: string, @Body() body: UpdateUserRoleDto) {
     return this.usersService.updateUserRole(id, body.role);
+  }
+
+  @Delete(":id")
+  async deleteUser(@Param("id") id: string, @Req() req: any) {
+    if (req.user?.adminRole !== "super_admin" && req.user?.role !== "super_admin") {
+      throw new ForbiddenException("Only super administrators can remove members");
+    }
+    if (req.user.id === id) {
+      throw new ForbiddenException("Super administrators cannot delete their own account");
+    }
+    return this.usersService.deleteUser(id);
   }
 }

@@ -235,6 +235,16 @@ export const api = {
     }
   },
 
+  async deleteUser(id: string): Promise<any> {
+    try {
+      const res = await axios.delete(`${API_URL}/users/${id}`, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { id, deleted: true };
+      throw error;
+    }
+  },
+
   // ─── PROVIDERS ─────────────────────────────────────────────────────────────
   async getProviders(params?: { search?: string; specialty?: string; verified?: boolean | string }): Promise<Provider[]> {
     try {
@@ -376,6 +386,16 @@ export const api = {
       return res.data;
     } catch (error) {
       if (isDemoMode()) return { id, ...data } as any;
+      throw error;
+    }
+  },
+
+  async deleteService(id: string): Promise<any> {
+    try {
+      const res = await axios.delete(`${API_URL}/services/${id}`, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { id, deleted: true };
       throw error;
     }
   },

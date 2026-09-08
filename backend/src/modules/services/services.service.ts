@@ -47,4 +47,13 @@ export class ServicesService {
     }
     return null;
   }
+
+  async deleteService(id: string): Promise<boolean> {
+    const service = await this.serviceRepo.findOne({ where: { id } });
+    if (service) {
+      await this.serviceRepo.remove(service);
+      return true;
+    }
+    return false;
+  }
 }

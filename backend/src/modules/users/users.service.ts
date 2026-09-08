@@ -10,8 +10,18 @@ export class UsersService {
     private readonly userRepo: Repository<UserEntity>,
   ) {}
 
-  async getAllUsers(role = "patient"): Promise<UserEntity[]> {
-    return this.userRepo.find({ where: { role } });
+  async getAllUsers(role: string = "patient"): Promise<UserEntity[]> {
+    if (role && role !== "all") {
+      return this.userRepo.find({ where: { role } });
+    }
+    return this.userRepo.find();
+  }
+
+  async deleteUser(id: string): Promise<boolean> {
+    const user = await this.userRepo.findOne({ where: { id } });
+    if (!user) return false;
+    await this.userRepo.remove(user);
+    return true;
   }
 
   async toggleUserSuspension(id: string): Promise<UserEntity | null> {

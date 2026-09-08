@@ -109,4 +109,22 @@ export class AdminService {
   async getPendingAdmins(): Promise<UserEntity[]> {
     return this.userRepo.find({ where: { role: "admin", isApproved: false } });
   }
+
+  async rejectAdminAccount(actorId: string, targetId: string): Promise<{ success: boolean }> {
+    if (actorId === targetId) {
+      throw new Error("Administrators cannot reject their own accounts");
+    }
+
+    const targetUser = await this.userRepo.findOne({ where: { id: targetId } });
+    if (!targetUser) {
+      throw new Error("Target user not found");
+    }
+
+    if (targetUser.role !== "admin") {
+      throw new Error("Target user is not an administrator");
+    }
+
+    await this.userRepo.remove(targetUser);
+    return { success: true };
+  }
 }

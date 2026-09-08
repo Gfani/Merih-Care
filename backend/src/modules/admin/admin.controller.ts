@@ -135,11 +135,15 @@ export class AdminController {
 
   @Put(["admin/users/:id/approve", "admin/approvals/:id"])
   @Post(["admin/users/:id/approve", "admin/approvals/:id"])
-  async approveAdmin(@Param("id") targetId: string, @Req() req: any) {
+  async approveAdmin(@Param("id") targetId: string, @Body() body: any, @Req() req: any) {
     if (req.user.adminRole !== "super_admin") {
-      throw new BadRequestException("Only super administrators can approve accounts");
+      throw new BadRequestException("Only super administrators can approve or reject accounts");
     }
     try {
+      const status = body?.status || "approved";
+      if (status === "rejected") {
+        return await this.adminService.rejectAdminAccount(req.user.id, targetId);
+      }
       return await this.adminService.approveAdminAccount(req.user.id, targetId);
     } catch (e) {
       throw new BadRequestException(e.message);

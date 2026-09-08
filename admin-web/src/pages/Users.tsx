@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { SearchBar, Select, Card, DataTable, Avatar, StatusBadge, Button, ConfirmDialog, Modal, Alert, toast, SkeletonCard } from "../components/ui";
+import { SearchBar, Select, Input, Card, DataTable, Avatar, StatusBadge, Button, ConfirmDialog, Modal, Alert, toast, SkeletonCard } from "../components/ui";
 import { api } from "../services/api";
-import { Download, CheckSquare, Square, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Download, CheckSquare, Square, ShieldAlert, ShieldCheck, UserPlus, Trash2 } from "lucide-react";
 
 export default function UsersSection() {
   const [search, setSearch] = useState("");
@@ -11,6 +11,14 @@ export default function UsersSection() {
   
   const [suspendModal, setSuspendModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [deleteModal, setDeleteModal] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<any>(null);
+  const [addMemberModal, setAddMemberModal] = useState(false);
+  const [newMemberName, setNewMemberName] = useState("");
+  const [newMemberEmail, setNewMemberEmail] = useState("");
+  const [newMemberPassword, setNewMemberPassword] = useState("");
+  const [newMemberRole, setNewMemberRole] = useState("admin");
+
   const [detailsModal, setDetailsModal] = useState(false);
   const [selectedDetails, setSelectedDetails] = useState<any>(null);
 
@@ -22,6 +30,14 @@ export default function UsersSection() {
   const [providers, setProviders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const getAdminUser = () => {
+    const raw = localStorage.getItem("admin_user");
+    if (!raw || raw === "undefined" || raw === "null") return {};
+    try { return JSON.parse(raw); } catch { return {}; }
+  };
+  const adminUser = getAdminUser();
+  const isSuperAdmin = adminUser.adminRole === "super_admin" || adminUser.role === "super_admin" || adminUser.permissions === "all";
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -109,6 +125,44 @@ export default function UsersSection() {
     }
   };
 
+  const handleDeleteUser = (user: any) => {
+    setUserToDelete(user);
+    setDeleteModal(true);
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return;
+    try {
+      await api.deleteUser(userToDelete.id);
+      toast(`User ${userToDelete.name || userToDelete.email} removed successfully`, "success");
+      loadData();
+    } catch (err: any) {
+      toast(err.response?.data?.message || err.message || "Failed to remove user account.", "error");
+    } finally {
+      setDeleteModal(false);
+      setUserToDelete(null);
+    }
+  };
+
+  const handleAddMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMemberName || !newMemberEmail || !newMemberPassword) {
+      toast("All fields are required", "error");
+      return;
+    }
+    try {
+      await api.signup(newMemberName, newMemberEmail, newMemberPassword, newMemberRole);
+      toast(`Admin account for ${newMemberEmail} created. Pending superadmin approval.`, "success");
+      setAddMemberModal(false);
+      setNewMemberName("");
+      setNewMemberEmail("");
+      setNewMemberPassword("");
+      loadData();
+    } catch (err: any) {
+      toast(err.response?.data?.message || err.message || "Failed to create account.", "error");
+    }
+  };
+
   const exportCSV = () => {
     const headers = ["ID", "Name", "Email", "Phone", "Role", "Status", "Joined"];
     const rows = allUsers.map((u) => [
@@ -177,10 +231,18 @@ export default function UsersSection() {
           />
         </div>
 
-        <Button variant="outline" onClick={exportCSV} className="flex items-center gap-2">
-          <Download size={15} />
-          <span>Export CSV</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          {isSuperAdmin && (
+            <Button onClick={() => setAddMemberModal(true)} className="flex items-center gap-1.5 cursor-pointer">
+              <UserPlus size={15} />
+              <span>+ Add Admin</span>
+            </Button>
+          )}
+          <Button variant="outline" onClick={exportCSV} className="flex items-center gap-2">
+            <Download size={15} />
+            <span>Export CSV</span>
+          </Button>
+        </div>
       </div>
 
       {/* Bulk actions banner */}
@@ -307,6 +369,17 @@ export default function UsersSection() {
                       >
                         {row.status === "suspended" ? "Restore" : "Suspend"}
                       </Button>
+                      {isSuperAdmin && row.id !== adminUser?.id && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="!py-1 !px-2 text-xs text-red-600 hover:!bg-red-50 dark:hover:!bg-red-950/30 cursor-pointer"
+                          onClick={() => handleDeleteUser(row)}
+                          title="Remove user account"
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      )}
                     </div>
                   ),
                 },
@@ -390,6 +463,41 @@ export default function UsersSection() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Delete User Confirm Dialog */}
+      <ConfirmDialog
+        open={deleteModal}
+        onClose={() => setDeleteModal(false)}
+        onConfirm={confirmDeleteUser}
+        title="Remove Member Account"
+        message={`Are you sure you want to permanently remove the account for ${userToDelete?.name || userToDelete?.email}? This action cannot be undone.`}
+        confirmLabel="Remove Member"
+        confirmVariant="danger"
+      />
+
+      {/* Add Member Modal */}
+      <Modal open={addMemberModal} onClose={() => setAddMemberModal(false)} title="Add Administrator Account">
+        <form onSubmit={handleAddMember} className="space-y-4">
+          <Input label="Full Name" value={newMemberName} onChange={e => setNewMemberName(e.target.value)} placeholder="e.g. Dr. Hana Bekele" required />
+          <Input label="Email Address" type="email" value={newMemberEmail} onChange={e => setNewMemberEmail(e.target.value)} placeholder="name@merihcare.et" required />
+          <Input label="Temporary Password" type="password" value={newMemberPassword} onChange={e => setNewMemberPassword(e.target.value)} placeholder="Minimum 6 characters" required />
+          <Select
+            label="Administrative Role"
+            value={newMemberRole}
+            onChange={e => setNewMemberRole(e.target.value)}
+            options={[
+              { value: "admin", label: "Operations Admin" },
+              { value: "finance_admin", label: "Finance Admin" },
+              { value: "verifier", label: "Verification Specialist" },
+              { value: "support_admin", label: "Support Admin" },
+            ]}
+          />
+          <div className="flex justify-end gap-2 pt-2 border-t border-[#f0f4f7] dark:border-slate-700">
+            <Button type="button" variant="ghost" onClick={() => setAddMemberModal(false)}>Cancel</Button>
+            <Button type="submit">Create Account</Button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

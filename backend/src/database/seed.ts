@@ -37,24 +37,30 @@ export class DatabaseSeedService implements OnModuleInit {
   async seed() {
     console.log("Checking and ensuring essential initial records (admin, services)...");
 
-    // 1. Seed Users (Admins and Patients)
-    const adminEmail = "admin@merihcare.et";
-    let adminUser = await this.userRepo.findOne({ where: { email: adminEmail } });
-    if (!adminUser) {
-      adminUser = new UserEntity();
-      adminUser.id = "u-admin";
-      adminUser.email = adminEmail;
+    // 1. Seed Initial Super Admin (only if no super admin exists)
+    const existingSuperAdmin = await this.userRepo.findOne({ where: { adminRole: "super_admin" } });
+    if (!existingSuperAdmin) {
+      const adminEmail = process.env.SUPER_ADMIN_EMAIL || "admin@merihcare.et";
+      let adminUser = await this.userRepo.findOne({ where: { email: adminEmail } });
+      if (!adminUser) {
+        adminUser = new UserEntity();
+        adminUser.id = "u-admin";
+        adminUser.email = adminEmail;
+        adminUser.name = "Super Administrator";
+        adminUser.password = await bcrypt.hash(process.env.SEED_ADMIN_PASSWORD || "admin123", 10);
+        adminUser.phone = "+251 91 111 2233";
+        adminUser.role = "admin";
+        adminUser.adminRole = "super_admin";
+        adminUser.permissions = "all";
+        adminUser.isApproved = true;
+        adminUser.status = "active";
+        adminUser.dateJoined = new Date().toISOString().split("T")[0];
+        await this.userRepo.save(adminUser);
+        console.log(`Initial bootstrap super admin created: ${adminEmail}`);
+      }
+    } else {
+      console.log(`Existing super administrator detected (${existingSuperAdmin.email}). Preserving credentials.`);
     }
-    adminUser.name = "Admin Kebede";
-    adminUser.password = await bcrypt.hash(process.env.SEED_ADMIN_PASSWORD || "admin123", 10);
-    adminUser.phone = "+251 91 111 2233";
-    adminUser.role = "admin";
-    adminUser.adminRole = "super_admin";
-    adminUser.permissions = "all";
-    adminUser.isApproved = true;
-    adminUser.status = "active";
-    adminUser.dateJoined = "2022-01-10";
-    await this.userRepo.save(adminUser);
 
     // 2. Seed Services
     const mockServices = [

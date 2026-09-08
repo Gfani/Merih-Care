@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Param, Body, UseGuards } from "@nestjs/common";
+import { Controller, Get, Put, Post, Delete, Param, Body, UseGuards } from "@nestjs/common";
 import { ServicesService } from "./services.service";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 import { RolesGuard } from "../../shared/guards/roles.guard";
@@ -67,5 +67,12 @@ export class ServicesController {
   @Roles("admin")
   async toggleService(@Param("id") id: string) {
     return this.servicesService.toggleServiceActive(id);
+  }
+
+  @Delete(":id")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("admin", "super_admin")
+  async deleteService(@Param("id") id: string) {
+    return this.servicesService.deleteService(id);
   }
 }

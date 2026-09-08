@@ -373,12 +373,8 @@ export class AuthService {
 
     if (role === "admin") {
       user.adminRole = adminRole || "support_admin";
-      user.isApproved = false; // Requires super admin approval
-      if (email === "admin@merihcare.et") {
-        user.isApproved = true;
-        user.adminRole = "super_admin";
-        user.permissions = "all";
-      }
+      user.isApproved = false; // All newly registered administrators strictly require super admin approval
+      user.permissions = "";
     } else if (role === "provider") {
       user.isApproved = false; // Healthcare providers require administrator verification and approval
       user.status = "pending_verification";
