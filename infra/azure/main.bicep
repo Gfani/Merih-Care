@@ -313,7 +313,7 @@ resource backendContainerApp 'Microsoft.App/containerApps@2023-05-01' = {
 // 7. Azure Static Web App: React / Vite Admin Portal
 resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' = {
   name: staticWebAppName
-  location: 'eastus2' // Static Web Apps supported global region
+  location: (location == 'westeurope' || location == 'northeurope') ? 'westeurope' : (location == 'centralus' || location == 'eastus2' || location == 'westus2') ? location : 'westeurope'
   sku: {
     name: 'Free'
     tier: 'Free'
@@ -329,4 +329,4 @@ output acrName string = acr.name
 output postgresServerFqdn string = psqlServer.properties.fullyQualifiedDomainName
 output backendUrl string = 'https://${backendContainerApp.properties.configuration.ingress.fqdn}'
 output adminWebUrl string = 'https://${staticWebApp.properties.defaultHostname}'
-output staticWebAppApiKey string = staticWebApp.listSecrets().properties.apiKey
+output staticWebAppName string = staticWebApp.name

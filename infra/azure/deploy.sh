@@ -8,13 +8,9 @@ set -euo pipefail
 
 # Configuration defaults
 RESOURCE_GROUP="${RESOURCE_GROUP:-rg-merihcare-prod}"
-LOCATION="${LOCATION:-eastus}"
+LOCATION="${LOCATION:-}"
 ENV_NAME="${ENV_NAME:-merihcare-prod}"
 DB_USER="merihcare_admin"
-
-echo "======================================================================"
-echo " Starting Merihcare Azure Deployment: ${ENV_NAME} in ${LOCATION}"
-echo "======================================================================"
 
 # 1. Verify Azure CLI Authentication
 if ! az account show > /dev/null 2>&1; then
@@ -25,6 +21,26 @@ fi
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 SUBSCRIPTION_NAME=$(az account show --query name -o tsv)
 echo "Active Subscription: ${SUBSCRIPTION_NAME} (${SUBSCRIPTION_ID})"
+
+# Auto-detect allowed regions from Azure Policy (crucial for Azure for Students subscriptions)
+if [ -z "${LOCATION}" ]; then
+  echo "Checking for student subscription allowed region policies..."
+  ALLOWED_POLICIES=$(az policy assignment list --query "[].parameters.listOfAllowedLocations.value[]" -o tsv 2>/dev/null || true)
+  if [ -z "${ALLOWED_POLICIES}" ]; then
+    ALLOWED_POLICIES=$(az policy assignment list --query "[].parameters.allowedLocations.value[]" -o tsv 2>/dev/null || true)
+  fi
+
+  if [ -n "${ALLOWED_POLICIES}" ]; then
+    LOCATION=$(echo "${ALLOWED_POLICIES}" | head -n 1)
+    echo ">> Detected allowed region from Azure Policy: ${LOCATION}"
+  else
+    LOCATION="eastus"
+  fi
+fi
+
+echo "======================================================================"
+echo " Starting Merihcare Azure Deployment: ${ENV_NAME} in ${LOCATION}"
+echo "======================================================================"
 
 # 2. Create Resource Group
 echo "[STEP 1/6] Creating Azure Resource Group: ${RESOURCE_GROUP}..."
@@ -47,6 +63,7 @@ DEPLOYMENT_OUTPUT=$(az deployment group create \
   --resource-group "${RESOURCE_GROUP}" \
   --template-file "./main.bicep" \
   --parameters \
+    location="${LOCATION}" \
     environmentName="${ENV_NAME}" \
     dbAdminUser="${DB_USER}" \
     dbAdminPassword="${DB_PASSWORD}" \
@@ -58,7 +75,8 @@ ACR_NAME=$(echo "${DEPLOYMENT_OUTPUT}" | jq -r .acrName.value)
 POSTGRES_FQDN=$(echo "${DEPLOYMENT_OUTPUT}" | jq -r .postgresServerFqdn.value)
 BACKEND_APP_URL=$(echo "${DEPLOYMENT_OUTPUT}" | jq -r .backendUrl.value)
 ADMIN_WEB_URL=$(echo "${DEPLOYMENT_OUTPUT}" | jq -r .adminWebUrl.value)
-SWA_API_KEY=$(echo "${DEPLOYMENT_OUTPUT}" | jq -r .staticWebAppApiKey.value)
+STATIC_WEB_APP_NAME=$(echo "${DEPLOYMENT_OUTPUT}" | jq -r .staticWebAppName.value)
+SWA_API_KEY=$(az staticwebapp secrets list --name "${STATIC_WEB_APP_NAME}" --resource-group "${RESOURCE_GROUP}" --query properties.apiKey -o tsv 2>/dev/null || true)
 
 echo "Infrastructure deployed successfully!"
 echo "  - ACR: ${ACR_LOGIN_SERVER}"
