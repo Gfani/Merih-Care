@@ -37,6 +37,10 @@ const resolveApiUrl = (): string => {
     }
     return envUrl;
   }
+  if (typeof window !== "undefined") {
+    const customApi = localStorage.getItem("merihcare_api_url");
+    if (customApi) return customApi;
+  }
   if (import.meta.env.PROD) {
     return "https://api.merihcare.et/api/v1";
   }

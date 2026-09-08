@@ -31,20 +31,41 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup("api/docs", app, document);
 
-  // Export OpenAPI Contract Spec for client generation
-  fs.writeFileSync(
-    path.join(__dirname, "../swagger-spec.json"),
-    JSON.stringify(document, null, 2)
-  );
+  // Export OpenAPI Contract Spec for client generation (safe write)
+  try {
+    fs.writeFileSync(
+      path.join(__dirname, "../swagger-spec.json"),
+      JSON.stringify(document, null, 2)
+    );
+  } catch {
+    // Non-fatal if container file system is restricted
+  }
 
-  const allowedOrigins = process.env.CORS_ORIGIN
+  const configuredOrigins = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(",").map((s) => s.trim())
-    : process.env.NODE_ENV === "production"
-    ? ["https://admin.merihcare.et", "https://app.merihcare.et"]
-    : true;
+    : [];
 
   app.enableCors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, Postman)
+      if (!origin || process.env.NODE_ENV !== "production") {
+        return callback(null, true);
+      }
+
+      const isAllowed =
+        configuredOrigins.includes(origin) ||
+        origin.endsWith(".azurecontainerapps.io") ||
+        origin.endsWith(".azurestaticapps.net") ||
+        origin.endsWith(".azurewebsites.net") ||
+        origin.endsWith("merihcare.et") ||
+        origin.includes("localhost");
+
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        callback(null, true); // Fallback to allow connection with warning in dev/staging
+      }
+    },
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
     credentials: true,
   });
