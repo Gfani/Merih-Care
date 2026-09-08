@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Alert, Card, Avatar, StatusBadge, Button, DataTable, ConfirmDialog, Modal, toast, SkeletonCard } from "../components/ui";
-import { api } from "../services/api";
-const BASE_API = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https://api.merihcare.et/api/v1" : "http://localhost:3000/api/v1");
+import { api, API_URL } from "../services/api";
+const BASE_API = API_URL;
 
 interface DocumentInfo {
   title: string;

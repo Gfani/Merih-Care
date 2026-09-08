@@ -44,7 +44,13 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
       }
     } catch (err: any) {
       setLoading(false);
-      const errMsg = err.response?.data?.message || err.message || "Invalid credentials. Use admin@merihcare.et / admin123";
+      console.error("Authentication failed:", err);
+      let errMsg = err.response?.data?.message || err.message;
+      if (!err.response && (err.message === "Network Error" || err.code === "ERR_NETWORK")) {
+        errMsg = "Network Error: Unable to reach backend server. Please verify backend status or refresh.";
+      } else if (!errMsg) {
+        errMsg = "Invalid credentials. Use admin@merihcare.et / admin123";
+      }
       toast(Array.isArray(errMsg) ? errMsg[0] : errMsg, "error");
     }
   };

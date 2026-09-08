@@ -29,9 +29,9 @@ import {
   SystemSettings,
 } from "../types";
 
-const resolveApiUrl = (): string => {
+export const resolveApiUrl = (): string => {
   const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl) {
+  if (envUrl && !envUrl.includes("api.merihcare.et")) {
     if (import.meta.env.PROD && envUrl.includes("localhost")) {
       throw new Error("Security Alert: Cannot use localhost VITE_API_URL in production build!");
     }
@@ -40,6 +40,18 @@ const resolveApiUrl = (): string => {
   if (typeof window !== "undefined") {
     const customApi = localStorage.getItem("merihcare_api_url");
     if (customApi) return customApi;
+
+    // Dynamically detect Azure Container Apps environment
+    // e.g. hostname: app-merihcare-prod-admin.agreeablemoss-f06ffa43.uaenorth.azurecontainerapps.io
+    const hostname = window.location.hostname;
+    if (hostname.includes(".azurecontainerapps.io")) {
+      const parts = hostname.split(".");
+      const domainSuffix = parts.slice(1).join(".");
+      return `https://app-merihcare-prod-backend.${domainSuffix}/api/v1`;
+    }
+  }
+  if (envUrl) {
+    return envUrl;
   }
   if (import.meta.env.PROD) {
     return "https://api.merihcare.et/api/v1";
@@ -47,7 +59,7 @@ const resolveApiUrl = (): string => {
   return "http://localhost:3000/api/v1";
 };
 
-const API_URL = resolveApiUrl();
+export const API_URL = resolveApiUrl();
 
 const getHeaders = () => {
   const token = localStorage.getItem("admin_token");

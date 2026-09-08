@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
+import { API_URL } from "../services/api";
 
 export interface RealtimeEvent {
   v: number;
@@ -46,21 +47,7 @@ export interface UseRealtimeSocketReturn {
 
 const HEARTBEAT_STALE_MS = 35_000;
 
-const resolveSocketUrl = (): string => {
-  const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl) {
-    if (import.meta.env.PROD && envUrl.includes("localhost")) {
-      throw new Error("Security Alert: Cannot use localhost VITE_API_URL in production build!");
-    }
-    return envUrl.replace(/\/api\/v1\/?$/, "");
-  }
-  if (import.meta.env.PROD) {
-    return "https://api.merihcare.et";
-  }
-  return "http://localhost:3000";
-};
-
-const BACKEND_URL = resolveSocketUrl();
+const BACKEND_URL = API_URL.replace(/\/api\/v1\/?$/, "");
 
 export function useRealtimeSocket({
   token,

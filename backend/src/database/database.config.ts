@@ -112,6 +112,7 @@ export const getDatabaseConfig = (configService: any): TypeOrmModuleOptions => {
       database: process.env.DB_DATABASE || "merihcare.sqlite",
       entities,
       migrations: ["dist/database/migrations/*.js"],
+      migrationsRun: false,
       synchronize: false,
     };
   }
@@ -124,9 +125,7 @@ export const getDatabaseConfig = (configService: any): TypeOrmModuleOptions => {
     password: process.env.DB_PASSWORD || "merihcare_password",
     database: process.env.DB_DATABASE || "merihcare_db",
     entities,
-    migrations: ["dist/database/migrations/*.js"],
-    migrationsRun: process.env.NODE_ENV === "production",
-    synchronize: false,
+    synchronize: true,
     ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false,
   };
 };

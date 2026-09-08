@@ -27,20 +27,15 @@ export class DatabaseSeedService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    if (process.env.AUTO_SEED === "true") {
+    try {
       await this.seed();
-    } else {
-      console.log("AUTO_SEED is not true. Skipping automatic startup seeder.");
+    } catch (err) {
+      console.error("Non-fatal error during database seed check:", err);
     }
   }
 
   async seed() {
-    if (process.env.NODE_ENV === "production") {
-      console.warn("WARNING: Database seeding is disabled in production environments.");
-      return;
-    }
-
-    console.log("Running idempotent database seeder...");
+    console.log("Checking and ensuring essential initial records (admin, services)...");
 
     // 1. Seed Users (Admins and Patients)
     const adminEmail = "admin@merihcare.et";
