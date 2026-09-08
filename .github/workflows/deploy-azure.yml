@@ -23,26 +23,33 @@ jobs:
           RAW_CREDS: ${{ secrets.AZURE_CREDENTIALS }}
         run: |
           node -e '
-            const raw = process.env.RAW_CREDS || "";
-            if (!raw.trim()) {
+            let str = (process.env.RAW_CREDS || "").trim();
+            if (!str) {
               console.error("::error::The secret AZURE_CREDENTIALS is empty or not set in GitHub Secrets!");
               process.exit(1);
             }
-            const start = raw.indexOf("{");
-            const end = raw.lastIndexOf("}");
-            if (start === -1 || end === -1) {
-              console.error("::error::AZURE_CREDENTIALS does not contain a JSON object with { and }.");
-              process.exit(1);
+            if (!str.startsWith("{")) {
+              const braceIdx = str.indexOf("{");
+              if (braceIdx !== -1) {
+                str = str.substring(braceIdx);
+              } else {
+                str = "{\n" + str;
+              }
             }
-            const clean = raw.slice(start, end + 1).trim();
+            const lastBrace = str.lastIndexOf("}");
+            if (lastBrace !== -1) {
+              str = str.substring(0, lastBrace + 1);
+            } else {
+              str = str + "\n}";
+            }
             try {
-              JSON.parse(clean);
+              JSON.parse(str);
             } catch (err) {
               console.error("::error::AZURE_CREDENTIALS is not valid JSON: " + err.message);
               process.exit(1);
             }
             const fs = require("fs");
-            fs.writeFileSync(process.env.GITHUB_ENV, `CLEANED_AZURE_CREDENTIALS<<EOF\n${clean}\nEOF\n`, { flag: "a" });
+            fs.writeFileSync(process.env.GITHUB_ENV, `CLEANED_AZURE_CREDENTIALS<<EOF\n${str}\nEOF\n`, { flag: "a" });
           '
 
       - name: Azure Login
@@ -87,26 +94,33 @@ jobs:
           RAW_CREDS: ${{ secrets.AZURE_CREDENTIALS }}
         run: |
           node -e '
-            const raw = process.env.RAW_CREDS || "";
-            if (!raw.trim()) {
+            let str = (process.env.RAW_CREDS || "").trim();
+            if (!str) {
               console.error("::error::The secret AZURE_CREDENTIALS is empty or not set in GitHub Secrets!");
               process.exit(1);
             }
-            const start = raw.indexOf("{");
-            const end = raw.lastIndexOf("}");
-            if (start === -1 || end === -1) {
-              console.error("::error::AZURE_CREDENTIALS does not contain a JSON object with { and }.");
-              process.exit(1);
+            if (!str.startsWith("{")) {
+              const braceIdx = str.indexOf("{");
+              if (braceIdx !== -1) {
+                str = str.substring(braceIdx);
+              } else {
+                str = "{\n" + str;
+              }
             }
-            const clean = raw.slice(start, end + 1).trim();
+            const lastBrace = str.lastIndexOf("}");
+            if (lastBrace !== -1) {
+              str = str.substring(0, lastBrace + 1);
+            } else {
+              str = str + "\n}";
+            }
             try {
-              JSON.parse(clean);
+              JSON.parse(str);
             } catch (err) {
               console.error("::error::AZURE_CREDENTIALS is not valid JSON: " + err.message);
               process.exit(1);
             }
             const fs = require("fs");
-            fs.writeFileSync(process.env.GITHUB_ENV, `CLEANED_AZURE_CREDENTIALS<<EOF\n${clean}\nEOF\n`, { flag: "a" });
+            fs.writeFileSync(process.env.GITHUB_ENV, `CLEANED_AZURE_CREDENTIALS<<EOF\n${str}\nEOF\n`, { flag: "a" });
           '
 
       - name: Azure Login
