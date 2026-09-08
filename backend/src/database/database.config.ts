@@ -125,6 +125,7 @@ export const getDatabaseConfig = (configService: any): TypeOrmModuleOptions => {
     database: process.env.DB_DATABASE || "merihcare_db",
     entities,
     migrations: ["dist/database/migrations/*.js"],
+    migrationsRun: process.env.NODE_ENV === "production",
     synchronize: false,
     ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false,
   };

@@ -27,5 +27,5 @@ ENV NODE_ENV=production
 
 EXPOSE 3000
 
-# Run migrations and start the application
-CMD npm run migration:run && npm run start:prod
+# Start the production application (TypeORM auto-runs migrations on connect)
+CMD ["node", "dist/main"]
