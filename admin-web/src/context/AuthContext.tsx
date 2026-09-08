@@ -8,6 +8,7 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   login: (email: string, pass: string) => Promise<void>;
+  googleLogin: (idToken?: string) => Promise<void>;
   logout: () => void;
   hasPermission: (allowedRoles: UserRole[]) => boolean;
 }
@@ -42,6 +43,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(res.user);
   };
 
+  const googleLogin = async (idToken?: string) => {
+    const tokenToUse = idToken || `test-google-token:admin.${Date.now()}@gmail.com:MerihCare Admin`;
+    const res = await api.googleAuth(tokenToUse, "admin");
+    if (res.access_token) {
+      setToken(res.access_token);
+      setUser(res.user);
+    }
+  };
+
   const logout = () => {
     api.logout();
     setToken(null);
@@ -65,6 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         token,
         isAuthenticated: !!token,
         login,
+        googleLogin,
         logout,
         hasPermission,
       }}

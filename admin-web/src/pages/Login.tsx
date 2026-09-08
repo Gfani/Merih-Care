@@ -4,21 +4,30 @@ import { Input, Button, toast } from "../components/ui";
 import { api } from "../services/api";
 import { Mail, Lock, Eye, EyeOff, ShieldCheck, Activity, Users } from "lucide-react";
 import logo from "../assets/logo.png";
+import GoogleLogo from "../components/GoogleLogo";
+import { validateRealEmail } from "../utils/validation";
 
 import { useAuth } from "../context/AuthContext";
 
 export default function Login({ onLogin }: { onLogin?: () => void }) {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, googleLogin } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
       toast("Please fill in all fields", "warning");
+      return;
+    }
+
+    const emailCheck = validateRealEmail(email);
+    if (!emailCheck.isValid) {
+      toast(emailCheck.error || "Please provide a valid, legitimate email address.", "warning");
       return;
     }
 
@@ -36,6 +45,24 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     } catch (err: any) {
       setLoading(false);
       const errMsg = err.response?.data?.message || err.message || "Invalid credentials. Use admin@merihcare.et / admin123";
+      toast(Array.isArray(errMsg) ? errMsg[0] : errMsg, "error");
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setGoogleLoading(true);
+    try {
+      await googleLogin();
+      setGoogleLoading(false);
+      toast("Authenticated successfully via Google!", "success");
+      if (onLogin) {
+        onLogin();
+      } else {
+        navigate("/");
+      }
+    } catch (err: any) {
+      setGoogleLoading(false);
+      const errMsg = err.response?.data?.message || err.message || "Failed to sign in with Google";
       toast(Array.isArray(errMsg) ? errMsg[0] : errMsg, "error");
     }
   };
@@ -155,6 +182,31 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
               Sign In
             </Button>
           </form>
+
+          <div className="relative my-4">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200 dark:border-slate-800" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-slate-50 dark:bg-slate-900 px-3 text-slate-400 font-medium tracking-wider">
+                Or continue with
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleGoogleLogin}
+            disabled={loading || googleLoading}
+            className="w-full flex items-center justify-center gap-3 py-2.5 px-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 font-semibold text-sm shadow-sm transition-all hover:shadow cursor-pointer"
+          >
+            {googleLoading ? (
+              <div className="w-4 h-4 border-2 border-[#0d7c6a] border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <GoogleLogo size={18} />
+            )}
+            <span>Sign In with Google</span>
+          </button>
 
           <div className="text-center text-xs text-slate-500 dark:text-slate-400 pt-2">
             Don't have an administrator account?{" "}

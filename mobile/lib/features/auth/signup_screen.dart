@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:file_picker/file_picker.dart';
 import 'auth_provider.dart';
+import 'widgets/google_logo.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
@@ -86,6 +87,29 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     'spam4.me',
     'grr.la',
     'harakirimail.com',
+  };
+
+  static const Set<String> _reputableConsumerDomains = {
+    'gmail.com',
+    'googlemail.com',
+    'yahoo.com',
+    'ymail.com',
+    'myyahoo.com',
+    'rocketmail.com',
+    'outlook.com',
+    'hotmail.com',
+    'live.com',
+    'msn.com',
+    'windowslive.com',
+    'icloud.com',
+    'me.com',
+    'mac.com',
+    'proton.me',
+    'protonmail.com',
+    'zoho.com',
+    'aol.com',
+    'mail.com',
+    'gmx.com',
   };
 
   @override
@@ -392,15 +416,63 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     if (!emailRegex.hasMatch(normalized)) {
                       return 'Please enter a valid, well-formed email address';
                     }
-                    final domain = normalized.split('@').last;
+                    final parts = normalized.split('@');
+                    if (parts.length != 2) return 'Invalid email format';
+                    final localPart = parts.first;
+                    final domain = parts.last;
+
+                    if (localPart.length < 3) {
+                      return 'Email username must be at least 3 characters';
+                    }
+                    if (RegExp(r'^([a-z0-9])\1{2,}$').hasMatch(localPart)) {
+                      return 'Email appears fake. Please use a real personal or professional email.';
+                    }
+                    const dummyMailboxes = {'asdf', 'qwerty', 'test', 'fake', 'temp', 'dummy', 'none', 'null'};
+                    if (dummyMailboxes.contains(localPart)) {
+                      return 'Please use your real personal or professional email.';
+                    }
+
                     if (_disposableDomains.contains(domain)) {
                       return 'Disposable or temporary email addresses are not permitted';
                     }
-                    final parts = domain.split('.');
-                    if (parts.length < 2 || parts.last.length < 2) {
+
+                    // Direct match for major reputable consumer providers
+                    if (_reputableConsumerDomains.contains(domain)) {
+                      return null;
+                    }
+
+                    final domainParts = domain.split('.');
+                    if (domainParts.length < 2 || domainParts.last.length < 2) {
                       return 'Email domain must have a valid top-level domain';
                     }
-                    return null;
+                    final domainName = domainParts.first;
+                    final tld = domainParts.last;
+
+                    // Block single-letter or two-letter fake domains (e.g. f.com, g.com, ab.com)
+                    if (domainName.length < 3) {
+                      return 'The domain "$domain" is not recognized. Please use a real email (e.g. Gmail, Yahoo, Outlook) or your hospital/university domain.';
+                    }
+                    if (RegExp(r'^\d+$').hasMatch(domainName) || RegExp(r'^([a-z0-9])\1{2,}$').hasMatch(domainName)) {
+                      return 'The domain "$domain" is invalid. Please use a real email provider.';
+                    }
+                    const dummyDomains = {'fake', 'test', 'example', 'temp', 'dummy', 'trash', 'sample', 'mailinator', 'none', 'bogus'};
+                    if (dummyDomains.contains(domainName)) {
+                      return 'Please use a real, permanent email address.';
+                    }
+
+                    const validInstitutionalTlds = {
+                      'et', 'edu', 'gov', 'org', 'int', 'health', 'hospital', 'clinic', 'care', 'med', 'ac.uk', 'edu.et', 'gov.et'
+                    };
+                    final fullTld = domainParts.sublist(1).join('.');
+                    if (validInstitutionalTlds.contains(tld) || validInstitutionalTlds.contains(fullTld)) {
+                      return null;
+                    }
+
+                    if (['com', 'net', 'co', 'io'].contains(tld) && domainName.length >= 3) {
+                      return null;
+                    }
+
+                    return 'Please use a reputable email provider (such as Gmail, Yahoo, Outlook, iCloud) or a verified institutional domain.';
                   },
                 ),
                 const SizedBox(height: 16),
@@ -839,6 +911,113 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                           child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                         )
                       : Text(_role == 'provider' ? 'Submit Provider Application' : 'Register'),
+                ),
+                const SizedBox(height: 18),
+
+                // Divider OR
+                Row(
+                  children: [
+                    Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        'OR',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
+                  ],
+                ),
+                const SizedBox(height: 18),
+
+                // Continue with Google Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton(
+                    onPressed: _loading
+                        ? null
+                        : () async {
+                            final Map<String, dynamic>? providerData = _role == 'provider'
+                                ? {
+                                    'title': _title,
+                                    'specialty': _specialty,
+                                    'licenseNumber': _licenseNumberController.text.trim(),
+                                    'experience': int.tryParse(_experienceController.text.trim()) ?? 0,
+                                    'education': _educationController.text.trim(),
+                                    'hospitalAffiliation': _hospitalAffiliationController.text.trim(),
+                                    'cvUrl': _cvUrlController.text.trim(),
+                                    'licenseDocumentUrl': _licenseDocController.text.trim(),
+                                    'idDocumentUrl': _idDocController.text.trim(),
+                                  }
+                                : null;
+
+                            setState(() => _loading = true);
+                            final result = await ref.read(authProvider.notifier).signInWithGoogle(
+                                  role: _role,
+                                  providerData: providerData,
+                                );
+                            if (mounted) setState(() => _loading = false);
+                            if (!mounted) return;
+
+                            if (result.success) {
+                              if (result.pendingApproval || _role == 'provider') {
+                                await showDialog(
+                                  context: context,
+                                  barrierDismissible: false,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Row(
+                                      children: [
+                                        Icon(Icons.verified_user_outlined, color: Color(0xFF0F766E)),
+                                        SizedBox(width: 8),
+                                        Text('Application Received'),
+                                      ],
+                                    ),
+                                    content: Text(
+                                      result.message ??
+                                          'Your Google sign-in was successful. Your provider application is pending administrator verification.',
+                                    ),
+                                    actions: [
+                                      ElevatedButton(
+                                        onPressed: () {
+                                          Navigator.of(ctx).pop();
+                                          context.go('/login');
+                                        },
+                                        child: const Text('Back to Sign In'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              } else {
+                                context.go('/dashboard');
+                              }
+                            }
+                          },
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: Colors.grey.shade300),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      backgroundColor: Colors.white,
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        GoogleLogo(size: 20),
+                        SizedBox(width: 12),
+                        Text(
+                          'Sign up with Google',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF1F2937),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 24),
                 Row(

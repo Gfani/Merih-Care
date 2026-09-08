@@ -22,6 +22,27 @@
         }
       }
     },
+    "/api/v1/auth/google": {
+      "post": {
+        "operationId": "AuthController_googleAuth",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleAuthDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/auth/signup": {
       "post": {
         "operationId": "AuthController_signup",
@@ -3527,6 +3548,10 @@
     },
     "schemas": {
       "LoginDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "GoogleAuthDto": {
         "type": "object",
         "properties": {}
       },

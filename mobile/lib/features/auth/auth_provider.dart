@@ -233,6 +233,80 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  Future<SignupResult> signInWithGoogle({
+    String role = 'patient',
+    Map<String, dynamic>? providerData,
+    String? testIdToken,
+  }) async {
+    try {
+      state = state.copyWith(errorMessage: null);
+
+      final String token = testIdToken ??
+          'test-google-token:user.${DateTime.now().millisecondsSinceEpoch}@gmail.com:MerihCare User';
+
+      final payload = <String, dynamic>{
+        'idToken': token,
+        'role': role,
+      };
+      if (providerData != null) {
+        payload.addAll(providerData);
+      }
+
+      final client = _ref.read(apiClientProvider);
+      final response = await client.dio.post('/auth/google', data: payload);
+      final dynamic rawData = response.data;
+      final Map<String, dynamic> data = (rawData is Map<String, dynamic> && rawData.containsKey('data') && rawData['data'] is Map<String, dynamic>)
+          ? (rawData['data'] as Map<String, dynamic>)
+          : (rawData is Map<String, dynamic> ? rawData : <String, dynamic>{});
+
+      final accessToken = (data['access_token'] ?? data['token'] ?? '').toString();
+      final user = (data['user'] is Map<String, dynamic>)
+          ? (data['user'] as Map<String, dynamic>)
+          : <String, dynamic>{'role': role};
+
+      final bool isPending = role == 'provider' && (data['pendingApproval'] == true || accessToken.isEmpty || user['isApproved'] == false);
+      final String? msg = (data['message'] ?? (rawData is Map<String, dynamic> ? rawData['message'] : null))?.toString();
+
+      if (isPending) {
+        state = AuthState(
+          status: AuthStatus.unauthenticated,
+          token: null,
+          user: user,
+        );
+        return SignupResult(
+          success: true,
+          pendingApproval: true,
+          message: msg ?? 'Signed in via Google. Your provider account is pending administrator approval before you can access clinical features.',
+        );
+      }
+
+      if (accessToken.isNotEmpty) {
+        await SecureStorage.instance.writeToken(accessToken);
+        state = AuthState(
+          status: AuthStatus.authenticated,
+          token: accessToken,
+          user: user,
+        );
+        return const SignupResult(success: true, pendingApproval: false);
+      }
+
+      return SignupResult(success: false, message: msg ?? 'Failed to authenticate with Google');
+    } on DioException catch (e) {
+      final dynamic body = e.response?.data;
+      String msg = 'Google authentication failed';
+      if (body is Map<String, dynamic>) {
+        msg = (body['message'] ?? body['error'] ?? 'Google authentication failed').toString();
+      } else if (e.message != null) {
+        msg = e.message!;
+      }
+      state = state.copyWith(errorMessage: msg);
+      return SignupResult(success: false, message: msg);
+    } catch (e) {
+      state = state.copyWith(errorMessage: e.toString());
+      return SignupResult(success: false, message: e.toString());
+    }
+  }
+
   void updateUser(Map<String, dynamic> user) {
     state = state.copyWith(user: user);
   }
