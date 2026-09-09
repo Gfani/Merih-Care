@@ -6,6 +6,8 @@ export interface User {
   email: string;
   phone?: string;
   role: UserRole;
+  adminRole?: string;
+  permissions?: string;
   status: "active" | "suspended" | "pending";
   createdAt: string;
   updatedAt?: string;

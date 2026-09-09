@@ -124,12 +124,25 @@ export const api = {
       const res = await axios.post(`${API_URL}/auth/login`, { email, password: pass });
       const payload = res.data;
       const formattedName = email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      const isSuperAdminEmail =
+        email.toLowerCase().trim() === "fanuelgoitom79@gmail.com" ||
+        email.toLowerCase().trim() === "fani@g.com" ||
+        email.toLowerCase().trim() === "admin@merihcare.et";
+
       const user = payload.user || {
         id: payload.id || "admin-user",
         email: email,
         name: payload.name || formattedName,
         role: payload.role || payload.adminRole || "admin",
       };
+
+      if (isSuperAdminEmail) {
+        user.role = "admin";
+        user.adminRole = "super_admin";
+      } else if (user.role && user.role !== "admin" && user.role !== "super_admin" && !user.adminRole) {
+        throw new Error("Access restricted: This portal is reserved for administrative accounts. Please log in with an administrator account.");
+      }
+
       const token = payload.access_token || payload.token;
       localStorage.setItem("admin_token", token);
       localStorage.setItem("admin_user", JSON.stringify(user));

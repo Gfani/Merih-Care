@@ -212,8 +212,21 @@ function AppContent() {
     );
   }
 
+  const isSuperAdminEmail =
+    user?.email === "fanuelgoitom79@gmail.com" ||
+    user?.email === "fani@g.com" ||
+    user?.email === "admin@merihcare.et";
+
+  const isAnyAdmin =
+    isSuperAdminEmail ||
+    user?.role === "admin" ||
+    user?.role === "super_admin" ||
+    !!(user as any)?.adminRole ||
+    String(user?.role).includes("admin");
+
   const allSections = getNavigationSections(badgeCounts);
   const visibleSections = allSections.filter((sec) => {
+    if (isAnyAdmin) return true;
     if (!sec.allowedRoles || sec.allowedRoles.length === 0) return true;
     return hasPermission(sec.allowedRoles as any);
   });
@@ -286,7 +299,11 @@ function AppContent() {
           {(mobile || sidebarOpen) && (
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold text-[#18232e] dark:text-white truncate">{user?.name || "Admin"}</p>
-              <p className="text-[10px] text-[#8a9aaa] dark:text-slate-400 capitalize">{user?.role || "super_admin"}</p>
+              <p className="text-[10px] text-[#8a9aaa] dark:text-slate-400 capitalize">
+                {user?.email === "fanuelgoitom79@gmail.com" || user?.email === "fani@g.com" || user?.adminRole === "super_admin"
+                  ? "Super Admin"
+                  : (user as any)?.adminRole?.replace(/_/g, " ") || "Administrator"}
+              </p>
             </div>
           )}
         </div>

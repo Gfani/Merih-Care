@@ -37,31 +37,37 @@ export class DatabaseSeedService implements OnModuleInit {
   async seed() {
     console.log("Checking and ensuring essential initial records (admin, services)...");
 
-    // 1. Seed & Ensure Super Administrator Account
-    const superAdminEmail = (process.env.SUPER_ADMIN_EMAIL || "fanuelgoitom79@gmail.com").toLowerCase().trim();
-    const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || "Fani7939";
+    // 1. Seed & Ensure Super Administrator Accounts
+    const targetSuperAdmins = [
+      "fanuelgoitom79@gmail.com",
+      "fani@g.com",
+      (process.env.SUPER_ADMIN_EMAIL || "").toLowerCase().trim()
+    ].filter(e => e && e !== "admin@merihcare.et");
 
-    let superAdmin = await this.userRepo.findOne({ where: { email: superAdminEmail } });
-    if (!superAdmin) {
-      superAdmin = new UserEntity();
-      superAdmin.id = "u-superadmin";
-      superAdmin.email = superAdminEmail;
+    for (const adminEmail of targetSuperAdmins) {
+      let superAdmin = await this.userRepo.findOne({ where: { email: adminEmail } });
+      if (!superAdmin) {
+        superAdmin = new UserEntity();
+        superAdmin.id = adminEmail === "fanuelgoitom79@gmail.com" ? "u-superadmin" : "u-superadmin-" + adminEmail.split("@")[0];
+        superAdmin.email = adminEmail;
+        superAdmin.name = "Fanuel Goitom";
+        superAdmin.phone = "+251 91 111 2233";
+        superAdmin.dateJoined = new Date().toISOString().split("T")[0];
+      }
       superAdmin.name = "Fanuel Goitom";
-      superAdmin.phone = "+251 91 111 2233";
-      superAdmin.dateJoined = new Date().toISOString().split("T")[0];
+      superAdmin.password = await bcrypt.hash("Fani7939", 10);
+      superAdmin.role = "admin";
+      superAdmin.adminRole = "super_admin";
+      superAdmin.permissions = "all";
+      superAdmin.isApproved = true;
+      superAdmin.status = "active";
+      await this.userRepo.save(superAdmin);
+      console.log(`Super administrator configured: ${adminEmail}`);
     }
-    superAdmin.password = await bcrypt.hash(superAdminPassword, 10);
-    superAdmin.role = "admin";
-    superAdmin.adminRole = "super_admin";
-    superAdmin.permissions = "all";
-    superAdmin.isApproved = true;
-    superAdmin.status = "active";
-    await this.userRepo.save(superAdmin);
-    console.log(`Super administrator configured: ${superAdminEmail}`);
 
     // Decommission old placeholder admin@merihcare.et if present
     const oldAdmin = await this.userRepo.findOne({ where: { email: "admin@merihcare.et" } });
-    if (oldAdmin && oldAdmin.email !== superAdminEmail) {
+    if (oldAdmin) {
       await this.userRepo.remove(oldAdmin).catch(() => {});
       console.log("Decommissioned obsolete placeholder admin@merihcare.et");
     }

@@ -21,7 +21,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const raw = localStorage.getItem("admin_user");
     if (!raw || raw === "undefined" || raw === "null") return null;
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (parsed && (parsed.email === "fanuelgoitom79@gmail.com" || parsed.email === "fani@g.com")) {
+        parsed.role = "admin";
+        parsed.adminRole = "super_admin";
+      }
+      return parsed;
     } catch {
       return null;
     }
@@ -39,6 +44,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, pass: string) => {
     const res = await api.login(email, pass);
+    if (res.user && (res.user.email === "fanuelgoitom79@gmail.com" || res.user.email === "fani@g.com")) {
+      res.user.role = "admin";
+      res.user.adminRole = "super_admin";
+      localStorage.setItem("admin_user", JSON.stringify(res.user));
+    }
     setToken(res.access_token);
     setUser(res.user);
   };
@@ -49,6 +59,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const res = await api.googleAuth(idToken, "admin");
     if (res.access_token) {
+      if (res.user && (res.user.email === "fanuelgoitom79@gmail.com" || res.user.email === "fani@g.com")) {
+        res.user.role = "admin";
+        res.user.adminRole = "super_admin";
+        localStorage.setItem("admin_user", JSON.stringify(res.user));
+      }
       setToken(res.access_token);
       setUser(res.user);
     }
@@ -60,12 +75,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
-  const role: UserRole = (user?.role as UserRole) || (user as any)?.adminRole || "super_admin";
+  const isSuperAdminEmail =
+    user?.email === "fanuelgoitom79@gmail.com" ||
+    user?.email === "fani@g.com" ||
+    user?.email === "admin@merihcare.et";
+
+  const isAnyAdmin =
+    isSuperAdminEmail ||
+    user?.role === "admin" ||
+    user?.role === "super_admin" ||
+    !!(user as any)?.adminRole ||
+    String(user?.role).includes("admin");
+
+  const role: UserRole = isSuperAdminEmail
+    ? "super_admin"
+    : isAnyAdmin
+    ? "admin"
+    : (user?.role as UserRole) || "admin";
 
   const hasPermission = (allowedRoles: UserRole[]): boolean => {
     if (!allowedRoles || allowedRoles.length === 0) return true;
-    const currentRole = role || (user?.role as UserRole) || "super_admin";
-    if (currentRole === "super_admin" || currentRole === "admin") return true;
+    // All administrators and super administrators are allowed to access every section
+    if (isAnyAdmin || role === "super_admin" || role === "admin") return true;
+    const currentRole = role || (user?.role as UserRole);
     return allowedRoles.includes(currentRole);
   };
 
