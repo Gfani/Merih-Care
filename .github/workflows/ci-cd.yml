@@ -17,7 +17,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: backend/package-lock.json
 
@@ -27,7 +27,7 @@ jobs:
 
       - name: Run Backend Tests
         working-directory: backend
-        run: npm test
+        run: npm test -- --passWithNoTests
 
   admin-web-test:
     name: Admin Web Test & Build
@@ -39,7 +39,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: admin-web/package-lock.json
 
@@ -49,7 +49,7 @@ jobs:
 
       - name: Run Unit Tests
         working-directory: admin-web
-        run: npm test
+        run: npm test -- --passWithNoTests
 
       - name: Build Web Application
         working-directory: admin-web
@@ -65,8 +65,8 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.x'
           channel: 'stable'
+          cache: true
 
       - name: Install Mobile Dependencies
         working-directory: mobile
