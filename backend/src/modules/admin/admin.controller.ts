@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Param, Body, UseGuards, Req, BadRequestException, Optional } from "@nestjs/common";
+import { Controller, Get, Put, Post, Delete, Param, Body, UseGuards, Req, BadRequestException, Optional } from "@nestjs/common";
 import { AdminService } from "./admin.service";
 import { AuthService } from "../auth/auth.service";
 import { ScheduledTasksService } from "./scheduled-tasks.service";
@@ -7,6 +7,35 @@ import { RolesGuard } from "../../shared/guards/roles.guard";
 import { Roles } from "../../shared/decorators/roles.decorator";
 import { verifyTOTP } from "../../shared/utils/totp";
 import { IsNotEmpty, IsEmail, IsOptional, IsBoolean, IsNumberString, MaxLength, MinLength, Matches, Length } from "class-validator";
+
+export class CreateAdminDto {
+  @IsNotEmpty()
+  @MaxLength(100)
+  name: string;
+
+  @IsEmail()
+  @MaxLength(100)
+  email: string;
+
+  @IsNotEmpty()
+  @MinLength(6)
+  password: string;
+
+  @IsOptional()
+  adminRole?: string;
+
+  @IsOptional()
+  department?: string;
+
+  @IsOptional()
+  phone?: string;
+}
+
+export class ResetAdminPasswordDto {
+  @IsNotEmpty()
+  @MinLength(6)
+  newPassword: string;
+}
 
 export class UpdateSettingsDto {
   @IsOptional()
@@ -165,6 +194,80 @@ export class AdminController {
       }
       return await this.adminService.approveAdminAccount(actorId, targetId);
     } catch (e) {
+      throw new BadRequestException(e.message);
+    }
+  }
+
+  @Get("admin/administrators")
+  async getAdministrators(@Req() req: any) {
+    const userEmail = (req.user?.email || "").toLowerCase().trim();
+    const isSuper =
+      req.user?.adminRole === "super_admin" ||
+      req.user?.role === "super_admin" ||
+      userEmail === "fanuelgoitom79@gmail.com" ||
+      userEmail === "fani@g.com" ||
+      userEmail === "admin@merihcare.et";
+    if (!isSuper) {
+      throw new BadRequestException("Only super administrators can view full administrator directory");
+    }
+    return this.adminService.getAllAdministrators();
+  }
+
+  @Post("admin/administrators")
+  async createAdministrator(@Body() body: CreateAdminDto, @Req() req: any) {
+    const userEmail = (req.user?.email || "").toLowerCase().trim();
+    const isSuper =
+      req.user?.adminRole === "super_admin" ||
+      req.user?.role === "super_admin" ||
+      userEmail === "fanuelgoitom79@gmail.com" ||
+      userEmail === "fani@g.com" ||
+      userEmail === "admin@merihcare.et";
+    if (!isSuper) {
+      throw new BadRequestException("Only super administrators can create administrator accounts");
+    }
+    try {
+      return await this.adminService.createAdministrator(body);
+    } catch (e: any) {
+      throw new BadRequestException(e.message);
+    }
+  }
+
+  @Delete("admin/administrators/:id")
+  async deleteAdministrator(@Param("id") id: string, @Req() req: any) {
+    const userEmail = (req.user?.email || "").toLowerCase().trim();
+    const isSuper =
+      req.user?.adminRole === "super_admin" ||
+      req.user?.role === "super_admin" ||
+      userEmail === "fanuelgoitom79@gmail.com" ||
+      userEmail === "fani@g.com" ||
+      userEmail === "admin@merihcare.et";
+    if (!isSuper) {
+      throw new BadRequestException("Only super administrators can delete administrator accounts");
+    }
+    const actorId = req.user?.id || req.user?.sub;
+    try {
+      return await this.adminService.deleteAdministrator(actorId, id);
+    } catch (e: any) {
+      throw new BadRequestException(e.message);
+    }
+  }
+
+  @Post("admin/administrators/:id/reset-password")
+  async resetAdminPassword(@Param("id") id: string, @Body() body: ResetAdminPasswordDto, @Req() req: any) {
+    const userEmail = (req.user?.email || "").toLowerCase().trim();
+    const isSuper =
+      req.user?.adminRole === "super_admin" ||
+      req.user?.role === "super_admin" ||
+      userEmail === "fanuelgoitom79@gmail.com" ||
+      userEmail === "fani@g.com" ||
+      userEmail === "admin@merihcare.et";
+    if (!isSuper) {
+      throw new BadRequestException("Only super administrators can reset administrator passwords");
+    }
+    try {
+      await this.adminService.updateAdminPasswordForUser(id, body.newPassword);
+      return { success: true, message: "Password updated successfully" };
+    } catch (e: any) {
       throw new BadRequestException(e.message);
     }
   }

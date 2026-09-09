@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { SearchBar, Button, Card, DataTable, Avatar, StatusBadge, Rating, ConfirmDialog, Modal, toast, SkeletonCard } from "../components/ui";
+import { SearchBar, Button, Card, DataTable, Avatar, StatusBadge, Rating, ConfirmDialog, Modal, toast, SkeletonCard, Input } from "../components/ui";
 import { api } from "../services/api";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, MessageSquare, Phone, Mail, Send } from "lucide-react";
 
 interface ProvidersSectionProps {
   onVerification?: () => void;
@@ -27,6 +27,14 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
   const [selectedProvider, setSelectedProvider] = useState<any>(null);
   const [detailsModal, setDetailsModal] = useState(false);
   const [selectedDetails, setSelectedDetails] = useState<any>(null);
+
+  // Contact Provider state
+  const [contactModal, setContactModal] = useState(false);
+  const [providerToContact, setProviderToContact] = useState<any>(null);
+  const [contactTitle, setContactTitle] = useState("");
+  const [contactMessage, setContactMessage] = useState("");
+  const [contactPriority, setContactPriority] = useState<"normal" | "urgent">("normal");
+  const [sendingContact, setSendingContact] = useState(false);
 
   // Permission awareness details
   const getAdminUser = () => {
@@ -95,6 +103,36 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
       toast(err.message || "Error during bulk updates.", "error");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOpenContact = (provider: any) => {
+    setProviderToContact(provider);
+    setContactTitle("");
+    setContactMessage("");
+    setContactPriority("normal");
+    setContactModal(true);
+  };
+
+  const handleSendContact = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!providerToContact || !contactTitle.trim() || !contactMessage.trim()) {
+      toast("Please provide both a subject and message", "warning");
+      return;
+    }
+    setSendingContact(true);
+    try {
+      await api.contactProvider(providerToContact.id, {
+        title: contactTitle.trim(),
+        message: contactMessage.trim(),
+        priority: contactPriority,
+      });
+      toast(`Direct dispatch sent to ${providerToContact.name}`, "success");
+      setContactModal(false);
+    } catch (err: any) {
+      toast(err.response?.data?.message || err.message || "Failed to send dispatch to provider", "error");
+    } finally {
+      setSendingContact(false);
     }
   };
 
@@ -243,8 +281,18 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
                 { key: "experience", header: "Experience", render: (row) => <span className="text-sm">{row.experience as number || 0}y</span> },
                 { key: "completedServices", header: "Services", render: (row) => <span className="font-semibold text-[#0d7c6a] dark:text-cyan-400">{row.completedServices as number || 0}</span> },
                 { key: "actions", header: "Actions", render: (row) => (
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 items-center">
                     <Button size="sm" variant="ghost" className="text-xs !py-1 !px-2 cursor-pointer" onClick={() => { setSelectedDetails(row); setDetailsModal(true); }}>View</Button>
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      className="text-xs !py-1 !px-2 text-[#0d7c6a] dark:text-cyan-400 hover:!bg-teal-50 dark:hover:!bg-teal-950/30 flex items-center gap-1 cursor-pointer"
+                      onClick={() => handleOpenContact(row)}
+                      title="Contact Healthcare Provider"
+                    >
+                      <MessageSquare size={13} />
+                      <span>Contact</span>
+                    </Button>
                     <Button 
                       size="sm" 
                       variant="ghost" 
@@ -313,10 +361,103 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
                 <p className="text-[#18232e] dark:text-slate-200 font-semibold text-[#0d7c6a] dark:text-cyan-400">{selectedDetails.completedServices || 0}</p>
               </div>
             </div>
-            <div className="flex justify-end pt-2 border-t border-[#f0f4f7] dark:border-slate-700">
-              <Button size="sm" onClick={() => setDetailsModal(false)}>Close</Button>
+            <div className="flex justify-between items-center pt-2 border-t border-[#f0f4f7] dark:border-slate-700">
+              <Button
+                size="sm"
+                className="flex items-center gap-1.5"
+                onClick={() => {
+                  setDetailsModal(false);
+                  handleOpenContact(selectedDetails);
+                }}
+              >
+                <MessageSquare size={13} />
+                <span>Contact Clinician</span>
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setDetailsModal(false)}>Close</Button>
             </div>
           </div>
+        )}
+      </Modal>
+
+      {/* Contact Provider Modal */}
+      <Modal open={contactModal} onClose={() => setContactModal(false)} title={`Contact Clinician: ${providerToContact?.name || ""}`}>
+        {providerToContact && (
+          <form onSubmit={handleSendContact} className="space-y-4 text-xs">
+            <div className="flex items-center gap-3 p-3 bg-[#f8fafc] dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700">
+              <Avatar name={providerToContact.name} src={providerToContact.avatar} size="md" />
+              <div className="flex-1">
+                <p className="font-bold text-sm text-[#18232e] dark:text-white">{providerToContact.name}</p>
+                <p className="text-[#8a9aaa]">{providerToContact.title || "Health Practitioner"} {providerToContact.specialty ? `• ${providerToContact.specialty}` : ""}</p>
+                <div className="mt-2 flex gap-2 flex-wrap">
+                  {providerToContact.phone && (
+                    <a
+                      href={`tel:${providerToContact.phone}`}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-teal-50 dark:bg-teal-900/40 text-[#0d7c6a] dark:text-teal-300 font-semibold border border-teal-200 dark:border-teal-800 hover:bg-teal-100"
+                    >
+                      <Phone size={12} />
+                      <span>Call {providerToContact.phone}</span>
+                    </a>
+                  )}
+                  {providerToContact.email && (
+                    <a
+                      href={`mailto:${providerToContact.email}`}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-semibold border border-blue-200 dark:border-blue-800 hover:bg-blue-100"
+                    >
+                      <Mail size={12} />
+                      <span>Email {providerToContact.email}</span>
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <p className="font-semibold text-[#18232e] dark:text-white text-xs">Direct Administrative Dispatch</p>
+              <Input
+                label="Subject / Topic"
+                value={contactTitle}
+                onChange={(e) => setContactTitle(e.target.value)}
+                placeholder="e.g. Credential Audit / Booking Follow-up"
+                required
+              />
+              <div>
+                <label className="block text-[11px] font-semibold text-[#4a5a6a] dark:text-slate-300 mb-1">
+                  Message Priority
+                </label>
+                <select
+                  value={contactPriority}
+                  onChange={(e) => setContactPriority(e.target.value as any)}
+                  className="w-full text-xs border border-[#e2e8ee] dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg p-2.5 text-[#18232e] dark:text-white focus:outline-none focus:border-[#0d7c6a]"
+                >
+                  <option value="normal">Normal (Routine Inquiry)</option>
+                  <option value="urgent">Urgent (Immediate Attention Required)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-[#4a5a6a] dark:text-slate-300 mb-1">
+                  Message Content
+                </label>
+                <textarea
+                  rows={4}
+                  value={contactMessage}
+                  onChange={(e) => setContactMessage(e.target.value)}
+                  placeholder="Type your official administrative message for this provider..."
+                  required
+                  className="w-full border border-[#e2e8ee] dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg p-2.5 text-xs text-[#18232e] dark:text-white focus:outline-none focus:border-[#0d7c6a] resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-[#f0f4f7] dark:border-slate-700">
+              <Button type="button" variant="ghost" onClick={() => setContactModal(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" loading={sendingContact} className="flex items-center gap-1.5">
+                <Send size={13} />
+                <span>Send Message</span>
+              </Button>
+            </div>
+          </form>
         )}
       </Modal>
     </div>

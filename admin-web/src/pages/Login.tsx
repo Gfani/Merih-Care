@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Input, Button, toast } from "../components/ui";
+import { Input, Button, toast, Modal } from "../components/ui";
 import { api } from "../services/api";
-import { Mail, Lock, Eye, EyeOff, ShieldCheck, Activity, Users } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, ShieldCheck, Activity, Users, KeyRound } from "lucide-react";
 import logo from "../assets/logo.png";
 import GoogleLogo from "../components/GoogleLogo";
 import { validateRealEmail } from "../utils/validation";
@@ -17,6 +17,16 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+
+  // OTP Password Reset State
+  const [otpModalOpen, setOtpModalOpen] = useState(false);
+  const [resetStep, setResetStep] = useState<1 | 2>(1);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetOtp, setResetOtp] = useState("");
+  const [resetNewPassword, setResetNewPassword] = useState("");
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [devOtpHint, setDevOtpHint] = useState<string | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,6 +80,70 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
       setGoogleLoading(false);
       const errMsg = err.response?.data?.message || err.message || "Failed to sign in with Google";
       toast(Array.isArray(errMsg) ? errMsg[0] : errMsg, "error");
+    }
+  };
+
+  const handleOpenOtpModal = () => {
+    setResetEmail(email || "");
+    setResetOtp("");
+    setResetNewPassword("");
+    setResetConfirmPassword("");
+    setResetStep(1);
+    setDevOtpHint(null);
+    setOtpModalOpen(true);
+  };
+
+  const handleRequestOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetEmail) {
+      toast("Please enter your administrator email", "warning");
+      return;
+    }
+    const emailCheck = validateRealEmail(resetEmail);
+    if (!emailCheck.isValid) {
+      toast(emailCheck.error || "Please enter a valid email", "warning");
+      return;
+    }
+    setResetLoading(true);
+    try {
+      const res = await api.requestPasswordReset(resetEmail);
+      toast("6-Digit OTP code sent to your email!", "success");
+      if (res?.devCode || res?.code) {
+        setDevOtpHint((res.devCode || res.code) ?? null);
+      }
+      setResetStep(2);
+    } catch (err: any) {
+      toast(err.response?.data?.message || err.message || "Failed to request password reset code", "error");
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleConfirmResetOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetOtp || !resetNewPassword) {
+      toast("Please fill in OTP code and new password", "warning");
+      return;
+    }
+    if (resetNewPassword !== resetConfirmPassword) {
+      toast("Passwords do not match", "warning");
+      return;
+    }
+    if (resetNewPassword.length < 6) {
+      toast("Password must be at least 6 characters", "warning");
+      return;
+    }
+    setResetLoading(true);
+    try {
+      await api.confirmPasswordReset(resetEmail, resetOtp.trim(), resetNewPassword);
+      toast("Password reset successfully! You can now sign in with your new password.", "success");
+      setEmail(resetEmail);
+      setPassword(resetNewPassword);
+      setOtpModalOpen(false);
+    } catch (err: any) {
+      toast(err.response?.data?.message || err.message || "Invalid or expired OTP code", "error");
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -177,8 +251,8 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
               </label>
               <button
                 type="button"
-                onClick={() => toast("Contact sys-admin to reset password.", "info")}
-                className="text-[#0d7c6a] hover:underline font-semibold"
+                onClick={handleOpenOtpModal}
+                className="text-[#0d7c6a] hover:underline font-semibold cursor-pointer"
               >
                 Forgot Password?
               </button>
@@ -222,6 +296,101 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
           </div>
         </div>
       </div>
+
+      {/* Forgot Password OTP Modal */}
+      <Modal
+        open={otpModalOpen}
+        onClose={() => setOtpModalOpen(false)}
+        title={resetStep === 1 ? "Reset Password via OTP" : "Enter Verification OTP"}
+      >
+        {resetStep === 1 ? (
+          <form onSubmit={handleRequestOtp} className="space-y-4 text-xs">
+            <p className="text-[#4a5a6a] dark:text-slate-300 leading-relaxed">
+              Enter your registered administrator email address. We will immediately send you a 6-digit OTP code to verify your identity.
+            </p>
+            <Input
+              label="Administrator Email"
+              type="email"
+              value={resetEmail}
+              onChange={(e) => setResetEmail(e.target.value)}
+              placeholder="admin@merihcare.et"
+              required
+              leftIcon={<Mail size={16} />}
+            />
+            <div className="flex justify-end gap-2 pt-2 border-t border-[#f0f4f7] dark:border-slate-700">
+              <Button type="button" variant="ghost" onClick={() => setOtpModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" loading={resetLoading}>
+                Send 6-Digit OTP
+              </Button>
+            </div>
+          </form>
+        ) : (
+          <form onSubmit={handleConfirmResetOtp} className="space-y-4 text-xs">
+            <p className="text-[#4a5a6a] dark:text-slate-300 leading-relaxed">
+              Enter the 6-digit OTP verification code sent to <strong className="text-[#18232e] dark:text-white">{resetEmail}</strong> and your new password.
+            </p>
+            {devOtpHint && (
+              <div className="p-2.5 bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 rounded-lg text-teal-800 dark:text-teal-300 text-xs flex items-center justify-between">
+                <span>Verification OTP: <strong className="font-mono font-bold tracking-widest">{devOtpHint}</strong></span>
+                <button
+                  type="button"
+                  onClick={() => setResetOtp(devOtpHint)}
+                  className="text-[10px] font-bold underline hover:opacity-80 cursor-pointer"
+                >
+                  Auto-fill
+                </button>
+              </div>
+            )}
+            <Input
+              label="6-Digit OTP Code"
+              type="text"
+              value={resetOtp}
+              onChange={(e) => setResetOtp(e.target.value)}
+              placeholder="e.g. 123456"
+              maxLength={6}
+              required
+              leftIcon={<KeyRound size={16} />}
+            />
+            <Input
+              label="New Password"
+              type="password"
+              value={resetNewPassword}
+              onChange={(e) => setResetNewPassword(e.target.value)}
+              placeholder="Minimum 6 characters"
+              required
+              leftIcon={<Lock size={16} />}
+            />
+            <Input
+              label="Confirm New Password"
+              type="password"
+              value={resetConfirmPassword}
+              onChange={(e) => setResetConfirmPassword(e.target.value)}
+              placeholder="Re-enter new password"
+              required
+              leftIcon={<Lock size={16} />}
+            />
+            <div className="flex items-center justify-between pt-2 border-t border-[#f0f4f7] dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setResetStep(1)}
+                className="text-xs text-[#0d7c6a] hover:underline font-semibold cursor-pointer"
+              >
+                ← Back
+              </button>
+              <div className="flex gap-2">
+                <Button type="button" variant="ghost" onClick={() => setOtpModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" loading={resetLoading}>
+                  Set New Password
+                </Button>
+              </div>
+            </div>
+          </form>
+        )}
+      </Modal>
     </div>
   );
 }

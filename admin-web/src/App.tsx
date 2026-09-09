@@ -77,7 +77,7 @@ const SettingsSection = lazyWithRetry(() => import("./pages/Settings"));
 const Login = lazyWithRetry(() => import("./pages/Login"));
 const SignUp = lazyWithRetry(() => import("./pages/SignUp"));
 
-const getNavigationSections = (badges: { verification: number; complaints: number; payouts: number }) => [
+const getNavigationSections = (badges: { verification: number; complaints: number; payouts: number; requests: number }) => [
   {
     title: "Overview",
     items: [
@@ -97,7 +97,7 @@ const getNavigationSections = (badges: { verification: number; complaints: numbe
   {
     title: "Operations",
     items: [
-      { id: "requests", path: "/requests", label: "Service Requests", icon: <Inbox size={16} /> },
+      { id: "requests", path: "/requests", label: "Service Requests", icon: <Inbox size={16} />, badge: badges.requests || undefined },
       { id: "appointments", path: "/appointments", label: "Appointments", icon: <Calendar size={16} /> },
       { id: "services", path: "/services", label: "Services", icon: <ClipboardList size={16} /> },
       { id: "emergency", path: "/emergency", label: "Emergency", icon: <Activity size={16} /> },
@@ -197,10 +197,7 @@ function AppContent() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [notifPopoverOpen, setNotifPopoverOpen] = useState(false);
-  const [badgeCounts, setBadgeCounts] = useState({ verification: 0, complaints: 0, payouts: 0 });
-
-  // Real-time socket health monitor
-  const { isLive, connectionState } = useRealtimeSocket({ token });
+  const [badgeCounts, setBadgeCounts] = useState({ verification: 0, complaints: 0, payouts: 0, requests: 0 });
 
   const loadNotifications = async () => {
     if (!isAuthenticated) return;
@@ -217,19 +214,38 @@ function AppContent() {
   const loadBadgeCounts = async () => {
     if (!isAuthenticated) return;
     try {
-      const [verifs, comps, pays] = await Promise.all([
+      const [verifs, comps, pays, reqs] = await Promise.all([
         api.getVerificationReviews().catch(() => []),
         api.getComplaints().catch(() => []),
         api.getPayouts().catch(() => []),
+        api.getAppointments().catch(() => []),
       ]);
       const pendingVerifs = (verifs || []).filter((v: any) => v.status === "pending" || v.reviewStatus === "pending").length;
       const pendingComps = (comps || []).filter((c: any) => c.status === "open" || c.status === "pending").length;
       const pendingPays = (pays || []).filter((p: any) => p.status === "pending").length;
-      setBadgeCounts({ verification: pendingVerifs, complaints: pendingComps, payouts: pendingPays });
+      const reqList = Array.isArray(reqs) ? reqs : (reqs as any)?.data || [];
+      const pendingReqs = reqList.filter((r: any) => r.status === "requested" || r.status === "searching" || r.status === "pending").length;
+      setBadgeCounts({ verification: pendingVerifs, complaints: pendingComps, payouts: pendingPays, requests: pendingReqs });
     } catch {
       // Ignored in background
     }
   };
+
+  const handleRealtimeEvent = React.useCallback((event: string, payload: any) => {
+    if (event === "new_service_request") {
+      const data = payload?.data || payload;
+      const patientName = data?.patientName || data?.patient?.name || "Patient";
+      const serviceType = data?.serviceType || data?.service || "Care Service";
+      toast(`🔔 New Service Request: ${serviceType} for ${patientName}`, "info");
+      loadBadgeCounts();
+      loadNotifications();
+    } else if (event === "appointment_status_update") {
+      loadBadgeCounts();
+    }
+  }, []);
+
+  // Real-time socket health monitor
+  const { isLive, connectionState } = useRealtimeSocket({ token, onEvent: handleRealtimeEvent });
 
   const handleMarkAllRead = async () => {
     try {

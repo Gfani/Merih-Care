@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Card, Input, Button, Avatar, ConfirmDialog, Modal, toast, SkeletonCard } from "../components/ui";
 import { api } from "../services/api";
 import { useBlocker } from "react-router-dom";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, KeyRound, Lock, Send } from "lucide-react";
 
 export default function SettingsSection() {
   const [emailNotifs, setEmailNotifs] = useState(true);
@@ -49,9 +49,14 @@ export default function SettingsSection() {
 
   // Change password state
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [passwordMode, setPasswordMode] = useState<"current" | "otp">("current");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [settingsOtp, setSettingsOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [otpDevHint, setOtpDevHint] = useState<string | null>(null);
 
   const loadSettings = async () => {
     setLoading(true);
@@ -171,6 +176,54 @@ export default function SettingsSection() {
       setChangePasswordOpen(false);
     } catch (err: any) {
       toast(err.message || "Failed to update password", "error");
+    }
+  };
+
+  const handleRequestSettingsOtp = async () => {
+    if (!adminEmail) {
+      toast("Admin email is required", "warning");
+      return;
+    }
+    setSendingOtp(true);
+    try {
+      const res = await api.requestPasswordReset(adminEmail);
+      toast("6-Digit OTP code sent to your email!", "success");
+      setOtpSent(true);
+      if (res?.devCode || res?.code) {
+        setOtpDevHint((res.devCode || res.code) ?? null);
+      }
+    } catch (err: any) {
+      toast(err.response?.data?.message || err.message || "Failed to send OTP code", "error");
+    } finally {
+      setSendingOtp(false);
+    }
+  };
+
+  const handleOtpPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!settingsOtp || !newPassword) {
+      toast("Please enter the 6-digit OTP code and new password", "warning");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast("New passwords do not match", "error");
+      return;
+    }
+    if (newPassword.length < 6) {
+      toast("Password must be at least 6 characters", "warning");
+      return;
+    }
+    try {
+      await api.confirmPasswordReset(adminEmail, settingsOtp.trim(), newPassword);
+      toast("Password updated successfully via OTP verification!", "success");
+      setChangePasswordOpen(false);
+      setSettingsOtp("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setOtpSent(false);
+      setOtpDevHint(null);
+    } catch (err: any) {
+      toast(err.response?.data?.message || err.message || "Invalid or expired OTP code", "error");
     }
   };
 
@@ -311,16 +364,109 @@ export default function SettingsSection() {
       </Modal>
 
       {/* Change Password Modal */}
-      <Modal open={changePasswordOpen} onClose={() => setChangePasswordOpen(false)} title="Change Password">
-        <form onSubmit={handleChangePasswordSubmit} className="space-y-4">
-          <Input label="Current Password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} type="password" required />
-          <Input label="New Password" value={newPassword} onChange={e => setNewPassword(e.target.value)} type="password" required />
-          <Input label="Confirm New Password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} type="password" required />
-          <div className="flex justify-end gap-2 pt-2 border-t border-[#f0f4f7] dark:border-slate-700">
-            <Button type="button" variant="ghost" onClick={() => setChangePasswordOpen(false)}>Cancel</Button>
-            <Button type="submit">Update Password</Button>
+      <Modal open={changePasswordOpen} onClose={() => setChangePasswordOpen(false)} title="Change Administrator Password">
+        <div className="space-y-4 text-xs">
+          <div className="flex border-b border-[#e2e8ee] dark:border-slate-700 pb-2">
+            <button
+              type="button"
+              onClick={() => setPasswordMode("current")}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
+                passwordMode === "current"
+                  ? "bg-[#0d7c6a] text-white"
+                  : "text-[#4a5a6a] dark:text-slate-300 hover:bg-[#f1f5f9]"
+              }`}
+            >
+              Verify with Current Password
+            </button>
+            <button
+              type="button"
+              onClick={() => setPasswordMode("otp")}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
+                passwordMode === "otp"
+                  ? "bg-[#0d7c6a] text-white"
+                  : "text-[#4a5a6a] dark:text-slate-300 hover:bg-[#f1f5f9]"
+              }`}
+            >
+              Reset via 6-Digit Email OTP
+            </button>
           </div>
-        </form>
+
+          {passwordMode === "current" ? (
+            <form onSubmit={handleChangePasswordSubmit} className="space-y-4">
+              <Input label="Current Password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} type="password" required leftIcon={<Lock size={15} />} />
+              <Input label="New Password" value={newPassword} onChange={e => setNewPassword(e.target.value)} type="password" placeholder="Minimum 6 characters" required leftIcon={<Lock size={15} />} />
+              <Input label="Confirm New Password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} type="password" placeholder="Re-enter new password" required leftIcon={<Lock size={15} />} />
+              <div className="flex justify-end gap-2 pt-2 border-t border-[#f0f4f7] dark:border-slate-700">
+                <Button type="button" variant="ghost" onClick={() => setChangePasswordOpen(false)}>Cancel</Button>
+                <Button type="submit">Update Password</Button>
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={handleOtpPasswordSubmit} className="space-y-4">
+              <div className="p-3 bg-[#f8fafc] dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700 space-y-2">
+                <p className="text-[#4a5a6a] dark:text-slate-300">
+                  Send a one-time 6-digit verification code to <strong className="text-[#18232e] dark:text-white">{adminEmail}</strong>:
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRequestSettingsOtp}
+                  loading={sendingOtp}
+                  className="flex items-center gap-1.5 cursor-pointer text-xs"
+                >
+                  <Send size={13} />
+                  <span>{otpSent ? "Resend 6-Digit OTP" : "Request 6-Digit OTP"}</span>
+                </Button>
+              </div>
+
+              {otpDevHint && (
+                <div className="p-2.5 bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 rounded-lg text-teal-800 dark:text-teal-300 text-xs flex items-center justify-between">
+                  <span>Verification OTP: <strong className="font-mono font-bold tracking-widest">{otpDevHint}</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => setSettingsOtp(otpDevHint)}
+                    className="text-[10px] font-bold underline hover:opacity-80 cursor-pointer"
+                  >
+                    Auto-fill
+                  </button>
+                </div>
+              )}
+
+              <Input
+                label="6-Digit OTP Code"
+                value={settingsOtp}
+                onChange={(e) => setSettingsOtp(e.target.value)}
+                placeholder="e.g. 123456"
+                maxLength={6}
+                required
+                leftIcon={<KeyRound size={15} />}
+              />
+              <Input
+                label="New Password"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Minimum 6 characters"
+                required
+                leftIcon={<Lock size={15} />}
+              />
+              <Input
+                label="Confirm New Password"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter new password"
+                required
+                leftIcon={<Lock size={15} />}
+              />
+              <div className="flex justify-end gap-2 pt-2 border-t border-[#f0f4f7] dark:border-slate-700">
+                <Button type="button" variant="ghost" onClick={() => setChangePasswordOpen(false)}>Cancel</Button>
+                <Button type="submit">Verify & Reset Password</Button>
+              </div>
+            </form>
+          )}
+        </div>
       </Modal>
 
       {/* React Router blocker dialog */}

@@ -4,7 +4,21 @@ import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 import { RolesGuard } from "../../shared/guards/roles.guard";
 import { Roles } from "../../shared/decorators/roles.decorator";
 import { PaginationQueryDto } from "../../shared/dtos/pagination-query.dto";
-import { IsOptional, IsString } from "class-validator";
+import { IsOptional, IsString, IsNotEmpty } from "class-validator";
+
+export class ContactProviderDto {
+  @IsNotEmpty()
+  @IsString()
+  title: string;
+
+  @IsNotEmpty()
+  @IsString()
+  message: string;
+
+  @IsOptional()
+  @IsString()
+  priority?: "normal" | "urgent";
+}
 
 export class ProviderQueryDto extends PaginationQueryDto {
   @IsOptional()
@@ -118,5 +132,17 @@ export class ProvidersController {
   @Roles("admin")
   async suspendProvider(@Param("id") id: string) {
     return this.providersService.toggleProviderSuspension(id);
+  }
+
+  @Post(":id/contact")
+  @UseGuards(RolesGuard)
+  @Roles("admin")
+  async contactProvider(
+    @Param("id") id: string,
+    @Body() body: ContactProviderDto,
+    @Req() req: any
+  ) {
+    const actorId = req.user?.id || req.user?.sub || "admin";
+    return this.providersService.contactProvider(id, actorId, body.title, body.message, body.priority);
   }
 }

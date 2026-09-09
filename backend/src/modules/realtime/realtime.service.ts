@@ -40,6 +40,11 @@ export class RealtimeService {
       status,
       ...extra,
     });
+    this.emitToRoom("admin", "appointment_status_update", {
+      appointmentId,
+      status,
+      ...extra,
+    });
   }
 
   /** Emergency created or escalated */
@@ -48,9 +53,10 @@ export class RealtimeService {
     this.emitToRoom("admin", "emergency_alert", data); // always notify admin room
   }
 
-  /** New service request — broadcast to all online providers */
+  /** New service request — broadcast to all online providers and admin portal */
   emitNewServiceRequest(data: any) {
     this.emitToRoom("providers", "new_service_request", data);
+    this.emitToRoom("admin", "new_service_request", data);
   }
 
   /** Provider accepted or rejected a request — notify the patient */

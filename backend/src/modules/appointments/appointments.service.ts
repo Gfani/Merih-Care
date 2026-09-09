@@ -22,8 +22,13 @@ export class AppointmentsService {
     private readonly realtimeService: RealtimeService,
   ) {}
 
-  async getAllAppointments(limit = 50, offset = 0): Promise<AppointmentEntity[]> {
+  async getAllAppointments(limit = 50, offset = 0, patientId?: string): Promise<AppointmentEntity[]> {
+    const where: any = {};
+    if (patientId) {
+      where.patientId = patientId;
+    }
     return this.appointmentRepo.find({
+      where: Object.keys(where).length > 0 ? where : undefined,
       relations: ["patient", "provider", "serviceRelation"],
       take: limit,
       skip: offset,
@@ -123,6 +128,16 @@ export class AppointmentsService {
 
     // Broadcast live update to all subscribed WebSocket clients (Admin portal + Provider dashboard)
     try {
+      this.realtimeService.emitNewServiceRequest({
+        appointmentId: result.id,
+        patientName: result.patientName,
+        service: result.service,
+        status: result.status,
+        date: result.date,
+        time: result.time,
+        location: result.location,
+        amount: result.amount,
+      });
       this.realtimeService.emitAppointmentUpdate(result.id, result.status, {
         appointmentId: result.id,
         patientName: result.patientName,

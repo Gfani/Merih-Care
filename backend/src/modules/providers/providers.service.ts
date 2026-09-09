@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { ProviderEntity } from "../../database/entities/provider.entity";
+import { NotificationsService } from "../notifications/notifications.service";
 import * as crypto from "crypto";
 
 @Injectable()
@@ -9,6 +10,8 @@ export class ProvidersService {
   constructor(
     @InjectRepository(ProviderEntity)
     private readonly providerRepo: Repository<ProviderEntity>,
+    @Optional()
+    private readonly notificationsService?: NotificationsService,
   ) {}
 
   /**
@@ -175,5 +178,37 @@ export class ProvidersService {
       return this.providerRepo.save(provider);
     }
     return null;
+  }
+
+  async contactProvider(
+    providerId: string, 
+    actorId: string, 
+    title: string, 
+    message: string, 
+    priority: "normal" | "urgent" = "normal"
+  ): Promise<{ success: boolean; message: string }> {
+    const provider = await this.providerRepo.findOne({ where: { id: providerId } });
+    if (!provider) {
+      throw new NotFoundException("Provider not found");
+    }
+
+    if (this.notificationsService && provider.userId) {
+      await this.notificationsService.sendNotification(provider.userId, {
+        type: "general",
+        title: title || "Message from MerihCare Administration",
+        body: message,
+        priority: priority === "urgent" ? "critical" : "normal",
+        data: {
+          sender: "administration",
+          actorId,
+          providerId,
+        },
+      }).catch((e) => console.error("[NOTIFICATIONS] Error sending notification to provider:", e));
+    }
+
+    return {
+      success: true,
+      message: `Message sent successfully to ${provider.name}`,
+    };
   }
 }

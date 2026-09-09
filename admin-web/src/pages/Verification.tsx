@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Alert, Card, Avatar, StatusBadge, Button, DataTable, ConfirmDialog, Modal, toast, SkeletonCard } from "../components/ui";
+import { Alert, Card, Avatar, StatusBadge, Button, DataTable, ConfirmDialog, Modal, toast, SkeletonCard, Input } from "../components/ui";
 import { api, API_URL } from "../services/api";
+import { Trash2, UserPlus, KeyRound, ShieldCheck } from "lucide-react";
 const BASE_API = API_URL;
 
 interface DocumentInfo {
@@ -123,6 +124,17 @@ export default function VerificationSection() {
   // Administrative Approvals State
   const [activeTab, setActiveTab] = useState<"providers" | "admins">("providers");
   const [pendingAdmins, setPendingAdmins] = useState<any[]>([]);
+  const [activeAdmins, setActiveAdmins] = useState<any[]>([]);
+  const [adminSubTab, setAdminSubTab] = useState<"pending" | "active">("pending");
+  const [addAdminModal, setAddAdminModal] = useState(false);
+  const [deleteAdminModal, setDeleteAdminModal] = useState(false);
+  const [adminToDelete, setAdminToDelete] = useState<any>(null);
+  const [addName, setAddName] = useState("");
+  const [addEmail, setAddEmail] = useState("");
+  const [addPassword, setAddPassword] = useState("");
+  const [addRole, setAddRole] = useState("admin");
+  const [creatingAdmin, setCreatingAdmin] = useState(false);
+
   const [adminApproveModal, setAdminApproveModal] = useState(false);
   const [adminRejectModal, setAdminRejectModal] = useState(false);
   const [selectedAdmin, setSelectedAdmin] = useState<any>(null);
@@ -161,10 +173,21 @@ export default function VerificationSection() {
     }
   };
 
+  const loadActiveAdmins = async () => {
+    if (!isSuperAdmin) return;
+    try {
+      const data = await api.getAdministrators();
+      setActiveAdmins(Array.isArray(data) ? data : []);
+    } catch {
+      setActiveAdmins([]);
+    }
+  };
+
   useEffect(() => {
     loadData();
     if (isSuperAdmin) {
       loadAdmins();
+      loadActiveAdmins();
     }
   }, []);
 
@@ -215,6 +238,7 @@ export default function VerificationSection() {
       await api.approveAdminAccount(selectedAdmin.id);
       toast(`${selectedAdmin?.name} has been approved as an administrator!`, "success");
       loadAdmins();
+      loadActiveAdmins();
     } catch (err: any) {
       const errMsg = err.response?.data?.message || err.message || "Failed to approve administrator";
       toast(errMsg, "error");
@@ -229,11 +253,54 @@ export default function VerificationSection() {
       await api.rejectAdminAccount(selectedAdmin.id);
       toast(`Administrative request for ${selectedAdmin?.name} rejected and removed.`, "info");
       loadAdmins();
+      loadActiveAdmins();
     } catch (err: any) {
       const errMsg = err.response?.data?.message || err.message || "Failed to reject administrator";
       toast(errMsg, "error");
     } finally {
       setAdminRejectModal(false);
+    }
+  };
+
+  const handleCreateAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addName || !addEmail || !addPassword) {
+      toast("All fields are required", "warning");
+      return;
+    }
+    setCreatingAdmin(true);
+    try {
+      await api.createAdministrator({
+        name: addName,
+        email: addEmail,
+        password: addPassword,
+        adminRole: addRole,
+      });
+      toast(`Administrator ${addName} created successfully!`, "success");
+      setAddAdminModal(false);
+      setAddName("");
+      setAddEmail("");
+      setAddPassword("");
+      loadActiveAdmins();
+      loadAdmins();
+    } catch (err: any) {
+      toast(err.response?.data?.message || err.message || "Failed to create administrator", "error");
+    } finally {
+      setCreatingAdmin(false);
+    }
+  };
+
+  const handleDeleteAdminConfirm = async () => {
+    if (!adminToDelete) return;
+    try {
+      await api.deleteAdministrator(adminToDelete.id);
+      toast(`Administrator ${adminToDelete.name || adminToDelete.email} removed`, "success");
+      setDeleteAdminModal(false);
+      setAdminToDelete(null);
+      loadActiveAdmins();
+      loadAdmins();
+    } catch (err: any) {
+      toast(err.response?.data?.message || err.message || "Failed to remove administrator", "error");
     }
   };
 
@@ -266,7 +333,7 @@ export default function VerificationSection() {
                 : "border-transparent text-[#8a9aaa] hover:text-[#4a5a6a] dark:text-slate-400"
             }`}
           >
-            Administrative Approvals ({pendingAdmins.length})
+            Administrator Management ({filteredAdmins.length + activeAdmins.length})
           </button>
         </div>
       )}
@@ -411,45 +478,195 @@ export default function VerificationSection() {
         </>
       ) : (
         <>
-          {filteredAdmins.length > 0 ? (
-            <Alert variant="warning" title={`${filteredAdmins.length} administrative signups pending`}>
-              Validate administrative identities and roles before enabling access keys.
-            </Alert>
-          ) : (
-            <Alert variant="success" title="No admin approvals pending">
-              All administrative access requests have been approved.
-            </Alert>
-          )}
+          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setAdminSubTab("pending")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                  adminSubTab === "pending"
+                    ? "bg-[#0d7c6a] text-white shadow-sm"
+                    : "bg-[#f1f5f9] dark:bg-slate-800 text-[#4a5a6a] dark:text-slate-300 hover:bg-[#e2e8ee]"
+                }`}
+              >
+                Pending Approvals ({filteredAdmins.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdminSubTab("active")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                  adminSubTab === "active"
+                    ? "bg-[#0d7c6a] text-white shadow-sm"
+                    : "bg-[#f1f5f9] dark:bg-slate-800 text-[#4a5a6a] dark:text-slate-300 hover:bg-[#e2e8ee]"
+                }`}
+              >
+                Registered Administrators ({activeAdmins.length})
+              </button>
+            </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredAdmins.map(admin => (
-              <Card key={admin.id} className="p-5 animate-fade-in">
-                <div className="flex items-start gap-3 mb-4 pb-4 border-b border-[#f0f4f7] dark:border-slate-700">
-                  <Avatar name={admin.name} size="lg" />
-                  <div className="flex-1">
-                    <p className="font-semibold text-[#18232e] dark:text-white text-sm">{admin.name}</p>
-                    <p className="text-xs text-[#8a9aaa] dark:text-slate-400 mt-0.5">{admin.email}</p>
-                    <div className="mt-2 flex items-center gap-2">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#f0f4f7] dark:bg-slate-750 text-[#1b6fba] dark:text-cyan-400 uppercase tracking-wide">
-                        {admin.adminRole ? admin.adminRole.replace("_", " ") : "admin"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="danger" size="sm" className="w-1/2" onClick={() => { setSelectedAdmin(admin); setAdminRejectModal(true); }}>
-                    Reject
-                  </Button>
-                  <Button size="sm" className="w-1/2" onClick={() => { setSelectedAdmin(admin); setAdminApproveModal(true); }}>
-                    <svg width="12" height="10" viewBox="0 0 12 10" fill="none" className="inline-block mr-1"><path d="M1 5l3 3.5L11 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    Approve
-                  </Button>
-                </div>
-              </Card>
-            ))}
+            <Button
+              size="sm"
+              onClick={() => setAddAdminModal(true)}
+              className="flex items-center gap-1.5 cursor-pointer text-xs"
+            >
+              <UserPlus size={14} />
+              <span>+ Add Administrator</span>
+            </Button>
           </div>
+
+          {adminSubTab === "pending" ? (
+            <>
+              {filteredAdmins.length > 0 ? (
+                <Alert variant="warning" title={`${filteredAdmins.length} administrative signups pending`}>
+                  Validate administrative identities and roles before enabling access keys.
+                </Alert>
+              ) : (
+                <Alert variant="success" title="No admin approvals pending">
+                  All administrative access requests have been approved.
+                </Alert>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredAdmins.map((admin) => (
+                  <Card key={admin.id} className="p-5 animate-fade-in">
+                    <div className="flex items-start gap-3 mb-4 pb-4 border-b border-[#f0f4f7] dark:border-slate-700">
+                      <Avatar name={admin.name} size="lg" />
+                      <div className="flex-1">
+                        <p className="font-semibold text-[#18232e] dark:text-white text-sm">{admin.name}</p>
+                        <p className="text-xs text-[#8a9aaa] dark:text-slate-400 mt-0.5">{admin.email}</p>
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#f0f4f7] dark:bg-slate-750 text-[#1b6fba] dark:text-cyan-400 uppercase tracking-wide">
+                            {admin.adminRole ? admin.adminRole.replace("_", " ") : "admin"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="danger" size="sm" className="w-1/2" onClick={() => { setSelectedAdmin(admin); setAdminRejectModal(true); }}>
+                        Reject
+                      </Button>
+                      <Button size="sm" className="w-1/2" onClick={() => { setSelectedAdmin(admin); setAdminApproveModal(true); }}>
+                        <svg width="12" height="10" viewBox="0 0 12 10" fill="none" className="inline-block mr-1"><path d="M1 5l3 3.5L11 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        Approve
+                      </Button>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {activeAdmins.map((admin) => {
+                const isCurrent = admin.email?.toLowerCase().trim() === emailLower;
+                const isSuper = admin.adminRole === "super_admin" || admin.email?.toLowerCase().trim() === "fanuelgoitom79@gmail.com";
+                return (
+                  <Card key={admin.id} className="p-5 animate-fade-in">
+                    <div className="flex items-start gap-3 mb-4 pb-4 border-b border-[#f0f4f7] dark:border-slate-700">
+                      <Avatar name={admin.name} size="lg" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-[#18232e] dark:text-white text-sm truncate">{admin.name}</p>
+                          {isSuper && (
+                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                              SUPER ADMIN
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-[#8a9aaa] dark:text-slate-400 mt-0.5 truncate">{admin.email}</p>
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#f0f4f7] dark:bg-slate-750 text-[#1b6fba] dark:text-cyan-400 uppercase tracking-wide">
+                            {admin.adminRole ? admin.adminRole.replace(/_/g, " ") : "Administrator"}
+                          </span>
+                          <span className="text-[10px] text-emerald-600 font-semibold">• Verified Active</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      {!isCurrent && !isSuper && (
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          className="flex items-center gap-1 text-xs"
+                          onClick={() => {
+                            setAdminToDelete(admin);
+                            setDeleteAdminModal(true);
+                          }}
+                        >
+                          <Trash2 size={13} />
+                          <span>Delete Administrator</span>
+                        </Button>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
+
+      {/* Add Administrator Modal */}
+      <Modal open={addAdminModal} onClose={() => setAddAdminModal(false)} title="Add Administrator Account">
+        <form onSubmit={handleCreateAdmin} className="space-y-4 text-xs">
+          <Input
+            label="Full Name"
+            value={addName}
+            onChange={(e) => setAddName(e.target.value)}
+            placeholder="e.g. Dr. Merih Admin"
+            required
+          />
+          <Input
+            label="Email Address"
+            type="email"
+            value={addEmail}
+            onChange={(e) => setAddEmail(e.target.value)}
+            placeholder="admin@merihcare.et"
+            required
+          />
+          <Input
+            label="Initial Password"
+            type="password"
+            value={addPassword}
+            onChange={(e) => setAddPassword(e.target.value)}
+            placeholder="Minimum 6 characters"
+            required
+          />
+          <div>
+            <label className="block text-[11px] font-semibold text-[#4a5a6a] dark:text-slate-300 mb-1">
+              Administrative Role
+            </label>
+            <select
+              value={addRole}
+              onChange={(e) => setAddRole(e.target.value)}
+              className="w-full text-xs border border-[#e2e8ee] dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg p-2.5 text-[#18232e] dark:text-white focus:outline-none focus:border-[#0d7c6a]"
+            >
+              <option value="admin">Operations Admin (Full Operational Access)</option>
+              <option value="finance_admin">Finance Admin (Payments & Payouts)</option>
+              <option value="verifier">Verification Specialist</option>
+              <option value="support_admin">Support & Safety Admin</option>
+            </select>
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-[#f0f4f7] dark:border-slate-700">
+            <Button type="button" variant="ghost" onClick={() => setAddAdminModal(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={creatingAdmin}>
+              Create & Authorize Admin
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Delete Administrator Confirm Dialog */}
+      <ConfirmDialog
+        open={deleteAdminModal}
+        onClose={() => setDeleteAdminModal(false)}
+        onConfirm={handleDeleteAdminConfirm}
+        title="Delete Administrator Account"
+        message={`Are you sure you want to permanently delete administrator ${adminToDelete?.name || adminToDelete?.email}? They will immediately lose all administrative dashboard privileges.`}
+        confirmLabel="Delete Administrator"
+        confirmVariant="danger"
+      />
 
       <ConfirmDialog open={approveModal} onClose={() => setApproveModal(false)} onConfirm={handleApprove} title="Approve Provider" message={`You are approving ${selectedProvider?.name} as a verified Merihcare provider. They will be able to accept service requests immediately.`} confirmLabel="Approve" confirmVariant="success" />
       <ConfirmDialog open={adminApproveModal} onClose={() => setAdminApproveModal(false)} onConfirm={handleApproveAdmin} title="Approve Administrator Account" message={`You are approving the administrative signup request for ${selectedAdmin?.name} (${selectedAdmin?.email}) with the role of ${selectedAdmin?.adminRole?.replace("_", " ")}. They will immediately gain access to corresponding dashboard features.`} confirmLabel="Approve" confirmVariant="success" />

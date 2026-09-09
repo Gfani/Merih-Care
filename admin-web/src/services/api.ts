@@ -342,7 +342,7 @@ export const api = {
   },
 
   // ─── APPOINTMENTS & REQUESTS ───────────────────────────────────────────────
-  async getAppointments(params?: { status?: string; search?: string }): Promise<Appointment[]> {
+  async getAppointments(params?: { status?: string; search?: string; patientId?: string }): Promise<Appointment[]> {
     try {
       const res = await axios.get(`${API_URL}/appointments`, { headers: getHeaders(), params });
       return res.data;
@@ -350,6 +350,10 @@ export const api = {
       if (isDemoMode()) return mockAppointments as any;
       throw error;
     }
+  },
+
+  async getRequests(): Promise<any[]> {
+    return this.getAppointments();
   },
 
   async updateAppointmentStatus(id: string, status: Appointment["status"], reason?: string): Promise<any> {
@@ -754,6 +758,87 @@ export const api = {
       return res.data;
     } catch (error) {
       if (isDemoMode()) return { id, status: "rejected" };
+      throw error;
+    }
+  },
+
+  async getAdministrators(): Promise<any[]> {
+    try {
+      const res = await axios.get(`${API_URL}/admin/administrators`, { headers: getHeaders() });
+      return Array.isArray(res.data) ? res.data : [];
+    } catch (error) {
+      if (isDemoMode()) return [];
+      throw error;
+    }
+  },
+
+  async createAdministrator(data: { name: string; email: string; password: string; adminRole?: string; department?: string; phone?: string }): Promise<any> {
+    try {
+      const res = await axios.post(`${API_URL}/admin/administrators`, data, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { id: "mock-admin", ...data, role: "admin" };
+      throw error;
+    }
+  },
+
+  async deleteAdministrator(id: string): Promise<any> {
+    try {
+      const res = await axios.delete(`${API_URL}/admin/administrators/${id}`, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { id, deleted: true };
+      throw error;
+    }
+  },
+
+  async resetAdministratorPassword(id: string, newPassword: string): Promise<any> {
+    try {
+      const res = await axios.post(`${API_URL}/admin/administrators/${id}/reset-password`, { newPassword }, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { success: true };
+      throw error;
+    }
+  },
+
+  async contactProvider(id: string, payload: { title: string; message: string; priority?: "normal" | "urgent" }): Promise<any> {
+    try {
+      const res = await axios.post(`${API_URL}/providers/${id}/contact`, payload, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { success: true, message: "Message sent in demo mode" };
+      throw error;
+    }
+  },
+
+  async requestPasswordReset(email: string): Promise<{ success: boolean; message: string; devCode?: string; code?: string }> {
+    try {
+      const res = await axios.post(`${API_URL}/auth/password-reset/request`, { email });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { success: true, message: "Reset OTP code sent" };
+      throw error;
+    }
+  },
+
+  async confirmPasswordReset(email: string, token: string, newPassword: string): Promise<{ success: boolean }> {
+    try {
+      const res = await axios.post(`${API_URL}/auth/password-reset/confirm`, { email, token, newPassword });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { success: true };
+      throw error;
+    }
+  },
+
+  async getMedicalRecords(patientId: string): Promise<any[]> {
+    try {
+      const res = await axios.get(`${API_URL}/medical-records/${patientId}`, { headers: getHeaders() });
+      const data = res.data;
+      return Array.isArray(data) ? data : (data?.data || []);
+    } catch (error) {
+      if (isDemoMode()) return [];
       throw error;
     }
   },

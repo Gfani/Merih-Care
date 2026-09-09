@@ -4,6 +4,8 @@ import { Repository } from "typeorm";
 import { UserEntity } from "../../database/entities/user.entity";
 import * as fs from "fs";
 import * as path from "path";
+import * as bcrypt from "bcryptjs";
+import * as crypto from "crypto";
 
 @Injectable()
 export class AdminService {
@@ -151,5 +153,69 @@ export class AdminService {
 
     await this.userRepo.remove(targetUser);
     return { success: true };
+  }
+
+  async getAllAdministrators(): Promise<UserEntity[]> {
+    return this.userRepo.find({
+      where: [
+        { role: "admin", isApproved: true },
+        { role: "super_admin", isApproved: true }
+      ],
+      order: { dateJoined: "DESC" as any }
+    });
+  }
+
+  async createAdministrator(data: { name: string; email: string; password: string; adminRole?: string; department?: string; phone?: string }): Promise<UserEntity> {
+    const emailNorm = (data.email || "").toLowerCase().trim();
+    const existing = await this.userRepo.findOne({ where: { email: emailNorm } });
+    if (existing) {
+      throw new Error("An account with this email address already exists");
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(data.password, salt);
+
+    const admin = new UserEntity();
+    admin.id = "u-" + crypto.randomUUID();
+    admin.name = data.name.trim();
+    admin.email = emailNorm;
+    admin.password = hashedPassword;
+    admin.phone = data.phone?.trim() || "";
+    admin.role = "admin";
+    admin.adminRole = data.adminRole || (data.department ? `${data.department.toLowerCase()}_admin` : "operations_admin");
+    admin.isApproved = true;
+    admin.status = "active";
+    admin.permissions = "all";
+    admin.dateJoined = new Date().toISOString().split("T")[0];
+
+    return this.userRepo.save(admin);
+  }
+
+  async deleteAdministrator(actorId: string, targetId: string): Promise<{ success: boolean }> {
+    if (actorId && actorId === targetId) {
+      throw new Error("Super administrators cannot delete their own account");
+    }
+    const targetUser = await this.userRepo.findOne({ where: { id: targetId } });
+    if (!targetUser) {
+      throw new Error("Administrator account not found");
+    }
+    const targetEmail = (targetUser.email || "").toLowerCase().trim();
+    if (targetEmail === "fanuelgoitom79@gmail.com" || targetEmail === "fani@g.com") {
+      throw new Error("The primary super administrator account cannot be deleted");
+    }
+    await this.userRepo.remove(targetUser);
+    return { success: true };
+  }
+
+  async updateAdminPasswordForUser(userId: string, newPass: string): Promise<UserEntity> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new Error("Administrator account not found");
+    }
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPass, salt);
+    user.loginAttempts = 0;
+    user.lockoutUntil = null;
+    return this.userRepo.save(user);
   }
 }
