@@ -105,3 +105,4 @@ mobile/macos/
 *.apk
 *.ap_
 *.aab
+release/
