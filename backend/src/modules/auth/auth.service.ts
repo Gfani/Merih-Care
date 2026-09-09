@@ -1,4 +1,4 @@
-import { Injectable, Optional, Inject, forwardRef } from "@nestjs/common";
+import { Injectable, Optional, Inject, forwardRef, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { UserEntity } from "../../database/entities/user.entity";
@@ -824,5 +824,17 @@ export class AuthService {
 
     // 4. Issue authenticated session
     return this.createSession(user.id, userAgent, ipAddress);
+  }
+
+  async deleteAccount(userId: string): Promise<void> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException("User account not found");
+    }
+    await this.sessionRepo.delete({ userId });
+    if (this.providerRepo) {
+      await this.providerRepo.delete({ userId });
+    }
+    await this.userRepo.delete({ id: userId });
   }
 }

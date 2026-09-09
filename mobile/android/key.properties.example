@@ -1,0 +1,8 @@
+# Android Keystore Signing Configuration for Google Play Store Release
+# Copy this file to mobile/android/key.properties and replace with your keystore credentials.
+# (Do NOT commit key.properties to source control)
+
+keyAlias=upload
+keyPassword=YourKeystorePasswordHere
+storeFile=../upload-keystore.jks
+storePassword=YourKeystorePasswordHere

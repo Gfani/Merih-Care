@@ -368,4 +368,12 @@ export class AuthController {
     const userId = req.user.id || req.user.sub;
     return this.authService.getUserById(userId);
   }
+
+  @Delete("account")
+  @UseGuards(JwtAuthGuard)
+  async deleteAccount(@Req() req: any) {
+    const userId = req.user.id || req.user.sub;
+    await this.authService.deleteAccount(userId);
+    return { success: true, message: "Account deleted successfully" };
+  }
 }

@@ -307,6 +307,17 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                       },
                     ),
                   ),
+                  const Divider(height: 1),
+                  Semantics(
+                    button: true,
+                    label: 'Permanently delete your account',
+                    child: ListTile(
+                      leading: const Icon(Icons.delete_forever, color: Colors.red),
+                      title: const Text('Delete Account', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.red)),
+                      subtitle: const Text('Permanently erase account data and medical records', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                      onTap: () => _confirmAccountDeletion(context),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -314,5 +325,49 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _confirmAccountDeletion(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Account?'),
+        content: const Text(
+          'This action is irreversible. All your profile information, appointment histories, and medical documents will be permanently erased.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete Forever'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        final client = ref.read(apiClientProvider);
+        await client.dio.delete('/auth/account');
+        final router = GoRouter.of(context);
+        await ref.read(authProvider.notifier).logout();
+        router.go('/login');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Account permanently deleted'), backgroundColor: Colors.black87),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to delete account: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
   }
 }

@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Mobile</string>
+	<string>Merihcare</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>mobile</string>
+	<string>merihcare</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -66,5 +66,17 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Merihcare uses your location to match you with nearby home healthcare providers and emergency ambulance dispatch.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Merihcare uses your location to track caregiver transit and emergency healthcare response in real time.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Merihcare requires camera access to take profile photos and scan medical documents, licenses, and prescription records.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Merihcare requires photo library access to upload medical records, diagnostic scans, and clinical credentials.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Merihcare requires permission to save visit receipts, payment summaries, and medical invoices to your photo library.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Merihcare requires microphone access for telemedicine and clinical consultation calls.</string>
 </dict>
 </plist>
