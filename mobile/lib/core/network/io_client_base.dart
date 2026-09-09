@@ -3,10 +3,13 @@ import 'package:flutter/foundation.dart';
 const String _envApiUrl = String.fromEnvironment('API_URL');
 const String _envRealtimeUrl = String.fromEnvironment('REALTIME_URL');
 
+// Azure production backend URL
+const String _prodBackendUrl = 'https://app-merihcare-prod-backend.agreeablemoss-f06ffa43.uaenorth.azurecontainerapps.io';
+
 final String defaultApiUrl = _envApiUrl.isNotEmpty
     ? _envApiUrl
     : (kReleaseMode
-        ? 'https://api.merihcare.et/api/v1'
+        ? '$_prodBackendUrl/api/v1'
         : (kIsWeb
             ? 'http://localhost:3000/api/v1'
             : (defaultTargetPlatform == TargetPlatform.android
@@ -16,7 +19,7 @@ final String defaultApiUrl = _envApiUrl.isNotEmpty
 final String defaultRealtimeUrl = _envRealtimeUrl.isNotEmpty
     ? _envRealtimeUrl
     : (kReleaseMode
-        ? 'https://api.merihcare.et'
+        ? _prodBackendUrl
         : (kIsWeb
             ? 'http://localhost:3000'
             : (defaultTargetPlatform == TargetPlatform.android
