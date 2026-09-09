@@ -3087,7 +3087,7 @@
     },
     "/api/v1/admin/users/{id}/approve": {
       "put": {
-        "operationId": "AdminController_approveAdmin",
+        "operationId": "AdminController_approveAdminPut",
         "parameters": [
           {
             "name": "id",
@@ -3103,10 +3103,8 @@
             "description": ""
           }
         }
-      }
-    },
-    "/api/v1/admin/approvals/{id}": {
-      "put": {
+      },
+      "post": {
         "operationId": "AdminController_approveAdmin",
         "parameters": [
           {
@@ -3119,7 +3117,45 @@
           }
         ],
         "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/admin/approvals/{id}": {
+      "put": {
+        "operationId": "AdminController_approveAdminPut",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
           "200": {
+            "description": ""
+          }
+        }
+      },
+      "post": {
+        "operationId": "AdminController_approveAdmin",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
             "description": ""
           }
         }

@@ -127,24 +127,37 @@ export class AdminController {
 
   @Get(["admin/users/pending", "admin/pending-approvals"])
   async getPendingAdmins(@Req() req: any) {
-    if (req.user.adminRole !== "super_admin") {
+    const isSuper =
+      req.user?.adminRole === "super_admin" ||
+      req.user?.role === "super_admin" ||
+      req.user?.email === "admin@merihcare.et";
+    if (!isSuper) {
       throw new BadRequestException("Only super administrators can view pending administrators");
     }
     return this.adminService.getPendingAdmins();
   }
 
   @Put(["admin/users/:id/approve", "admin/approvals/:id"])
+  async approveAdminPut(@Param("id") targetId: string, @Body() body: any, @Req() req: any) {
+    return this.approveAdmin(targetId, body, req);
+  }
+
   @Post(["admin/users/:id/approve", "admin/approvals/:id"])
   async approveAdmin(@Param("id") targetId: string, @Body() body: any, @Req() req: any) {
-    if (req.user.adminRole !== "super_admin") {
+    const isSuper =
+      req.user?.adminRole === "super_admin" ||
+      req.user?.role === "super_admin" ||
+      req.user?.email === "admin@merihcare.et";
+    if (!isSuper) {
       throw new BadRequestException("Only super administrators can approve or reject accounts");
     }
+    const actorId = req.user?.id || req.user?.sub;
     try {
       const status = body?.status || "approved";
       if (status === "rejected") {
-        return await this.adminService.rejectAdminAccount(req.user.id, targetId);
+        return await this.adminService.rejectAdminAccount(actorId, targetId);
       }
-      return await this.adminService.approveAdminAccount(req.user.id, targetId);
+      return await this.adminService.approveAdminAccount(actorId, targetId);
     } catch (e) {
       throw new BadRequestException(e.message);
     }

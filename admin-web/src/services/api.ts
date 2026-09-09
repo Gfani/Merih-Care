@@ -727,10 +727,20 @@ export const api = {
 
   async approveAdminAccount(id: string): Promise<any> {
     try {
-      const res = await axios.post(`${API_URL}/admin/users/${id}/approve`, {}, { headers: getHeaders() });
+      const res = await axios.post(`${API_URL}/admin/users/${id}/approve`, { status: "approved" }, { headers: getHeaders() });
       return res.data;
     } catch (error) {
       if (isDemoMode()) return { id, status: "approved" };
+      throw error;
+    }
+  },
+
+  async rejectAdminAccount(id: string): Promise<any> {
+    try {
+      const res = await axios.post(`${API_URL}/admin/users/${id}/approve`, { status: "rejected" }, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { id, status: "rejected" };
       throw error;
     }
   },

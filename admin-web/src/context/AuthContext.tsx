@@ -44,8 +44,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const googleLogin = async (idToken?: string) => {
-    const tokenToUse = idToken || `test-google-token:admin.${Date.now()}@gmail.com:MerihCare Admin`;
-    const res = await api.googleAuth(tokenToUse, "admin");
+    if (!idToken) {
+      throw new Error("Google Sign-In is not currently enabled for this domain or no Google credential was received. Please sign in using your administrator email and password.");
+    }
+    const res = await api.googleAuth(idToken, "admin");
     if (res.access_token) {
       setToken(res.access_token);
       setUser(res.user);

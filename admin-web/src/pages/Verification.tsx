@@ -124,6 +124,7 @@ export default function VerificationSection() {
   const [activeTab, setActiveTab] = useState<"providers" | "admins">("providers");
   const [pendingAdmins, setPendingAdmins] = useState<any[]>([]);
   const [adminApproveModal, setAdminApproveModal] = useState(false);
+  const [adminRejectModal, setAdminRejectModal] = useState(false);
   const [selectedAdmin, setSelectedAdmin] = useState<any>(null);
 
   const userStr = localStorage.getItem("admin_user");
@@ -215,6 +216,27 @@ export default function VerificationSection() {
       setAdminApproveModal(false);
     }
   };
+
+  const handleRejectAdmin = async () => {
+    if (!selectedAdmin) return;
+    try {
+      await api.rejectAdminAccount(selectedAdmin.id);
+      toast(`Administrative request for ${selectedAdmin?.name} rejected and removed.`, "info");
+      loadAdmins();
+    } catch (err: any) {
+      const errMsg = err.response?.data?.message || err.message || "Failed to reject administrator";
+      toast(errMsg, "error");
+    } finally {
+      setAdminRejectModal(false);
+    }
+  };
+
+  const filteredAdmins = pendingAdmins.filter(admin => {
+    const name = (admin.name || "").toLowerCase().trim();
+    const email = (admin.email || "").toLowerCase().trim();
+    const isMock = name === "merihcare admin" || /^admin\.\d+@gmail\.com$/.test(email) || email.includes("test-google-token");
+    return !isMock;
+  });
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -383,8 +405,8 @@ export default function VerificationSection() {
         </>
       ) : (
         <>
-          {pendingAdmins.length > 0 ? (
-            <Alert variant="warning" title={`${pendingAdmins.length} administrative signups pending`}>
+          {filteredAdmins.length > 0 ? (
+            <Alert variant="warning" title={`${filteredAdmins.length} administrative signups pending`}>
               Validate administrative identities and roles before enabling access keys.
             </Alert>
           ) : (
@@ -394,7 +416,7 @@ export default function VerificationSection() {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {pendingAdmins.map(admin => (
+            {filteredAdmins.map(admin => (
               <Card key={admin.id} className="p-5 animate-fade-in">
                 <div className="flex items-start gap-3 mb-4 pb-4 border-b border-[#f0f4f7] dark:border-slate-700">
                   <Avatar name={admin.name} size="lg" />
@@ -409,9 +431,12 @@ export default function VerificationSection() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button size="sm" className="w-full" onClick={() => { setSelectedAdmin(admin); setAdminApproveModal(true); }}>
+                  <Button variant="danger" size="sm" className="w-1/2" onClick={() => { setSelectedAdmin(admin); setAdminRejectModal(true); }}>
+                    Reject
+                  </Button>
+                  <Button size="sm" className="w-1/2" onClick={() => { setSelectedAdmin(admin); setAdminApproveModal(true); }}>
                     <svg width="12" height="10" viewBox="0 0 12 10" fill="none" className="inline-block mr-1"><path d="M1 5l3 3.5L11 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    Approve Request
+                    Approve
                   </Button>
                 </div>
               </Card>
@@ -422,6 +447,7 @@ export default function VerificationSection() {
 
       <ConfirmDialog open={approveModal} onClose={() => setApproveModal(false)} onConfirm={handleApprove} title="Approve Provider" message={`You are approving ${selectedProvider?.name} as a verified Merihcare provider. They will be able to accept service requests immediately.`} confirmLabel="Approve" confirmVariant="success" />
       <ConfirmDialog open={adminApproveModal} onClose={() => setAdminApproveModal(false)} onConfirm={handleApproveAdmin} title="Approve Administrator Account" message={`You are approving the administrative signup request for ${selectedAdmin?.name} (${selectedAdmin?.email}) with the role of ${selectedAdmin?.adminRole?.replace("_", " ")}. They will immediately gain access to corresponding dashboard features.`} confirmLabel="Approve" confirmVariant="success" />
+      <ConfirmDialog open={adminRejectModal} onClose={() => setAdminRejectModal(false)} onConfirm={handleRejectAdmin} title="Reject Administrator Request" message={`Are you sure you want to reject and remove the administrative access request for ${selectedAdmin?.name} (${selectedAdmin?.email})?`} confirmLabel="Reject Request" confirmVariant="danger" />
 
       {/* Reject Verification Modal */}
       <Modal open={rejectModal} onClose={() => setRejectModal(false)} title="Reject Verification" footer={
