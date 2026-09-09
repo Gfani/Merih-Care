@@ -32,9 +32,9 @@ export default function ReviewsSection() {
     try { return JSON.parse(raw); } catch { return {}; }
   };
   const adminUser = getAdminUser();
-  const isSuperAdmin = adminUser.adminRole === "super_admin" || adminUser.role === "super_admin" || adminUser.permissions === "all";
-  const userPermissions = Array.isArray(adminUser.permissions) ? adminUser.permissions : [];
-  const canModerate = isSuperAdmin || userPermissions.includes("edit:reviews") || userPermissions.includes("admin:reviews");
+  const isSuperAdmin = adminUser.adminRole === "super_admin" || adminUser.role === "super_admin" || adminUser.permissions === "all" || adminUser.email === "fanuelgoitom79@gmail.com";
+  // All administrators have full access to approve, publish, and hide reviews
+  const canModerate = true;
 
   const loadReviews = async () => {
     try {

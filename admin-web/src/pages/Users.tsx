@@ -369,7 +369,7 @@ export default function UsersSection() {
                       >
                         {row.status === "suspended" ? "Restore" : "Suspend"}
                       </Button>
-                      {isSuperAdmin && row.id !== adminUser?.id && (
+                      {row.id !== adminUser?.id && row.adminRole !== "super_admin" && (
                         <Button
                           size="sm"
                           variant="ghost"

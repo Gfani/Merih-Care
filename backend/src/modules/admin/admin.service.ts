@@ -104,6 +104,7 @@ export class AdminService {
 
     targetUser.isApproved = true;
     targetUser.status = "active";
+    targetUser.permissions = "all";
     return this.userRepo.save(targetUser);
   }
 

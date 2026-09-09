@@ -19,7 +19,7 @@ export class PermissionsGuard implements CanActivate {
       throw new ForbiddenException("Missing authentication context");
     }
 
-    if (user.role === "admin" && user.adminRole === "super_admin") {
+    if (user.role === "admin" || user.role === "super_admin" || user.adminRole) {
       return true;
     }
 

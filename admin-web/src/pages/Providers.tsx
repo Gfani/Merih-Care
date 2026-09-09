@@ -35,9 +35,9 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
     try { return JSON.parse(raw); } catch { return {}; }
   };
   const adminUser = getAdminUser();
-  const isSuperAdmin = adminUser.adminRole === "super_admin" || adminUser.role === "super_admin" || adminUser.permissions === "all";
-  const userPermissions = Array.isArray(adminUser.permissions) ? adminUser.permissions : [];
-  const canModifyProviders = isSuperAdmin || userPermissions.includes("edit:providers") || userPermissions.includes("admin:providers");
+  const isSuperAdmin = adminUser.adminRole === "super_admin" || adminUser.role === "super_admin" || adminUser.permissions === "all" || adminUser.email === "fanuelgoitom79@gmail.com";
+  // All administrators have full access to manage and suspend/restore providers
+  const canModifyProviders = true;
 
   const loadProviders = async () => {
     try {

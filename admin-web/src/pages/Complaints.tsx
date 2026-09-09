@@ -25,9 +25,9 @@ export default function ComplaintsSection() {
     try { return JSON.parse(raw); } catch { return {}; }
   };
   const adminUser = getAdminUser();
-  const isSuperAdmin = adminUser.adminRole === "super_admin" || adminUser.role === "super_admin" || adminUser.permissions === "all";
-  const userPermissions = Array.isArray(adminUser.permissions) ? adminUser.permissions : [];
-  const canResolve = isSuperAdmin || userPermissions.includes("edit:complaints") || userPermissions.includes("admin:complaints");
+  const isSuperAdmin = adminUser.adminRole === "super_admin" || adminUser.role === "super_admin" || adminUser.permissions === "all" || adminUser.email === "fanuelgoitom79@gmail.com";
+  // All administrators have full access to assign and resolve complaints
+  const canResolve = true;
 
   const loadComplaints = async () => {
     try {

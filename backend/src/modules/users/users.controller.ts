@@ -40,11 +40,12 @@ export class UsersController {
 
   @Delete(":id")
   async deleteUser(@Param("id") id: string, @Req() req: any) {
-    if (req.user?.adminRole !== "super_admin" && req.user?.role !== "super_admin") {
-      throw new ForbiddenException("Only super administrators can remove members");
+    const actorId = req.user?.id || req.user?.sub;
+    if (req.user?.role !== "admin" && req.user?.role !== "super_admin" && !req.user?.adminRole) {
+      throw new ForbiddenException("Only administrators can remove members");
     }
-    if (req.user.id === id) {
-      throw new ForbiddenException("Super administrators cannot delete their own account");
+    if (actorId === id) {
+      throw new ForbiddenException("Administrators cannot delete their own account");
     }
     return this.usersService.deleteUser(id);
   }

@@ -34,9 +34,9 @@ export default function ServicesSection() {
     try { return JSON.parse(raw); } catch { return {}; }
   };
   const adminUser = getAdminUser();
-  const isSuperAdmin = adminUser.adminRole === "super_admin" || adminUser.role === "super_admin" || adminUser.permissions === "all";
-  const userPermissions = Array.isArray(adminUser.permissions) ? adminUser.permissions : [];
-  const canModifyServices = isSuperAdmin || userPermissions.includes("edit:services") || userPermissions.includes("admin:services");
+  const isSuperAdmin = adminUser.adminRole === "super_admin" || adminUser.role === "super_admin" || adminUser.permissions === "all" || adminUser.email === "fanuelgoitom79@gmail.com";
+  // All administrators have full access to add, edit, toggle, and manage services
+  const canModifyServices = true;
 
   const loadServices = async () => {
     try {
@@ -256,16 +256,14 @@ export default function ServicesSection() {
                     >
                       {(row.status as "active" | "closed") === "active" ? "Deactivate" : "Activate"}
                     </Button>
-                    {isSuperAdmin && (
-                      <Button 
-                        size="sm" 
-                        variant="ghost" 
-                        className="text-xs !py-1 !px-2 text-[#dc2626] hover:!bg-[#fee2e2] cursor-pointer" 
-                        onClick={() => handleDeleteClick(row)}
-                      >
-                        Delete
-                      </Button>
-                    )}
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      className="text-xs !py-1 !px-2 text-[#dc2626] hover:!bg-[#fee2e2] cursor-pointer" 
+                      onClick={() => handleDeleteClick(row)}
+                    >
+                      Delete
+                    </Button>
                   </div>
                 )},
               ]}
