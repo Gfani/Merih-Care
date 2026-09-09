@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Users, HeartPulse, ShieldCheck, ClipboardList, Inbox,
   Calendar, CreditCard, AlertTriangle, Star, Activity, Map, BarChart3,
   FileText, Settings as SettingsIcon, Sun, Moon, Menu, Bell, CheckCircle2,
-  Radio, X, ExternalLink, RefreshCw
+  Radio, X, ExternalLink, RefreshCw, ShieldAlert
 } from "lucide-react";
 import { api } from "./services/api";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -74,6 +74,7 @@ const LiveMapSection = lazyWithRetry(() => import("./pages/LiveMap"));
 const ReportsSection = lazyWithRetry(() => import("./pages/Reports"));
 const AuditLogsSection = lazyWithRetry(() => import("./pages/AuditLogs"));
 const SettingsSection = lazyWithRetry(() => import("./pages/Settings"));
+const AdministratorsSection = lazyWithRetry(() => import("./pages/Administrators"));
 const Login = lazyWithRetry(() => import("./pages/Login"));
 const SignUp = lazyWithRetry(() => import("./pages/SignUp"));
 
@@ -120,6 +121,7 @@ const getNavigationSections = (badges: { verification: number; complaints: numbe
   {
     title: "Administration",
     items: [
+      { id: "administrators", path: "/administrators", label: "Administrators", icon: <ShieldAlert size={16} /> },
       { id: "audit-logs", path: "/audit-logs", label: "Audit Logs", icon: <FileText size={16} /> },
       { id: "settings", path: "/settings", label: "Settings", icon: <SettingsIcon size={16} /> },
     ],
@@ -381,19 +383,24 @@ function AppContent() {
       </nav>
 
       <div className="p-3 border-t border-[#e2e8ee] dark:border-slate-700">
-        <div className="flex items-center gap-2.5">
+        <Link
+          to="/administrators"
+          title="Open Administrator Management"
+          className="flex items-center gap-2.5 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors"
+        >
           <Avatar name={user?.name || "Admin"} size="sm" />
           {(mobile || sidebarOpen) && (
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold text-[#18232e] dark:text-white truncate">{user?.name || "Admin"}</p>
-              <p className="text-[10px] text-[#8a9aaa] dark:text-slate-400 capitalize">
+              <p className="text-[10px] text-[#0d7c6a] dark:text-emerald-400 font-bold capitalize flex items-center gap-1">
+                <ShieldAlert size={10} />
                 {currentEmailLower === "fanuelgoitom79@gmail.com" || currentEmailLower === "fani@g.com" || user?.adminRole === "super_admin"
                   ? "Super Admin"
                   : (user as any)?.adminRole?.replace(/_/g, " ") || "Administrator"}
               </p>
             </div>
           )}
-        </div>
+        </Link>
       </div>
     </>
   );
@@ -538,6 +545,8 @@ function AppContent() {
                 <Route path="/reviews" element={<ProtectedRoute><ReviewsSection /></ProtectedRoute>} />
                 <Route path="/audit-logs" element={<ProtectedRoute><AuditLogsSection /></ProtectedRoute>} />
                 <Route path="/settings" element={<ProtectedRoute><SettingsSection /></ProtectedRoute>} />
+                <Route path="/administrators" element={<ProtectedRoute><AdministratorsSection /></ProtectedRoute>} />
+                <Route path="/admins" element={<ProtectedRoute><AdministratorsSection /></ProtectedRoute>} />
               </Routes>
             </React.Suspense>
           </main>
