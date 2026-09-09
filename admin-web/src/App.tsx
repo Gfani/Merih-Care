@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Users, HeartPulse, ShieldCheck, ClipboardList, Inbox,
   Calendar, CreditCard, AlertTriangle, Star, Activity, Map, BarChart3,
   FileText, Settings as SettingsIcon, Sun, Moon, Menu, Bell, CheckCircle2,
-  Radio, X, ExternalLink
+  Radio, X, ExternalLink, RefreshCw
 } from "lucide-react";
 import { api } from "./services/api";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -15,31 +15,71 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { BackendHealthBanner } from "./components/BackendHealthBanner";
 import { LoadingShell } from "./components/LoadingShell";
 import { useRealtimeSocket } from "./hooks/useRealtimeSocket";
+import { useRouteError } from "react-router-dom";
 
-// Lazy-loaded pages
-const DashboardSection = React.lazy(() => import("./pages/Dashboard"));
-const UsersSection = React.lazy(() => import("./pages/Users"));
-const ProvidersSection = React.lazy(() => import("./pages/Providers"));
-const VerificationSection = React.lazy(() => import("./pages/Verification"));
-const ServicesSection = React.lazy(() => import("./pages/Services"));
-const RequestsSection = React.lazy(() => import("./pages/Requests"));
-const AppointmentsSection = React.lazy(() => import("./pages/Appointments"));
-const PaymentsSection = React.lazy(() => import("./pages/Payments"));
-const PayoutsSection = React.lazy(() => import("./pages/Payouts"));
-const ComplaintsSection = React.lazy(() => import("./pages/Complaints"));
-const ReviewsSection = React.lazy(() => import("./pages/Reviews"));
-const EmergencySection = React.lazy(() => import("./pages/Emergency"));
-const LiveMapSection = React.lazy(() => import("./pages/LiveMap"));
-const ReportsSection = React.lazy(() => import("./pages/Reports"));
-const AuditLogsSection = React.lazy(() => import("./pages/AuditLogs"));
-const SettingsSection = React.lazy(() => import("./pages/Settings"));
-const Login = React.lazy(() => import("./pages/Login"));
-const SignUp = React.lazy(() => import("./pages/SignUp"));
+// Automatic chunk retry helper for dynamic imports during new deployments
+function lazyWithRetry<T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T }>
+): React.LazyExoticComponent<T> {
+  return React.lazy(async () => {
+    try {
+      return await factory();
+    } catch (error: any) {
+      const isChunkError =
+        error?.message?.includes("Failed to fetch dynamically imported module") ||
+        error?.message?.includes("error loading dynamically imported module") ||
+        error?.name === "TypeError";
+
+      const key = "merihcare_chunk_retry";
+      const lastRetry = sessionStorage.getItem(key);
+      const now = Date.now();
+      if (isChunkError && (!lastRetry || now - Number(lastRetry) > 8000)) {
+        sessionStorage.setItem(key, String(now));
+        window.location.reload();
+        return new Promise(() => {}); // Hold until browser reloads
+      }
+      throw error;
+    }
+  });
+}
+
+// Listen to Vite asset loading errors on new deployments
+if (typeof window !== "undefined") {
+  window.addEventListener("vite:preloadError", (event) => {
+    event.preventDefault();
+    const key = "merihcare_preload_retry";
+    const last = sessionStorage.getItem(key);
+    const now = Date.now();
+    if (!last || now - Number(last) > 8000) {
+      sessionStorage.setItem(key, String(now));
+      window.location.reload();
+    }
+  });
+}
+
+// Lazy-loaded pages with automatic retry on new deployments
+const DashboardSection = lazyWithRetry(() => import("./pages/Dashboard"));
+const UsersSection = lazyWithRetry(() => import("./pages/Users"));
+const ProvidersSection = lazyWithRetry(() => import("./pages/Providers"));
+const VerificationSection = lazyWithRetry(() => import("./pages/Verification"));
+const ServicesSection = lazyWithRetry(() => import("./pages/Services"));
+const RequestsSection = lazyWithRetry(() => import("./pages/Requests"));
+const AppointmentsSection = lazyWithRetry(() => import("./pages/Appointments"));
+const PaymentsSection = lazyWithRetry(() => import("./pages/Payments"));
+const PayoutsSection = lazyWithRetry(() => import("./pages/Payouts"));
+const ComplaintsSection = lazyWithRetry(() => import("./pages/Complaints"));
+const ReviewsSection = lazyWithRetry(() => import("./pages/Reviews"));
+const EmergencySection = lazyWithRetry(() => import("./pages/Emergency"));
+const LiveMapSection = lazyWithRetry(() => import("./pages/LiveMap"));
+const ReportsSection = lazyWithRetry(() => import("./pages/Reports"));
+const AuditLogsSection = lazyWithRetry(() => import("./pages/AuditLogs"));
+const SettingsSection = lazyWithRetry(() => import("./pages/Settings"));
+const Login = lazyWithRetry(() => import("./pages/Login"));
+const SignUp = lazyWithRetry(() => import("./pages/SignUp"));
 
 const getNavigationSections = (badges: { verification: number; complaints: number; payouts: number }) => [
   {
     title: "Overview",
-    allowedRoles: ["super_admin", "admin", "finance_admin", "verifier"],
     items: [
       { id: "dashboard", path: "/", label: "Dashboard", icon: <LayoutDashboard size={16} /> },
       { id: "live-map", path: "/live-map", label: "Live Map", icon: <Map size={16} /> },
@@ -48,7 +88,6 @@ const getNavigationSections = (badges: { verification: number; complaints: numbe
   },
   {
     title: "People",
-    allowedRoles: ["super_admin", "admin", "verifier"],
     items: [
       { id: "users", path: "/users", label: "Users", icon: <Users size={16} /> },
       { id: "providers", path: "/providers", label: "Providers", icon: <HeartPulse size={16} /> },
@@ -57,7 +96,6 @@ const getNavigationSections = (badges: { verification: number; complaints: numbe
   },
   {
     title: "Operations",
-    allowedRoles: ["super_admin", "admin", "verifier"],
     items: [
       { id: "requests", path: "/requests", label: "Service Requests", icon: <Inbox size={16} /> },
       { id: "appointments", path: "/appointments", label: "Appointments", icon: <Calendar size={16} /> },
@@ -67,7 +105,6 @@ const getNavigationSections = (badges: { verification: number; complaints: numbe
   },
   {
     title: "Finance",
-    allowedRoles: ["super_admin", "admin", "finance_admin"],
     items: [
       { id: "payments", path: "/payments", label: "Payments", icon: <CreditCard size={16} /> },
       { id: "payouts", path: "/payouts", label: "Payouts", icon: <CreditCard size={16} />, badge: badges.payouts || undefined },
@@ -75,7 +112,6 @@ const getNavigationSections = (badges: { verification: number; complaints: numbe
   },
   {
     title: "Safety & Quality",
-    allowedRoles: ["super_admin", "admin"],
     items: [
       { id: "complaints", path: "/complaints", label: "Complaints", icon: <AlertTriangle size={16} />, badge: badges.complaints || undefined },
       { id: "reviews", path: "/reviews", label: "Reviews", icon: <Star size={16} /> },
@@ -83,7 +119,6 @@ const getNavigationSections = (badges: { verification: number; complaints: numbe
   },
   {
     title: "Administration",
-    allowedRoles: ["super_admin", "admin"],
     items: [
       { id: "audit-logs", path: "/audit-logs", label: "Audit Logs", icon: <FileText size={16} /> },
       { id: "settings", path: "/settings", label: "Settings", icon: <SettingsIcon size={16} /> },
@@ -91,10 +126,51 @@ const getNavigationSections = (badges: { verification: number; complaints: numbe
   },
 ];
 
+function RouteErrorBoundary() {
+  const error: any = useRouteError();
+  const isChunkError =
+    error?.message?.includes("Failed to fetch dynamically imported module") ||
+    error?.message?.includes("error loading dynamically imported module") ||
+    error?.name === "TypeError";
+
+  React.useEffect(() => {
+    if (isChunkError) {
+      const key = "merihcare_router_retry";
+      const last = sessionStorage.getItem(key);
+      const now = Date.now();
+      if (!last || now - Number(last) > 8000) {
+        sessionStorage.setItem(key, String(now));
+        window.location.reload();
+      }
+    }
+  }, [isChunkError]);
+
+  return (
+    <div className="min-h-screen bg-[#f4f7f9] flex items-center justify-center p-6">
+      <div className="bg-white rounded-[16px] border border-[#e2e8ee] p-8 max-w-lg w-full text-center shadow-lg">
+        <div className="w-14 h-14 bg-[#0d7c6a]/10 text-[#0d7c6a] rounded-full flex items-center justify-center mx-auto mb-4">
+          <RefreshCw size={28} className="animate-spin" />
+        </div>
+        <h1 className="text-xl font-bold text-[#18232e] mb-2">New Release Active</h1>
+        <p className="text-sm text-[#4a5a6a] mb-6">
+          A new platform release has been deployed. Refreshing to load latest components...
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 bg-[#0d7c6a] text-white rounded-lg text-sm font-semibold hover:bg-[#0a6355]"
+        >
+          Reload Dashboard
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const router = createHashRouter([
   {
     path: "*",
     element: <AppContent />,
+    errorElement: <RouteErrorBoundary />,
   },
 ]);
 
@@ -212,10 +288,11 @@ function AppContent() {
     );
   }
 
+  const currentEmailLower = (user?.email || "").toLowerCase().trim();
   const isSuperAdminEmail =
-    user?.email === "fanuelgoitom79@gmail.com" ||
-    user?.email === "fani@g.com" ||
-    user?.email === "admin@merihcare.et";
+    currentEmailLower === "fanuelgoitom79@gmail.com" ||
+    currentEmailLower === "fani@g.com" ||
+    currentEmailLower === "admin@merihcare.et";
 
   const isAnyAdmin =
     isSuperAdminEmail ||
@@ -224,13 +301,7 @@ function AppContent() {
     !!(user as any)?.adminRole ||
     String(user?.role).includes("admin");
 
-  const allSections = getNavigationSections(badgeCounts);
-  const visibleSections = allSections.filter((sec) => {
-    if (isAnyAdmin) return true;
-    if (!sec.allowedRoles || sec.allowedRoles.length === 0) return true;
-    return hasPermission(sec.allowedRoles as any);
-  });
-  const sectionsToRender = visibleSections.length > 0 ? visibleSections : allSections;
+  const sectionsToRender = getNavigationSections(badgeCounts);
   const flatItems = sectionsToRender.flatMap((s) => s.items);
   const currentItem = flatItems.find((i) => i.path === location.pathname) || flatItems[0] || { label: "Overview" };
 
@@ -300,7 +371,7 @@ function AppContent() {
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold text-[#18232e] dark:text-white truncate">{user?.name || "Admin"}</p>
               <p className="text-[10px] text-[#8a9aaa] dark:text-slate-400 capitalize">
-                {user?.email === "fanuelgoitom79@gmail.com" || user?.email === "fani@g.com" || user?.adminRole === "super_admin"
+                {currentEmailLower === "fanuelgoitom79@gmail.com" || currentEmailLower === "fani@g.com" || user?.adminRole === "super_admin"
                   ? "Super Admin"
                   : (user as any)?.adminRole?.replace(/_/g, " ") || "Administrator"}
               </p>
@@ -437,20 +508,20 @@ function AppContent() {
               <Routes>
                 <Route path="/" element={<ProtectedRoute><DashboardSection /></ProtectedRoute>} />
                 <Route path="/live-map" element={<ProtectedRoute><LiveMapSection /></ProtectedRoute>} />
-                <Route path="/reports" element={<ProtectedRoute allowedRoles={["super_admin", "admin", "finance_admin"]}><ReportsSection /></ProtectedRoute>} />
-                <Route path="/users" element={<ProtectedRoute allowedRoles={["super_admin", "admin"]}><UsersSection /></ProtectedRoute>} />
-                <Route path="/providers" element={<ProtectedRoute allowedRoles={["super_admin", "admin", "verifier"]}><ProvidersSection /></ProtectedRoute>} />
-                <Route path="/verification" element={<ProtectedRoute allowedRoles={["super_admin", "admin", "verifier"]}><VerificationSection /></ProtectedRoute>} />
-                <Route path="/requests" element={<ProtectedRoute allowedRoles={["super_admin", "admin"]}><RequestsSection /></ProtectedRoute>} />
-                <Route path="/appointments" element={<ProtectedRoute allowedRoles={["super_admin", "admin"]}><AppointmentsSection /></ProtectedRoute>} />
-                <Route path="/services" element={<ProtectedRoute allowedRoles={["super_admin", "admin"]}><ServicesSection /></ProtectedRoute>} />
-                <Route path="/emergency" element={<ProtectedRoute allowedRoles={["super_admin", "admin"]}><EmergencySection /></ProtectedRoute>} />
-                <Route path="/payments" element={<ProtectedRoute allowedRoles={["super_admin", "admin", "finance_admin"]}><PaymentsSection /></ProtectedRoute>} />
-                <Route path="/payouts" element={<ProtectedRoute allowedRoles={["super_admin", "admin", "finance_admin"]}><PayoutsSection /></ProtectedRoute>} />
-                <Route path="/complaints" element={<ProtectedRoute allowedRoles={["super_admin", "admin"]}><ComplaintsSection /></ProtectedRoute>} />
-                <Route path="/reviews" element={<ProtectedRoute allowedRoles={["super_admin", "admin"]}><ReviewsSection /></ProtectedRoute>} />
-                <Route path="/audit-logs" element={<ProtectedRoute allowedRoles={["super_admin", "admin"]}><AuditLogsSection /></ProtectedRoute>} />
-                <Route path="/settings" element={<ProtectedRoute allowedRoles={["super_admin", "admin"]}><SettingsSection /></ProtectedRoute>} />
+                <Route path="/reports" element={<ProtectedRoute><ReportsSection /></ProtectedRoute>} />
+                <Route path="/users" element={<ProtectedRoute><UsersSection /></ProtectedRoute>} />
+                <Route path="/providers" element={<ProtectedRoute><ProvidersSection /></ProtectedRoute>} />
+                <Route path="/verification" element={<ProtectedRoute><VerificationSection /></ProtectedRoute>} />
+                <Route path="/requests" element={<ProtectedRoute><RequestsSection /></ProtectedRoute>} />
+                <Route path="/appointments" element={<ProtectedRoute><AppointmentsSection /></ProtectedRoute>} />
+                <Route path="/services" element={<ProtectedRoute><ServicesSection /></ProtectedRoute>} />
+                <Route path="/emergency" element={<ProtectedRoute><EmergencySection /></ProtectedRoute>} />
+                <Route path="/payments" element={<ProtectedRoute><PaymentsSection /></ProtectedRoute>} />
+                <Route path="/payouts" element={<ProtectedRoute><PayoutsSection /></ProtectedRoute>} />
+                <Route path="/complaints" element={<ProtectedRoute><ComplaintsSection /></ProtectedRoute>} />
+                <Route path="/reviews" element={<ProtectedRoute><ReviewsSection /></ProtectedRoute>} />
+                <Route path="/audit-logs" element={<ProtectedRoute><AuditLogsSection /></ProtectedRoute>} />
+                <Route path="/settings" element={<ProtectedRoute><SettingsSection /></ProtectedRoute>} />
               </Routes>
             </React.Suspense>
           </main>

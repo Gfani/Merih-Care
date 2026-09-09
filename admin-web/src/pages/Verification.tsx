@@ -132,7 +132,13 @@ export default function VerificationSection() {
     if (!userStr || userStr === "undefined" || userStr === "null") return null;
     try { return JSON.parse(userStr); } catch { return null; }
   })();
-  const isSuperAdmin = user?.adminRole === "super_admin" || user?.role === "super_admin" || user?.email === "fanuelgoitom79@gmail.com" || user?.email === "admin@merihcare.et";
+  const emailLower = (user?.email || "").toLowerCase().trim();
+  const isSuperAdmin =
+    user?.adminRole === "super_admin" ||
+    user?.role === "super_admin" ||
+    emailLower === "fanuelgoitom79@gmail.com" ||
+    emailLower === "fani@g.com" ||
+    emailLower === "admin@merihcare.et";
 
   const loadData = async () => {
     try {

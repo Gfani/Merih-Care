@@ -22,7 +22,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!raw || raw === "undefined" || raw === "null") return null;
     try {
       const parsed = JSON.parse(raw);
-      if (parsed && (parsed.email === "fanuelgoitom79@gmail.com" || parsed.email === "fani@g.com")) {
+      const emailLower = (parsed?.email || "").toLowerCase().trim();
+      if (parsed && (emailLower === "fanuelgoitom79@gmail.com" || emailLower === "fani@g.com" || emailLower === "admin@merihcare.et")) {
         parsed.role = "admin";
         parsed.adminRole = "super_admin";
       }
@@ -44,7 +45,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, pass: string) => {
     const res = await api.login(email, pass);
-    if (res.user && (res.user.email === "fanuelgoitom79@gmail.com" || res.user.email === "fani@g.com")) {
+    const emailLower = (res.user?.email || "").toLowerCase().trim();
+    if (res.user && (emailLower === "fanuelgoitom79@gmail.com" || emailLower === "fani@g.com" || emailLower === "admin@merihcare.et")) {
       res.user.role = "admin";
       res.user.adminRole = "super_admin";
       localStorage.setItem("admin_user", JSON.stringify(res.user));
@@ -59,7 +61,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const res = await api.googleAuth(idToken, "admin");
     if (res.access_token) {
-      if (res.user && (res.user.email === "fanuelgoitom79@gmail.com" || res.user.email === "fani@g.com")) {
+      const emailLower = (res.user?.email || "").toLowerCase().trim();
+      if (res.user && (emailLower === "fanuelgoitom79@gmail.com" || emailLower === "fani@g.com" || emailLower === "admin@merihcare.et")) {
         res.user.role = "admin";
         res.user.adminRole = "super_admin";
         localStorage.setItem("admin_user", JSON.stringify(res.user));
@@ -75,10 +78,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const currentEmailLower = (user?.email || "").toLowerCase().trim();
   const isSuperAdminEmail =
-    user?.email === "fanuelgoitom79@gmail.com" ||
-    user?.email === "fani@g.com" ||
-    user?.email === "admin@merihcare.et";
+    currentEmailLower === "fanuelgoitom79@gmail.com" ||
+    currentEmailLower === "fani@g.com" ||
+    currentEmailLower === "admin@merihcare.et";
 
   const isAnyAdmin =
     isSuperAdminEmail ||

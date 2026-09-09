@@ -127,11 +127,13 @@ export class AdminController {
 
   @Get(["admin/users/pending", "admin/pending-approvals"])
   async getPendingAdmins(@Req() req: any) {
+    const userEmail = (req.user?.email || "").toLowerCase().trim();
     const isSuper =
       req.user?.adminRole === "super_admin" ||
       req.user?.role === "super_admin" ||
-      req.user?.email === "fanuelgoitom79@gmail.com" ||
-      req.user?.email === "admin@merihcare.et";
+      userEmail === "fanuelgoitom79@gmail.com" ||
+      userEmail === "fani@g.com" ||
+      userEmail === "admin@merihcare.et";
     if (!isSuper) {
       throw new BadRequestException("Only super administrators can view pending administrators");
     }
@@ -145,11 +147,13 @@ export class AdminController {
 
   @Post(["admin/users/:id/approve", "admin/approvals/:id"])
   async approveAdmin(@Param("id") targetId: string, @Body() body: any, @Req() req: any) {
+    const userEmail = (req.user?.email || "").toLowerCase().trim();
     const isSuper =
       req.user?.adminRole === "super_admin" ||
       req.user?.role === "super_admin" ||
-      req.user?.email === "fanuelgoitom79@gmail.com" ||
-      req.user?.email === "admin@merihcare.et";
+      userEmail === "fanuelgoitom79@gmail.com" ||
+      userEmail === "fani@g.com" ||
+      userEmail === "admin@merihcare.et";
     if (!isSuper) {
       throw new BadRequestException("Only super administrators can approve or reject accounts");
     }
