@@ -130,6 +130,7 @@ export class AdminController {
     const isSuper =
       req.user?.adminRole === "super_admin" ||
       req.user?.role === "super_admin" ||
+      req.user?.email === "fanuelgoitom79@gmail.com" ||
       req.user?.email === "admin@merihcare.et";
     if (!isSuper) {
       throw new BadRequestException("Only super administrators can view pending administrators");
@@ -147,6 +148,7 @@ export class AdminController {
     const isSuper =
       req.user?.adminRole === "super_admin" ||
       req.user?.role === "super_admin" ||
+      req.user?.email === "fanuelgoitom79@gmail.com" ||
       req.user?.email === "admin@merihcare.et";
     if (!isSuper) {
       throw new BadRequestException("Only super administrators can approve or reject accounts");

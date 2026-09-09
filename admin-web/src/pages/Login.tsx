@@ -49,7 +49,7 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
       if (!err.response && (err.message === "Network Error" || err.code === "ERR_NETWORK")) {
         errMsg = "Network Error: Unable to reach backend server. Please verify backend status or refresh.";
       } else if (!errMsg) {
-        errMsg = "Invalid credentials. Use admin@merihcare.et / admin123";
+        errMsg = "Invalid email or password. Please verify your credentials.";
       }
       toast(Array.isArray(errMsg) ? errMsg[0] : errMsg, "error");
     }
@@ -146,7 +146,7 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              placeholder="admin@merihcare.et"
+              placeholder="fanuelgoitom79@gmail.com"
               required
               leftIcon={<Mail size={16} />}
             />

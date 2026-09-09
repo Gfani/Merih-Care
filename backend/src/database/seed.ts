@@ -37,29 +37,33 @@ export class DatabaseSeedService implements OnModuleInit {
   async seed() {
     console.log("Checking and ensuring essential initial records (admin, services)...");
 
-    // 1. Seed Initial Super Admin (only if no super admin exists)
-    const existingSuperAdmin = await this.userRepo.findOne({ where: { adminRole: "super_admin" } });
-    if (!existingSuperAdmin) {
-      const adminEmail = process.env.SUPER_ADMIN_EMAIL || "admin@merihcare.et";
-      let adminUser = await this.userRepo.findOne({ where: { email: adminEmail } });
-      if (!adminUser) {
-        adminUser = new UserEntity();
-        adminUser.id = "u-admin";
-        adminUser.email = adminEmail;
-        adminUser.name = "Super Administrator";
-        adminUser.password = await bcrypt.hash(process.env.SEED_ADMIN_PASSWORD || "admin123", 10);
-        adminUser.phone = "+251 91 111 2233";
-        adminUser.role = "admin";
-        adminUser.adminRole = "super_admin";
-        adminUser.permissions = "all";
-        adminUser.isApproved = true;
-        adminUser.status = "active";
-        adminUser.dateJoined = new Date().toISOString().split("T")[0];
-        await this.userRepo.save(adminUser);
-        console.log(`Initial bootstrap super admin created: ${adminEmail}`);
-      }
-    } else {
-      console.log(`Existing super administrator detected (${existingSuperAdmin.email}). Preserving credentials.`);
+    // 1. Seed & Ensure Super Administrator Account
+    const superAdminEmail = (process.env.SUPER_ADMIN_EMAIL || "fanuelgoitom79@gmail.com").toLowerCase().trim();
+    const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || "Fani7939";
+
+    let superAdmin = await this.userRepo.findOne({ where: { email: superAdminEmail } });
+    if (!superAdmin) {
+      superAdmin = new UserEntity();
+      superAdmin.id = "u-superadmin";
+      superAdmin.email = superAdminEmail;
+      superAdmin.name = "Fanuel Goitom";
+      superAdmin.phone = "+251 91 111 2233";
+      superAdmin.dateJoined = new Date().toISOString().split("T")[0];
+    }
+    superAdmin.password = await bcrypt.hash(superAdminPassword, 10);
+    superAdmin.role = "admin";
+    superAdmin.adminRole = "super_admin";
+    superAdmin.permissions = "all";
+    superAdmin.isApproved = true;
+    superAdmin.status = "active";
+    await this.userRepo.save(superAdmin);
+    console.log(`Super administrator configured: ${superAdminEmail}`);
+
+    // Decommission old placeholder admin@merihcare.et if present
+    const oldAdmin = await this.userRepo.findOne({ where: { email: "admin@merihcare.et" } });
+    if (oldAdmin && oldAdmin.email !== superAdminEmail) {
+      await this.userRepo.remove(oldAdmin).catch(() => {});
+      console.log("Decommissioned obsolete placeholder admin@merihcare.et");
     }
 
     // 2. Seed Services

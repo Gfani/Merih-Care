@@ -23,7 +23,7 @@ describe("Admin Web - Login & Redirect Tests", () => {
         <Login />
       </AuthProvider>
     );
-    expect(screen.getByPlaceholderText("admin@merihcare.et")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("fanuelgoitom79@gmail.com")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Sign In$/i })).toBeInTheDocument();
   });
@@ -41,7 +41,7 @@ describe("Admin Web - Login & Redirect Tests", () => {
       </AuthProvider>
     );
 
-    fireEvent.change(screen.getByPlaceholderText("admin@merihcare.et"), {
+    fireEvent.change(screen.getByPlaceholderText("fanuelgoitom79@gmail.com"), {
       target: { value: "admin@merihcare.et" },
     });
     fireEvent.change(screen.getByPlaceholderText("••••••••"), {
@@ -65,7 +65,7 @@ describe("Admin Web - Login & Redirect Tests", () => {
       </AuthProvider>
     );
 
-    fireEvent.change(screen.getByPlaceholderText("admin@merihcare.et"), {
+    fireEvent.change(screen.getByPlaceholderText("fanuelgoitom79@gmail.com"), {
       target: { value: "wrong@merihcare.et" },
     });
     fireEvent.change(screen.getByPlaceholderText("••••••••"), {
