@@ -22,22 +22,38 @@ export class VerificationService {
 
   private normalizeDocUrl(url?: string): string {
     if (!url || !url.trim()) return "";
-    const trimmed = url.trim();
-    if (trimmed.includes("/api/v1/uploads/view")) return trimmed;
+    let fileKey = url.trim();
 
-    let fileKey = trimmed;
+    if (fileKey.startsWith("http://") || fileKey.startsWith("https://")) {
+      fileKey = fileKey.replace(/^https?:\/\/[^/]+/, "");
+    }
+    if (fileKey.includes("?")) {
+      fileKey = fileKey.split("?")[0];
+    }
+    if (fileKey.includes("/api/v1/")) {
+      fileKey = fileKey.split("/api/v1/")[1];
+    }
+    if (fileKey.includes("/uploads/view/")) {
+      fileKey = fileKey.split("/uploads/view/")[1];
+    }
+    if (fileKey.includes("/uploads/download/")) {
+      fileKey = fileKey.split("/uploads/download/")[1];
+    }
     if (fileKey.includes("/signed/")) {
       fileKey = fileKey.split("/signed/")[1];
-      if (fileKey.includes("?")) fileKey = fileKey.split("?")[0];
-      fileKey = decodeURIComponent(fileKey);
-    } else if (fileKey.includes("/credentials/")) {
-      fileKey = "credentials/" + fileKey.split("/credentials/")[1];
-    } else if (fileKey.startsWith("http://") || fileKey.startsWith("https://")) {
-      fileKey = fileKey.split("/").pop() || fileKey;
     }
+    if (fileKey.includes("/credentials/")) {
+      fileKey = "credentials/" + fileKey.split("/credentials/")[1];
+    }
+    fileKey = decodeURIComponent(fileKey).replace(/^\/+/, "");
 
     const port = process.env.PORT || 3000;
-    const apiBase = process.env.API_BASE_URL || `http://localhost:${port}/api/v1`;
+    const apiBase =
+      process.env.API_BASE_URL ||
+      (process.env.NODE_ENV === "production" || process.env.CONTAINER_APP_NAME
+        ? "https://app-merihcare-prod-backend.agreeablemoss-f06ffa43.uaenorth.azurecontainerapps.io/api/v1"
+        : `http://localhost:${port}/api/v1`);
+
     return `${apiBase}/uploads/view/${encodeURIComponent(fileKey)}`;
   }
 

@@ -59,8 +59,14 @@ export class UploadsService {
 
     let baseUrl = process.env.STORAGE_ENDPOINT;
     if (!baseUrl || baseUrl.includes("merihcare.et")) {
-      const port = process.env.PORT || 3000;
-      baseUrl = process.env.API_BASE_URL || `http://localhost:${port}/api/v1/uploads/view`;
+      if (process.env.API_BASE_URL) {
+        baseUrl = `${process.env.API_BASE_URL.replace(/\/+$/, "")}/uploads/view`;
+      } else if (process.env.NODE_ENV === "production" || process.env.CONTAINER_APP_NAME) {
+        baseUrl = "https://app-merihcare-prod-backend.agreeablemoss-f06ffa43.uaenorth.azurecontainerapps.io/api/v1/uploads/view";
+      } else {
+        const port = process.env.PORT || 3000;
+        baseUrl = `http://localhost:${port}/api/v1/uploads/view`;
+      }
     }
 
     const sep = baseUrl.endsWith("/") ? "" : "/";
@@ -191,25 +197,38 @@ ${370 + streamLen}
     if (cleanKey.includes("?")) {
       cleanKey = cleanKey.split("?")[0];
     }
+    // Strip protocol & host if an absolute URL was provided
+    if (cleanKey.startsWith("http://") || cleanKey.startsWith("https://")) {
+      cleanKey = cleanKey.replace(/^https?:\/\/[^/]+/, "");
+    }
+    if (cleanKey.includes("/api/v1/")) {
+      cleanKey = cleanKey.split("/api/v1/")[1];
+    }
     if (cleanKey.includes("/signed/")) {
       cleanKey = cleanKey.split("/signed/")[1];
     }
-    if (cleanKey.includes("/credentials/")) {
-      cleanKey = "credentials/" + cleanKey.split("/credentials/")[1];
-    }
     if (cleanKey.includes("/uploads/view/")) {
       cleanKey = cleanKey.split("/uploads/view/")[1];
+    }
+    if (cleanKey.includes("/uploads/download/")) {
+      cleanKey = cleanKey.split("/uploads/download/")[1];
+    }
+    if (cleanKey.includes("/credentials/")) {
+      cleanKey = "credentials/" + cleanKey.split("/credentials/")[1];
     }
     cleanKey = cleanKey.replace(/\.\./g, "").replace(/^\/+/, "");
 
     const uploadsBaseDir = process.env.UPLOADS_DIR || path.join(process.cwd(), "uploads");
     const baseName = path.basename(cleanKey);
+    const sanitizedBase = this.sanitizeFilename(baseName);
 
     const candidates = [
       path.join(uploadsBaseDir, cleanKey),
       path.join(uploadsBaseDir, "credentials", cleanKey),
       path.join(uploadsBaseDir, "credentials", baseName),
+      path.join(uploadsBaseDir, "credentials", sanitizedBase),
       path.join(uploadsBaseDir, baseName),
+      path.join(uploadsBaseDir, sanitizedBase),
     ];
 
     for (const candidate of candidates) {
@@ -224,17 +243,25 @@ ${370 + streamLen}
 
     try {
       if (fs.existsSync(uploadsBaseDir)) {
+        const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const targetNorm = norm(baseName);
+
         const checkDir = (dir: string) => {
           if (!fs.existsSync(dir)) return null;
           const files = fs.readdirSync(dir);
           for (const f of files) {
             const fullP = path.join(dir, f);
             if (fs.statSync(fullP).isFile()) {
+              const fNorm = norm(f);
               if (
                 f === baseName ||
+                f === sanitizedBase ||
                 f.endsWith("-" + baseName) ||
+                f.endsWith("-" + sanitizedBase) ||
                 f.toLowerCase() === baseName.toLowerCase() ||
-                f.toLowerCase().endsWith("-" + baseName.toLowerCase())
+                f.toLowerCase().endsWith("-" + baseName.toLowerCase()) ||
+                f.toLowerCase().endsWith("-" + sanitizedBase.toLowerCase()) ||
+                (targetNorm.length >= 4 && (fNorm.endsWith(targetNorm) || fNorm.includes(targetNorm)))
               ) {
                 return {
                   filePath: path.resolve(fullP),
@@ -262,13 +289,26 @@ ${370 + streamLen}
       }
     } catch (_) {}
 
-    // Fallback: Generated PDF for mock/demo files
-    const fallbackTitle = baseName.replace(/[_-]/g, " ").replace(/\.[a-zA-Z0-9]+$/, "").toUpperCase() || "CREDENTIAL DOCUMENT";
-    const pdfBuffer = this.generateFallbackPdf(fallbackTitle, `Document Reference: ${cleanKey}`);
+    // Only allow synthetic fallback for known demo mock names (e.g. cv.pdf, kassahun_cv.pdf)
+    const isMockOrDemo =
+      cleanKey.includes("kassahun_") ||
+      cleanKey === "credentials/cv.pdf" ||
+      cleanKey === "cv.pdf";
+
+    if (isMockOrDemo) {
+      const fallbackTitle = baseName.replace(/[_-]/g, " ").replace(/\.[a-zA-Z0-9]+$/, "").toUpperCase() || "CREDENTIAL DOCUMENT";
+      const pdfBuffer = this.generateFallbackPdf(fallbackTitle, `Document Reference: ${cleanKey}`);
+      return {
+        buffer: pdfBuffer,
+        fileName: baseName.toLowerCase().endsWith(".pdf") ? baseName : `${baseName}.pdf`,
+        mimeType: "application/pdf",
+      };
+    }
+
+    // For genuine provider uploads where file is missing from disk volume:
     return {
-      buffer: pdfBuffer,
-      fileName: baseName.toLowerCase().endsWith(".pdf") ? baseName : `${baseName}.pdf`,
-      mimeType: "application/pdf",
+      fileName: baseName,
+      mimeType: this.getMimeType(baseName),
     };
   }
 

@@ -24,6 +24,9 @@ COPY --from=build /app/tsconfig.json ./tsconfig.json
 COPY --from=build /app/src ./src
 
 ENV NODE_ENV=production
+ENV UPLOADS_DIR=/app/uploads
+
+RUN mkdir -p /app/uploads/credentials && chmod -R 777 /app/uploads
 
 EXPOSE 3000
 

@@ -36,35 +36,50 @@ function resolveDocumentInfo(docTitle: string, provider: any): DocumentInfo {
   let downloadUrl = rawUrl;
 
   if (hasPhysicalFile) {
-    if (rawUrl.includes("/uploads/view/")) {
-      resolvedUrl = rawUrl;
-      downloadUrl = rawUrl.replace("/uploads/view/", "/uploads/download/");
-    } else if (rawUrl.includes("/uploads/download/")) {
-      resolvedUrl = rawUrl.replace("/uploads/download/", "/uploads/view/");
-      downloadUrl = rawUrl;
-    } else if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
-      if (rawUrl.includes("localhost:3000") || rawUrl.includes("api.merihcare.et")) {
-        resolvedUrl = rawUrl;
-        downloadUrl = rawUrl.replace("/view", "/download");
-      } else {
-        resolvedUrl = `${BASE_API}/uploads/view?url=${encodeURIComponent(rawUrl)}`;
-        downloadUrl = `${BASE_API}/uploads/download?url=${encodeURIComponent(rawUrl)}`;
-      }
-    } else {
-      const cleanKey = rawUrl.startsWith("/") ? rawUrl.substring(1) : rawUrl;
-      resolvedUrl = `${BASE_API}/uploads/view/${cleanKey}`;
-      downloadUrl = `${BASE_API}/uploads/download/${cleanKey}`;
+    let cleanKey = rawUrl.trim();
+    let queryPart = "";
+    if (cleanKey.includes("?")) {
+      const parts = cleanKey.split("?");
+      cleanKey = parts[0];
+      queryPart = "?" + parts[1];
     }
+    // Strip protocol & host from absolute URLs
+    if (cleanKey.startsWith("http://") || cleanKey.startsWith("https://")) {
+      cleanKey = cleanKey.replace(/^https?:\/\/[^/]+/, "");
+    }
+    // Strip API prefixes
+    if (cleanKey.includes("/api/v1/")) {
+      cleanKey = cleanKey.split("/api/v1/")[1];
+    }
+    if (cleanKey.includes("/uploads/view/")) {
+      cleanKey = cleanKey.split("/uploads/view/")[1];
+    }
+    if (cleanKey.includes("/uploads/download/")) {
+      cleanKey = cleanKey.split("/uploads/download/")[1];
+    }
+    if (cleanKey.includes("/signed/")) {
+      cleanKey = cleanKey.split("/signed/")[1];
+    }
+    if (cleanKey.includes("/credentials/")) {
+      cleanKey = "credentials/" + cleanKey.split("/credentials/")[1];
+    }
+    cleanKey = decodeURIComponent(cleanKey).replace(/^\/+/, "");
+
+    const baseApi = (BASE_API || "").replace(/\/+$/, "");
+    resolvedUrl = `${baseApi}/uploads/view/${encodeURIComponent(cleanKey)}${queryPart}`;
+    downloadUrl = `${baseApi}/uploads/download/${encodeURIComponent(cleanKey)}${queryPart}`;
   }
 
-  const lower = rawUrl.toLowerCase();
-  const isPdf = lower.endsWith(".pdf") || lower.includes(".pdf?") || lower.includes("application/pdf") || (!lower.match(/\.(jpg|jpeg|png|webp|gif)/) && hasPhysicalFile);
-  const isImage = !!lower.match(/\.(jpg|jpeg|png|webp|gif|bmp)/);
+  const lower = rawUrl.toLowerCase().split("?")[0];
+  const isImage = !!lower.match(/\.(jpg|jpeg|png|webp|gif|bmp)$/);
+  const isPdf = lower.endsWith(".pdf") || (!isImage && hasPhysicalFile);
   
   let fileName = "";
   if (rawUrl) {
-    const parts = rawUrl.split("/").pop()?.split("?")[0] || "";
-    fileName = parts;
+    const stripped = rawUrl.split("?")[0];
+    const parts = stripped.split("/");
+    const lastPart = decodeURIComponent(parts.pop() || "");
+    fileName = lastPart.replace(/^file-\d+-\d+-/, "");
   }
   if (!fileName && isLicenseField && provider.licenseNumber) {
     fileName = `License-${provider.licenseNumber}`;

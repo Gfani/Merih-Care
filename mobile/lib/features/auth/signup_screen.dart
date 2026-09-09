@@ -42,6 +42,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   String? _attachedCvName;
   String? _attachedLicenseName;
   String? _attachedIdName;
+  bool _uploadingCv = false;
+  bool _uploadingLicense = false;
+  bool _uploadingId = false;
 
   static const Set<String> _disposableDomains = {
     'mailinator.com',
@@ -140,6 +143,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         final file = result.files.first;
         setState(() {
           _attachedCvName = file.name;
+          _uploadingCv = true;
         });
 
         List<int>? bytes = file.bytes;
@@ -152,23 +156,38 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         }
 
         if (bytes != null) {
-          final uploadedUrl = await ref.read(authProvider.notifier).uploadCredentialDocument(
+          final uploadedKey = await ref.read(authProvider.notifier).uploadCredentialDocument(
                 file.name,
                 bytes,
               );
-          if (uploadedUrl != null && mounted) {
-            _cvUrlController.text = uploadedUrl;
+          if (uploadedKey != null && mounted) {
+            setState(() {
+              _cvUrlController.text = uploadedKey;
+              _uploadingCv = false;
+            });
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('CV uploaded: ${file.name}')),
             );
           } else if (mounted) {
+            setState(() {
+              _uploadingCv = false;
+              _attachedCvName = null;
+              _cvUrlController.text = '';
+            });
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Failed to upload CV to server. Please try again.')),
             );
           }
+        } else if (mounted) {
+          setState(() {
+            _uploadingCv = false;
+            _attachedCvName = null;
+            _cvUrlController.text = '';
+          });
         }
       }
     } catch (e) {
+      if (mounted) setState(() => _uploadingCv = false);
       debugPrint('[SIGNUP] Error picking CV file: $e');
     }
   }
@@ -184,6 +203,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         final file = result.files.first;
         setState(() {
           _attachedLicenseName = file.name;
+          _uploadingLicense = true;
         });
 
         List<int>? bytes = file.bytes;
@@ -196,23 +216,38 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         }
 
         if (bytes != null) {
-          final uploadedUrl = await ref.read(authProvider.notifier).uploadCredentialDocument(
+          final uploadedKey = await ref.read(authProvider.notifier).uploadCredentialDocument(
                 file.name,
                 bytes,
               );
-          if (uploadedUrl != null && mounted) {
-            _licenseDocController.text = uploadedUrl;
+          if (uploadedKey != null && mounted) {
+            setState(() {
+              _licenseDocController.text = uploadedKey;
+              _uploadingLicense = false;
+            });
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Medical license uploaded: ${file.name}')),
             );
           } else if (mounted) {
+            setState(() {
+              _uploadingLicense = false;
+              _attachedLicenseName = null;
+              _licenseDocController.text = '';
+            });
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Failed to upload license to server. Please try again.')),
             );
           }
+        } else if (mounted) {
+          setState(() {
+            _uploadingLicense = false;
+            _attachedLicenseName = null;
+            _licenseDocController.text = '';
+          });
         }
       }
     } catch (e) {
+      if (mounted) setState(() => _uploadingLicense = false);
       debugPrint('[SIGNUP] Error picking license file: $e');
     }
   }
@@ -228,6 +263,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         final file = result.files.first;
         setState(() {
           _attachedIdName = file.name;
+          _uploadingId = true;
         });
 
         List<int>? bytes = file.bytes;
@@ -240,23 +276,38 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         }
 
         if (bytes != null) {
-          final uploadedUrl = await ref.read(authProvider.notifier).uploadCredentialDocument(
+          final uploadedKey = await ref.read(authProvider.notifier).uploadCredentialDocument(
                 file.name,
                 bytes,
               );
-          if (uploadedUrl != null && mounted) {
-            _idDocController.text = uploadedUrl;
+          if (uploadedKey != null && mounted) {
+            setState(() {
+              _idDocController.text = uploadedKey;
+              _uploadingId = false;
+            });
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('ID document uploaded: ${file.name}')),
             );
           } else if (mounted) {
+            setState(() {
+              _uploadingId = false;
+              _attachedIdName = null;
+              _idDocController.text = '';
+            });
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Failed to upload ID to server. Please try again.')),
             );
           }
+        } else if (mounted) {
+          setState(() {
+            _uploadingId = false;
+            _attachedIdName = null;
+            _idDocController.text = '';
+          });
         }
       }
     } catch (e) {
+      if (mounted) setState(() => _uploadingId = false);
       debugPrint('[SIGNUP] Error picking ID file: $e');
     }
   }
@@ -788,6 +839,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                           required: true,
                           icon: Icons.description_outlined,
                           onTap: _pickCvFile,
+                          isUploading: _uploadingCv,
                         ),
                         const SizedBox(height: 8),
 
@@ -798,6 +850,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                           required: false,
                           icon: Icons.assignment_turned_in_outlined,
                           onTap: _pickLicenseFile,
+                          isUploading: _uploadingLicense,
                         ),
                         const SizedBox(height: 8),
 
@@ -808,6 +861,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                           required: false,
                           icon: Icons.contact_page_outlined,
                           onTap: _pickIdFile,
+                          isUploading: _uploadingId,
                         ),
                       ],
                     ),
@@ -816,11 +870,23 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
                 const SizedBox(height: 32),
                 ElevatedButton(
-                  onPressed: _loading
+                  onPressed: (_loading || _uploadingCv || _uploadingLicense || _uploadingId)
                       ? null
                       : () async {
                           if (_formKey.currentState!.validate()) {
                             if (_role == 'provider') {
+                              if (_uploadingCv || _uploadingLicense || _uploadingId) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Please wait for document uploads to finish.')),
+                                );
+                                return;
+                              }
+                              if (_cvUrlController.text.trim().isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Please upload your CV / Resume before registering.')),
+                                );
+                                return;
+                              }
                               if (_licenseNumberController.text.trim().isEmpty) {
                                 _licenseNumberController.text =
                                     'MC-PRV-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
@@ -843,15 +909,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                                     'experience': int.tryParse(_experienceController.text.trim()) ?? 0,
                                     'education': _educationController.text.trim(),
                                     'hospitalAffiliation': _hospitalAffiliationController.text.trim(),
-                                    'cvUrl': _cvUrlController.text.isNotEmpty
-                                        ? _cvUrlController.text.trim()
-                                        : (_attachedCvName != null ? 'credentials/$_attachedCvName' : ''),
-                                    'licenseDocumentUrl': _licenseDocController.text.isNotEmpty
-                                        ? _licenseDocController.text.trim()
-                                        : (_attachedLicenseName != null ? 'credentials/$_attachedLicenseName' : ''),
-                                    'idDocumentUrl': _idDocController.text.isNotEmpty
-                                        ? _idDocController.text.trim()
-                                        : (_attachedIdName != null ? 'credentials/$_attachedIdName' : ''),
+                                    'cvUrl': _cvUrlController.text.trim(),
+                                    'licenseDocumentUrl': _licenseDocController.text.trim(),
+                                    'idDocumentUrl': _idDocController.text.trim(),
                                   }
                                 : null;
 
@@ -1075,10 +1135,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     required bool required,
     required IconData icon,
     required VoidCallback onTap,
+    bool isUploading = false,
   }) {
-    final attached = fileName != null;
+    final attached = fileName != null && !isUploading;
     return InkWell(
-      onTap: onTap,
+      onTap: isUploading ? null : onTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1086,7 +1147,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
           color: attached ? const Color(0xFFE6FFFA) : Colors.white,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: attached ? const Color(0xFF319795) : const Color(0xFFCBD5E1),
+            color: attached ? const Color(0xFF319795) : (isUploading ? const Color(0xFF0F766E) : const Color(0xFFCBD5E1)),
           ),
         ),
         child: Row(
@@ -1102,21 +1163,34 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                   ),
                   Text(
-                    attached ? fileName : 'Tap to attach document (PDF/DOCX)',
+                    isUploading
+                        ? 'Uploading document to server...'
+                        : (attached ? fileName : 'Tap to attach document (PDF/DOCX)'),
                     style: TextStyle(
                       fontSize: 11,
-                      color: attached ? const Color(0xFF0F766E) : const Color(0xFF94A3B8),
+                      color: attached || isUploading ? const Color(0xFF0F766E) : const Color(0xFF94A3B8),
+                      fontWeight: isUploading ? FontWeight.w600 : FontWeight.normal,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
-            Icon(
-              attached ? Icons.check_circle : Icons.upload_file_outlined,
-              size: 18,
-              color: attached ? const Color(0xFF0F766E) : const Color(0xFF64748B),
-            ),
+            if (isUploading)
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF0F766E),
+                ),
+              )
+            else
+              Icon(
+                attached ? Icons.check_circle : Icons.upload_file_outlined,
+                size: 18,
+                color: attached ? const Color(0xFF0F766E) : const Color(0xFF64748B),
+              ),
           ],
         ),
       ),
