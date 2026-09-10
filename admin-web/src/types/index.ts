@@ -48,6 +48,8 @@ export interface Appointment {
   status: "requested" | "searching" | "accepted" | "scheduled" | "on_the_way" | "arrived" | "in_progress" | "completed" | "cancelled" | "rejected";
   paymentStatus: "paid" | "pending" | "failed" | "refunded";
   amount: number;
+  providerPhone?: string;
+  patientPhone?: string;
   notes?: string;
   duration?: string;
   createdAt?: string;

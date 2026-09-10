@@ -27,13 +27,22 @@ export class AppointmentsService {
     if (patientId) {
       where.patientId = patientId;
     }
-    return this.appointmentRepo.find({
+    const apts = await this.appointmentRepo.find({
       where: Object.keys(where).length > 0 ? where : undefined,
-      relations: ["patient", "provider", "serviceRelation"],
+      relations: ["patient", "provider", "provider.user", "serviceRelation"],
       take: limit,
       skip: offset,
       order: { date: "DESC" as any, time: "DESC" as any },
     });
+    for (const apt of apts) {
+      if (!apt.providerPhone && apt.provider?.user?.phone) {
+        apt.providerPhone = apt.provider.user.phone;
+      }
+      if (!apt.patientPhone && apt.patient?.phone) {
+        apt.patientPhone = apt.patient.phone;
+      }
+    }
+    return apts;
   }
 
   async getAppointmentById(id: string): Promise<AppointmentEntity> {
@@ -104,6 +113,26 @@ export class AppointmentsService {
       apt.patientAvatar = data.patientAvatar;
       apt.providerName = data.providerName;
       apt.providerAvatar = data.providerAvatar;
+      apt.providerPhone = data.providerPhone || null;
+      apt.patientPhone = data.patientPhone || null;
+
+      if (!apt.providerPhone && data.providerId) {
+        try {
+          const prov = await manager.findOne(ProviderEntity, { where: { id: data.providerId }, relations: ["user"] });
+          if (prov?.user?.phone) {
+            apt.providerPhone = prov.user.phone;
+          }
+        } catch (_) {}
+      }
+      if (!apt.patientPhone && data.patientId) {
+        try {
+          const pat = await manager.findOne(UserEntity, { where: { id: data.patientId } });
+          if (pat?.phone) {
+            apt.patientPhone = pat.phone;
+          }
+        } catch (_) {}
+      }
+
       apt.service = data.service || "Doctor Home Visit";
       apt.date = data.date;
       apt.time = data.time;

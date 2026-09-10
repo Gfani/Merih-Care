@@ -572,7 +572,9 @@ export default function VerificationSection() {
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-[#8a9aaa] dark:text-slate-400 mt-0.5 truncate">{admin.email}</p>
+                        <p className="text-xs text-[#8a9aaa] dark:text-slate-400 mt-0.5 truncate">
+                          {isSuper ? "[Protected Super Admin]" : admin.email}
+                        </p>
                         <div className="mt-2 flex items-center gap-2">
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#f0f4f7] dark:bg-slate-750 text-[#1b6fba] dark:text-cyan-400 uppercase tracking-wide">
                             {admin.adminRole ? admin.adminRole.replace(/_/g, " ") : "Administrator"}

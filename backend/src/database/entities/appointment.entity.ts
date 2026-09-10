@@ -49,6 +49,12 @@ export class AppointmentEntity {
   providerAvatar: string;
 
   @Column({ nullable: true })
+  providerPhone: string;
+
+  @Column({ nullable: true })
+  patientPhone: string;
+
+  @Column({ nullable: true })
   service: string;
 
   @Column()

@@ -349,7 +349,14 @@ export default function AdministratorsSection() {
                                   </span>
                                 )}
                               </div>
-                              <span className="text-[11px] text-[#8a9aaa]">{admin.email}</span>
+                              {isRowSuperAdmin ? (
+                                <span className="text-[11px] text-purple-600 dark:text-purple-400 font-bold flex items-center gap-1">
+                                  <ShieldAlert size={10} />
+                                  [Protected Super Admin]
+                                </span>
+                              ) : (
+                                <span className="text-[11px] text-[#8a9aaa]">{admin.email}</span>
+                              )}
                             </div>
                           </div>
                         </td>

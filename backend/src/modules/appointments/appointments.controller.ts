@@ -37,6 +37,16 @@ export class CreateAppointmentDto {
   @IsString()
   providerAvatar?: string;
 
+  @ApiPropertyOptional({ description: "Provider Phone Contact" })
+  @IsOptional()
+  @IsString()
+  providerPhone?: string;
+
+  @ApiPropertyOptional({ description: "Patient Phone Contact" })
+  @IsOptional()
+  @IsString()
+  patientPhone?: string;
+
   @ApiProperty({ description: "Service Category/ID" })
   @IsNotEmpty()
   @IsString()

@@ -159,9 +159,9 @@ export const api = {
     }
   },
 
-  async signup(name: string, email: string, pass: string, dept: string): Promise<any> {
+  async signup(name: string, email: string, pass: string, dept: string, phone?: string): Promise<any> {
     try {
-      const res = await axios.post(`${API_URL}/auth/signup`, { name, email, password: pass, department: dept });
+      const res = await axios.post(`${API_URL}/auth/signup`, { name, email, password: pass, department: dept, phone });
       return res.data;
     } catch (error) {
       if (isDemoMode()) return { success: true };
@@ -354,6 +354,30 @@ export const api = {
 
   async getRequests(): Promise<any[]> {
     return this.getAppointments();
+  },
+
+  async createAppointment(data: {
+    patientId?: string;
+    patientName?: string;
+    patientPhone?: string;
+    providerId?: string;
+    providerName?: string;
+    providerPhone?: string;
+    serviceId: string;
+    service?: string;
+    date: string;
+    time: string;
+    location: string;
+    amount?: number;
+    status?: string;
+  }): Promise<any> {
+    try {
+      const res = await axios.post(`${API_URL}/appointments`, data, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { id: "apt-mock-" + Date.now(), ...data, status: data.status || "scheduled" };
+      throw error;
+    }
   },
 
   async updateAppointmentStatus(id: string, status: Appointment["status"], reason?: string): Promise<any> {
@@ -825,6 +849,16 @@ export const api = {
   async confirmPasswordReset(email: string, token: string, newPassword: string): Promise<{ success: boolean }> {
     try {
       const res = await axios.post(`${API_URL}/auth/password-reset/confirm`, { email, token, newPassword });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { success: true };
+      throw error;
+    }
+  },
+
+  async confirmEmailVerification(email: string, token: string): Promise<{ success: boolean }> {
+    try {
+      const res = await axios.post(`${API_URL}/auth/email-verification/confirm`, { email, token });
       return res.data;
     } catch (error) {
       if (isDemoMode()) return { success: true };

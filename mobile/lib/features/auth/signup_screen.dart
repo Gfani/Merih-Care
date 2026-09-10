@@ -930,6 +930,12 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                             if (!mounted) return;
 
                             if (result.success) {
+                              final verified = await _showEmailVerificationDialog(
+                                context,
+                                _emailController.text.trim(),
+                              );
+                              if (!verified || !mounted) return;
+
                               if (result.pendingApproval || _role == 'provider') {
                                 await showDialog(
                                   context: context,
@@ -1195,5 +1201,176 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         ),
       ),
     );
+  }
+
+  Future<bool> _showEmailVerificationDialog(BuildContext context, String email) async {
+    final otpCtrl = TextEditingController();
+    bool loading = false;
+    String? errorMsg;
+    String? successMsg = 'A 6-digit verification code was sent to your email. Valid for 5 minutes.';
+    bool isVerified = false;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final theme = Theme.of(context);
+
+          return AlertDialog(
+            title: Row(
+              children: [
+                Icon(Icons.mark_email_read_outlined, color: theme.primaryColor),
+                const SizedBox(width: 8),
+                const Text('Verify Your Email'),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (errorMsg != null)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEE2E2),
+                          border: Border.all(color: const Color(0xFFFCA5A5)),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          errorMsg!,
+                          style: const TextStyle(color: Color(0xFF991B1B), fontSize: 12),
+                        ),
+                      ),
+                    if (successMsg != null)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFDCFCE7),
+                          border: Border.all(color: const Color(0xFF86EFAC)),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          successMsg!,
+                          style: const TextStyle(color: Color(0xFF166534), fontSize: 12),
+                        ),
+                      ),
+                    Text(
+                      'To prevent fake registrations, please enter the 6-digit code sent to $email.',
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      '• This security OTP expires in 5 minutes.',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F766E)),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: otpCtrl,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 6),
+                      decoration: const InputDecoration(
+                        labelText: '6-Digit Code',
+                        hintText: '123456',
+                        prefixIcon: Icon(Icons.security),
+                        counterText: '',
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Didn\'t receive the code?',
+                          style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                        ),
+                        TextButton(
+                          onPressed: loading
+                              ? null
+                              : () async {
+                                  setDialogState(() {
+                                    loading = true;
+                                    errorMsg = null;
+                                    successMsg = null;
+                                  });
+                                  final res = await ref.read(authProvider.notifier).resendEmailVerification(email);
+                                  setDialogState(() {
+                                    loading = false;
+                                    if (res['success'] == true) {
+                                      successMsg = res['message'] ?? 'New OTP sent. Valid for 5 minutes.';
+                                    } else {
+                                      errorMsg = res['message'] ?? 'Failed to resend code';
+                                    }
+                                  });
+                                },
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(50, 30),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: const Text('Resend Code', style: TextStyle(fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: loading ? null : () => Navigator.of(ctx).pop(),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: loading
+                    ? null
+                    : () async {
+                        final otp = otpCtrl.text.trim();
+                        if (otp.length != 6) {
+                          setDialogState(() => errorMsg = 'Please enter the 6-digit code');
+                          return;
+                        }
+
+                        setDialogState(() {
+                          loading = true;
+                          errorMsg = null;
+                        });
+
+                        final res = await ref.read(authProvider.notifier).confirmEmailVerification(email, otp);
+                        setDialogState(() => loading = false);
+
+                        if (res['success'] == true) {
+                          isVerified = true;
+                          if (ctx.mounted) Navigator.of(ctx).pop();
+                        } else {
+                          setDialogState(() {
+                            errorMsg = res['message'] ?? 'Invalid or expired OTP code (expires in 5 minutes)';
+                          });
+                        }
+                      },
+                child: loading
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('Verify & Activate'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    return isVerified;
   }
 }

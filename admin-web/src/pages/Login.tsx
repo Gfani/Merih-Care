@@ -107,7 +107,7 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     setResetLoading(true);
     try {
       const res = await api.requestPasswordReset(resetEmail);
-      toast("6-Digit OTP code sent to your email!", "success");
+      toast("6-Digit OTP code sent to your email! (Valid for 5 minutes)", "success");
       if (res?.devCode || res?.code) {
         setDevOtpHint((res.devCode || res.code) ?? null);
       }
@@ -220,7 +220,7 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              placeholder="fanuelgoitom79@gmail.com"
+              placeholder="admin@merihcare.et"
               required
               leftIcon={<Mail size={16} />}
             />
@@ -306,7 +306,7 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
         {resetStep === 1 ? (
           <form onSubmit={handleRequestOtp} className="space-y-4 text-xs">
             <p className="text-[#4a5a6a] dark:text-slate-300 leading-relaxed">
-              Enter your registered administrator email address. We will immediately send you a 6-digit OTP code to verify your identity.
+              Enter your registered administrator email address. We will send a secure 6-digit verification OTP valid for <strong>5 minutes</strong>.
             </p>
             <Input
               label="Administrator Email"
@@ -329,7 +329,7 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
         ) : (
           <form onSubmit={handleConfirmResetOtp} className="space-y-4 text-xs">
             <p className="text-[#4a5a6a] dark:text-slate-300 leading-relaxed">
-              Enter the 6-digit OTP verification code sent to <strong className="text-[#18232e] dark:text-white">{resetEmail}</strong> and your new password.
+              Enter the 6-digit OTP verification code (valid for 5 minutes) sent to <strong className="text-[#18232e] dark:text-white">{resetEmail}</strong> and your new password.
             </p>
             {devOtpHint && (
               <div className="p-2.5 bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 rounded-lg text-teal-800 dark:text-teal-300 text-xs flex items-center justify-between">

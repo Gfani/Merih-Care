@@ -411,7 +411,13 @@ export default function UsersSection() {
                       <Avatar name={row.name as string} src={row.avatar as string} size="sm" />
                       <div>
                         <span className="font-medium text-xs block text-[#18232e] dark:text-white">{row.name as string}</span>
-                        <span className="text-[10px] text-[#8a9aaa] block">{row.email as string}</span>
+                        {row.adminRole === "super_admin" || row.role === "super_admin" || (row.email as string)?.toLowerCase().includes("fanuelgoitom") ? (
+                          <span className="text-[10px] text-purple-600 dark:text-purple-400 font-bold block">
+                            [Protected Super Admin]
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-[#8a9aaa] block">{row.email as string}</span>
+                        )}
                       </div>
                     </div>
                   ),

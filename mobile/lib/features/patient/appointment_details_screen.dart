@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/network/network_providers.dart';
@@ -108,6 +109,7 @@ class _AppointmentDetailsScreenState extends ConsumerState<AppointmentDetailsScr
             const SizedBox(height: 8),
             _buildDetailRow(Icons.calendar_today, 'Date', _appt?['date'] ?? ''),
             _buildDetailRow(Icons.access_time, 'Time Slot', _appt?['time'] ?? ''),
+            _buildDetailRow(Icons.phone, 'Provider Contact', (_appt?['providerPhone'] ?? provider['phone'] ?? '+251 91 123 4567').toString()),
             _buildDetailRow(Icons.map, 'Address', _appt?['address'] ?? ''),
             _buildDetailRow(Icons.payment, 'Amount Paid', 'ETB ${_appt?['amount'] ?? 0}'),
             _buildDetailRow(Icons.info_outline, 'Status', status),
@@ -126,12 +128,41 @@ class _AppointmentDetailsScreenState extends ConsumerState<AppointmentDetailsScr
                 Expanded(
                   child: Semantics(
                     button: true,
-                    label: 'Chat with provider',
+                    label: 'Call provider directly',
                     child: ElevatedButton.icon(
+                      onPressed: () {
+                        final phone = (_appt?['providerPhone'] ?? provider['phone'] ?? '+251 91 123 4567').toString();
+                        Clipboard.setData(ClipboardData(text: phone));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Provider phone $phone copied! Dialing...'),
+                            backgroundColor: const Color(0xFF0F766E),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.phone, size: 18),
+                      label: const Text('Call Provider'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0F766E),
+                        minimumSize: const Size.fromHeight(48),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Semantics(
+                    button: true,
+                    label: 'Chat with provider',
+                    child: OutlinedButton.icon(
                       onPressed: () => context.push('/chat/${widget.appointmentId}'),
-                      icon: const Icon(Icons.chat_bubble_outline),
-                      label: const Text('Chat with Provider'),
-                      style: ElevatedButton.styleFrom(backgroundColor: theme.colorScheme.secondary),
+                      icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                      label: const Text('Chat'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
                     ),
                   ),
                 ),

@@ -273,6 +273,17 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
                     <div>
                       <p className="font-medium text-sm text-[#18232e] dark:text-white">{row.name as string}</p>
                       <p className="text-xs text-[#8a9aaa] dark:text-slate-400">{(row.title as string) || "Health Professional"}</p>
+                      {(row.phone || (row as any).user?.phone) && (
+                        <a
+                          href={`tel:${row.phone || (row as any).user?.phone}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1 text-[11px] text-[#0d7c6a] hover:underline font-mono font-semibold"
+                          title={`Call ${row.name}`}
+                        >
+                          <Phone size={10} />
+                          <span>{row.phone || (row as any).user?.phone}</span>
+                        </a>
+                      )}
                     </div>
                   </div>
                 )},

@@ -330,7 +330,15 @@ export class AuthService {
         .getOne();
     }
     if (existing) {
-      throw new Error("User already exists");
+      throw new Error("User already exists with this email address");
+    }
+
+    const normalizedPhone = (phone || "").trim().replace(/[\s\-\(\)]/g, "");
+    if (normalizedPhone) {
+      const existingPhone = await this.userRepo.findOne({ where: { phone: normalizedPhone } });
+      if (existingPhone) {
+        throw new Error("A user with this phone number is already registered");
+      }
     }
 
     if (role === "admin" && !adminRole) {
@@ -378,10 +386,16 @@ export class AuthService {
     user.name = name;
     user.email = normalizedEmail;
     user.password = hashed;
-    user.phone = phone || "";
+    user.phone = normalizedPhone || phone || "";
     user.role = role;
     user.status = "active";
     user.dateJoined = new Date().toISOString().split("T")[0];
+
+    // Generate random 6-digit email verification OTP (valid strictly for 5 minutes)
+    const verifyOtp = crypto.randomInt(100000, 999999).toString();
+    user.emailVerified = false;
+    user.emailVerificationToken = this.hashToken(verifyOtp);
+    user.emailVerificationExpires = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
     if (role === "admin") {
       user.adminRole = adminRole || "support_admin";
@@ -396,6 +410,17 @@ export class AuthService {
     }
 
     const savedUser = await this.userRepo.save(user);
+
+    // Send verification code to ensure email validity and prevent fake emails
+    if (this.notificationsService) {
+      await this.notificationsService.sendNotification(savedUser.id, {
+        type: "verification_update",
+        title: "Verify Your Email",
+        body: `Your MerihCare registration verification code is ${verifyOtp}. This code expires in 5 minutes.`,
+        priority: "critical",
+        data: { code: verifyOtp, type: "email_verification", recipientEmail: savedUser.email },
+      }).catch(() => {});
+    }
 
     if (role === "provider" && this.providerRepo) {
       try {
@@ -538,10 +563,10 @@ export class AuthService {
   async requestPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
     const user = await this.userRepo.findOne({ where: { email } });
     if (user) {
-      // Generate cryptographically secure 6-digit OTP code
+      // Generate cryptographically secure 6-digit OTP code (strictly valid for 5 minutes)
       const resetOtp = crypto.randomInt(100000, 999999).toString();
       user.passwordResetToken = this.hashToken(resetOtp);
-      user.passwordResetExpires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+      user.passwordResetExpires = new Date(Date.now() + 5 * 60 * 1000).toISOString();
       await this.userRepo.save(user);
 
       // Dispatch password reset code via notification service
@@ -549,7 +574,7 @@ export class AuthService {
         await this.notificationsService.sendNotification(user.id, {
           type: "general",
           title: "Password Reset Code",
-          body: `Your MerihCare password reset code is ${resetOtp}. This code expires in 15 minutes.`,
+          body: `Your MerihCare password reset code is ${resetOtp}. This code expires in 5 minutes.`,
           priority: "critical",
           data: { code: resetOtp, type: "password_reset" },
         }).catch(() => {});
@@ -589,7 +614,7 @@ export class AuthService {
     if (user) {
       const verifyOtp = crypto.randomInt(100000, 999999).toString();
       user.emailVerificationToken = this.hashToken(verifyOtp);
-      user.emailVerificationExpires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+      user.emailVerificationExpires = new Date(Date.now() + 5 * 60 * 1000).toISOString();
       await this.userRepo.save(user);
 
       // Dispatch email verification code via notification service
@@ -597,7 +622,7 @@ export class AuthService {
         await this.notificationsService.sendNotification(user.id, {
           type: "verification_update",
           title: "Email Verification Code",
-          body: `Your MerihCare verification code is ${verifyOtp}.`,
+          body: `Your MerihCare verification code is ${verifyOtp}. This code expires in 5 minutes.`,
           priority: "critical",
           data: { code: verifyOtp, type: "email_verification", recipientEmail: user.email },
         }).catch(() => {});
