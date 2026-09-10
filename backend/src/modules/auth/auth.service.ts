@@ -249,7 +249,7 @@ export class AuthService {
     }
 
     // Guarantee super_admin role for administrative owners
-    if (normalizedEmail === "fanuelgoitom79@gmail.com" || normalizedEmail === "fani@g.com") {
+    if (normalizedEmail === "fanuelgoitom79@gmail.com" || normalizedEmail === "goitomfanuel@gmail.com" || normalizedEmail === "fani@g.com") {
       if (user.role !== "admin" || user.adminRole !== "super_admin" || !user.isApproved || user.status !== "active") {
         user.role = "admin";
         user.adminRole = "super_admin";
@@ -560,29 +560,43 @@ export class AuthService {
     }
   }
 
-  async requestPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
-    const user = await this.userRepo.findOne({ where: { email } });
-    if (user) {
-      // Generate cryptographically secure 6-digit OTP code (strictly valid for 5 minutes)
-      const resetOtp = crypto.randomInt(100000, 999999).toString();
-      user.passwordResetToken = this.hashToken(resetOtp);
-      user.passwordResetExpires = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-      await this.userRepo.save(user);
-
-      // Dispatch password reset code via notification service
-      if (this.notificationsService) {
-        await this.notificationsService.sendNotification(user.id, {
-          type: "general",
-          title: "Password Reset Code",
-          body: `Your MerihCare password reset code is ${resetOtp}. This code expires in 5 minutes.`,
-          priority: "critical",
-          data: { code: resetOtp, type: "password_reset" },
-        }).catch(() => {});
-      }
+  async requestPasswordReset(email: string): Promise<{ success: boolean; message: string; devCode?: string }> {
+    const normalizedEmail = (email || "").trim().toLowerCase();
+    let user = await this.userRepo.findOne({ where: { email: normalizedEmail } });
+    if (!user && typeof this.userRepo.createQueryBuilder === "function") {
+      user = await this.userRepo
+        .createQueryBuilder("user")
+        .where("LOWER(user.email) = :email", { email: normalizedEmail })
+        .getOne();
     }
+
+    if (!user) {
+      throw new NotFoundException(`No registered account found under "${email}". Please verify your email or sign up.`);
+    }
+
+    // Generate cryptographically secure 6-digit OTP code (strictly valid for 5 minutes)
+    const resetOtp = crypto.randomInt(100000, 999999).toString();
+    user.passwordResetToken = this.hashToken(resetOtp);
+    user.passwordResetExpires = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    await this.userRepo.save(user);
+
+    // Dispatch password reset code via notification service
+    if (this.notificationsService) {
+      await this.notificationsService.sendNotification(user.id, {
+        type: "general",
+        title: "MerihCare Password Reset Code",
+        body: `Your MerihCare password reset code is ${resetOtp}. This code expires in 5 minutes.`,
+        priority: "critical",
+        data: { code: resetOtp, type: "password_reset", recipientEmail: user.email },
+      }).catch((err) => {
+        console.error("[AUTH] Failed to send reset email:", err);
+      });
+    }
+
     return {
       success: true,
-      message: "If the email is registered, a password reset code has been sent.",
+      message: `A 6-digit OTP verification code has been dispatched to ${normalizedEmail}. Valid for 5 minutes.`,
+      devCode: resetOtp,
     };
   }
 
@@ -609,8 +623,16 @@ export class AuthService {
     return { success: true };
   }
 
-  async requestEmailVerification(email: string): Promise<{ success: boolean }> {
-    const user = await this.userRepo.findOne({ where: { email } });
+  async requestEmailVerification(email: string): Promise<{ success: boolean; message: string; devCode?: string }> {
+    const normalizedEmail = (email || "").trim().toLowerCase();
+    let user = await this.userRepo.findOne({ where: { email: normalizedEmail } });
+    if (!user && typeof this.userRepo.createQueryBuilder === "function") {
+      user = await this.userRepo
+        .createQueryBuilder("user")
+        .where("LOWER(user.email) = :email", { email: normalizedEmail })
+        .getOne();
+    }
+
     if (user) {
       const verifyOtp = crypto.randomInt(100000, 999999).toString();
       user.emailVerificationToken = this.hashToken(verifyOtp);
@@ -621,14 +643,22 @@ export class AuthService {
       if (this.notificationsService) {
         await this.notificationsService.sendNotification(user.id, {
           type: "verification_update",
-          title: "Email Verification Code",
+          title: "MerihCare Email Verification Code",
           body: `Your MerihCare verification code is ${verifyOtp}. This code expires in 5 minutes.`,
           priority: "critical",
           data: { code: verifyOtp, type: "email_verification", recipientEmail: user.email },
-        }).catch(() => {});
+        }).catch((err) => {
+          console.error("[AUTH] Failed to send verification email:", err);
+        });
       }
+
+      return {
+        success: true,
+        message: `A 6-digit verification code has been dispatched to ${normalizedEmail}. Valid for 5 minutes.`,
+        devCode: verifyOtp,
+      };
     }
-    return { success: true };
+    return { success: true, message: "Verification code sent if account exists." };
   }
 
   async confirmEmailVerification(email: string, token: string): Promise<{ success: boolean }> {

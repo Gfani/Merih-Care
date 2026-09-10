@@ -658,6 +658,36 @@
         }
       }
     },
+    "/api/v1/providers/{id}/contact": {
+      "post": {
+        "operationId": "ProvidersController_contactProvider",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactProviderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/verification": {
       "get": {
         "operationId": "VerificationController_getVerifications",
@@ -3161,6 +3191,86 @@
         }
       }
     },
+    "/api/v1/admin/administrators": {
+      "get": {
+        "operationId": "AdminController_getAdministrators",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "post": {
+        "operationId": "AdminController_createAdministrator",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAdminDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/admin/administrators/{id}": {
+      "delete": {
+        "operationId": "AdminController_deleteAdministrator",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/admin/administrators/{id}/reset-password": {
+      "post": {
+        "operationId": "AdminController_resetAdminPassword",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetAdminPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/admin/tasks/reminders/trigger": {
       "post": {
         "operationId": "AdminController_triggerReminders",
@@ -3714,6 +3824,10 @@
         "type": "object",
         "properties": {}
       },
+      "ContactProviderDto": {
+        "type": "object",
+        "properties": {}
+      },
       "AssignReviewerDto": {
         "type": "object",
         "properties": {
@@ -3813,6 +3927,14 @@
           "providerAvatar": {
             "type": "string",
             "description": "Provider Avatar"
+          },
+          "providerPhone": {
+            "type": "string",
+            "description": "Provider Phone Contact"
+          },
+          "patientPhone": {
+            "type": "string",
+            "description": "Patient Phone Contact"
           },
           "serviceId": {
             "type": "string",
@@ -4322,6 +4444,14 @@
         "properties": {}
       },
       "VerifyMfaDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateAdminDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ResetAdminPasswordDto": {
         "type": "object",
         "properties": {}
       }

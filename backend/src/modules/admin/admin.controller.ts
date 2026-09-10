@@ -161,6 +161,7 @@ export class AdminController {
       req.user?.adminRole === "super_admin" ||
       req.user?.role === "super_admin" ||
       userEmail === "fanuelgoitom79@gmail.com" ||
+      userEmail === "goitomfanuel@gmail.com" ||
       userEmail === "fani@g.com" ||
       userEmail === "admin@merihcare.et";
     if (!isSuper) {
@@ -181,6 +182,7 @@ export class AdminController {
       req.user?.adminRole === "super_admin" ||
       req.user?.role === "super_admin" ||
       userEmail === "fanuelgoitom79@gmail.com" ||
+      userEmail === "goitomfanuel@gmail.com" ||
       userEmail === "fani@g.com" ||
       userEmail === "admin@merihcare.et";
     if (!isSuper) {
@@ -205,6 +207,7 @@ export class AdminController {
       req.user?.adminRole === "super_admin" ||
       req.user?.role === "super_admin" ||
       userEmail === "fanuelgoitom79@gmail.com" ||
+      userEmail === "goitomfanuel@gmail.com" ||
       userEmail === "fani@g.com" ||
       userEmail === "admin@merihcare.et";
     if (!isSuper) {
@@ -220,6 +223,7 @@ export class AdminController {
       req.user?.adminRole === "super_admin" ||
       req.user?.role === "super_admin" ||
       userEmail === "fanuelgoitom79@gmail.com" ||
+      userEmail === "goitomfanuel@gmail.com" ||
       userEmail === "fani@g.com" ||
       userEmail === "admin@merihcare.et";
     if (!isSuper) {
@@ -239,6 +243,7 @@ export class AdminController {
       req.user?.adminRole === "super_admin" ||
       req.user?.role === "super_admin" ||
       userEmail === "fanuelgoitom79@gmail.com" ||
+      userEmail === "goitomfanuel@gmail.com" ||
       userEmail === "fani@g.com" ||
       userEmail === "admin@merihcare.et";
     if (!isSuper) {
@@ -259,6 +264,7 @@ export class AdminController {
       req.user?.adminRole === "super_admin" ||
       req.user?.role === "super_admin" ||
       userEmail === "fanuelgoitom79@gmail.com" ||
+      userEmail === "goitomfanuel@gmail.com" ||
       userEmail === "fani@g.com" ||
       userEmail === "admin@merihcare.et";
     if (!isSuper) {

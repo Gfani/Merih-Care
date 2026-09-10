@@ -40,6 +40,7 @@ export class DatabaseSeedService implements OnModuleInit {
     // 1. Seed & Ensure Super Administrator Accounts
     const targetSuperAdmins = [
       "fanuelgoitom79@gmail.com",
+      "goitomfanuel@gmail.com",
       "fani@g.com",
       (process.env.SUPER_ADMIN_EMAIL || "").toLowerCase().trim()
     ].filter(e => e && e !== "admin@merihcare.et");

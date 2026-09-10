@@ -200,7 +200,7 @@ export class AdminService {
       throw new Error("Administrator account not found");
     }
     const targetEmail = (targetUser.email || "").toLowerCase().trim();
-    if (targetEmail === "fanuelgoitom79@gmail.com" || targetEmail === "fani@g.com") {
+    if (targetEmail === "fanuelgoitom79@gmail.com" || targetEmail === "goitomfanuel@gmail.com" || targetEmail === "fani@g.com") {
       throw new Error("The primary super administrator account cannot be deleted");
     }
     await this.userRepo.remove(targetUser);

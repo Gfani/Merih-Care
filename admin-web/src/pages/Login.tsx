@@ -105,9 +105,16 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
       return;
     }
     setResetLoading(true);
+    setDevOtpHint(null);
+    setResetOtp("");
+    setResetNewPassword("");
+    setResetConfirmPassword("");
     try {
       const res = await api.requestPasswordReset(resetEmail);
       toast("6-Digit OTP code sent to your email! (Valid for 5 minutes)", "success");
+      setResetOtp("");
+      setResetNewPassword("");
+      setResetConfirmPassword("");
       if (res?.devCode || res?.code) {
         setDevOtpHint((res.devCode || res.code) ?? null);
       }
@@ -327,7 +334,11 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
             </div>
           </form>
         ) : (
-          <form onSubmit={handleConfirmResetOtp} className="space-y-4 text-xs">
+          <form onSubmit={handleConfirmResetOtp} autoComplete="off" noValidate className="space-y-4 text-xs relative">
+            {/* Decoy inputs to absorb browser password manager autofill and prevent pre-populating saved credentials */}
+            <input type="text" name="fake_username_remembered" tabIndex={-1} aria-hidden="true" autoComplete="username" style={{ position: "absolute", opacity: 0, height: 0, width: 0, pointerEvents: "none", zIndex: -1 }} />
+            <input type="password" name="fake_password_remembered" tabIndex={-1} aria-hidden="true" autoComplete="current-password" style={{ position: "absolute", opacity: 0, height: 0, width: 0, pointerEvents: "none", zIndex: -1 }} />
+
             <p className="text-[#4a5a6a] dark:text-slate-300 leading-relaxed">
               Enter the 6-digit OTP verification code (valid for 5 minutes) sent to <strong className="text-[#18232e] dark:text-white">{resetEmail}</strong> and your new password.
             </p>
@@ -346,8 +357,12 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
             <Input
               label="6-Digit OTP Code"
               type="text"
+              name="otp_verification_code_field"
+              id="otp_verification_code_field"
+              autoComplete="one-time-code"
+              inputMode="numeric"
               value={resetOtp}
-              onChange={(e) => setResetOtp(e.target.value)}
+              onChange={(e) => setResetOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
               placeholder="e.g. 123456"
               maxLength={6}
               required
@@ -356,6 +371,9 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
             <Input
               label="New Password"
               type="password"
+              name="new_password_account_reset"
+              id="new_password_account_reset"
+              autoComplete="new-password"
               value={resetNewPassword}
               onChange={(e) => setResetNewPassword(e.target.value)}
               placeholder="Minimum 6 characters"
@@ -365,6 +383,9 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
             <Input
               label="Confirm New Password"
               type="password"
+              name="confirm_password_account_reset"
+              id="confirm_password_account_reset"
+              autoComplete="new-password"
               value={resetConfirmPassword}
               onChange={(e) => setResetConfirmPassword(e.target.value)}
               placeholder="Re-enter new password"

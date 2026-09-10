@@ -402,7 +402,10 @@ export default function SettingsSection() {
               </div>
             </form>
           ) : (
-            <form onSubmit={handleOtpPasswordSubmit} className="space-y-4">
+            <form onSubmit={handleOtpPasswordSubmit} autoComplete="off" noValidate className="space-y-4 relative">
+              <input type="text" name="fake_settings_username" tabIndex={-1} aria-hidden="true" autoComplete="username" style={{ position: "absolute", opacity: 0, height: 0, width: 0, pointerEvents: "none", zIndex: -1 }} />
+              <input type="password" name="fake_settings_password" tabIndex={-1} aria-hidden="true" autoComplete="current-password" style={{ position: "absolute", opacity: 0, height: 0, width: 0, pointerEvents: "none", zIndex: -1 }} />
+
               <div className="p-3 bg-[#f8fafc] dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700 space-y-2">
                 <p className="text-[#4a5a6a] dark:text-slate-300">
                   Send a one-time 6-digit verification code to <strong className="text-[#18232e] dark:text-white">{adminEmail}</strong>:
@@ -435,8 +438,12 @@ export default function SettingsSection() {
 
               <Input
                 label="6-Digit OTP Code"
+                name="settings_otp_token"
+                id="settings_otp_token"
+                autoComplete="one-time-code"
+                inputMode="numeric"
                 value={settingsOtp}
-                onChange={(e) => setSettingsOtp(e.target.value)}
+                onChange={(e) => setSettingsOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
                 placeholder="e.g. 123456"
                 maxLength={6}
                 required
@@ -445,6 +452,9 @@ export default function SettingsSection() {
               <Input
                 label="New Password"
                 type="password"
+                name="settings_new_password"
+                id="settings_new_password"
+                autoComplete="new-password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="Minimum 6 characters"
@@ -454,6 +464,9 @@ export default function SettingsSection() {
               <Input
                 label="Confirm New Password"
                 type="password"
+                name="settings_confirm_password"
+                id="settings_confirm_password"
+                autoComplete="new-password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Re-enter new password"

@@ -21,6 +21,7 @@ export class RolesGuard implements CanActivate {
 
     const isSuperAdminEmail =
       user.email === "fanuelgoitom79@gmail.com" ||
+      user.email === "goitomfanuel@gmail.com" ||
       user.email === "fani@g.com" ||
       user.email === "admin@merihcare.et";
 

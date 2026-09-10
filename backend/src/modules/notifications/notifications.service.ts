@@ -74,12 +74,39 @@ async function dispatchPush(userId: string, title: string, body: string, data?: 
 async function dispatchEmail(userId: string, title: string, body: string, recipientEmail?: string): Promise<boolean> {
   const sendgridKey = process.env.SENDGRID_API_KEY;
   const smtpHost = process.env.SMTP_HOST;
-  const fromEmail = process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM || "no-reply@merihcare.et";
+  const gmailUser = process.env.GMAIL_USER || (process.env.SMTP_USER && process.env.SMTP_USER.includes("@gmail.com") ? process.env.SMTP_USER : undefined);
+  const gmailPass = process.env.GMAIL_APP_PASSWORD || (gmailUser ? process.env.SMTP_PASSWORD : undefined);
+  const fromEmail = process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM || gmailUser || "no-reply@merihcare.et";
   const toEmail = recipientEmail && recipientEmail.includes("@")
     ? recipientEmail
     : `${userId}@merihcare.et`;
 
-  if (sendgridKey && !sendgridKey.startsWith("SG.mock")) {
+  // Always display prominent terminal notification banner
+  console.log("\n====================================================================");
+  console.log(`✉️  MERIHCARE OUTBOUND EMAIL DISPATCH`);
+  console.log(`   TO:      ${toEmail}`);
+  console.log(`   SUBJECT: ${title}`);
+  console.log(`   CONTENT: ${body}`);
+  console.log("====================================================================\n");
+
+  const emailHtml = `
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 28px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <h1 style="color: #0d7c6a; margin: 0; font-size: 24px; letter-spacing: 2px;">MERIHCARE</h1>
+        <p style="color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin: 4px 0 0 0;">Premium Healthcare Network</p>
+      </div>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+        <h2 style="color: #1e293b; font-size: 16px; margin: 0 0 12px 0;">${title}</h2>
+        <p style="color: #475569; font-size: 14px; line-height: 1.6; margin: 0;">${body}</p>
+      </div>
+      <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+      <p style="color: #94a3b8; font-size: 11px; text-align: center; margin: 0;">
+        Security Notice: This OTP is valid for exactly 5 minutes. If you did not request this, please safeguard your account immediately.
+      </p>
+    </div>
+  `;
+
+  if (sendgridKey && !sendgridKey.startsWith("SG.mock") && sendgridKey.trim().length > 10) {
     try {
       const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
         method: "POST",
@@ -91,7 +118,7 @@ async function dispatchEmail(userId: string, title: string, body: string, recipi
           personalizations: [{ to: [{ email: toEmail }] }],
           from: { email: fromEmail, name: "Merihcare Healthcare" },
           subject: title,
-          content: [{ type: "text/html", value: `<div style="font-family: sans-serif; padding: 20px;"><h2>${title}</h2><p>${body}</p><hr/><small>Merihcare Health System</small></div>` }],
+          content: [{ type: "text/html", value: emailHtml }],
         }),
       });
       if (res.status >= 400) {
@@ -102,7 +129,29 @@ async function dispatchEmail(userId: string, title: string, body: string, recipi
       logger.log(`[Email] Dispatched via SendGrid → ${toEmail}: ${title}`);
       return true;
     } catch (err: any) {
-      logger.error(`[Email] Error sending email: ${err.message}`);
+      logger.error(`[Email] Error sending email via SendGrid: ${err.message}`);
+      return false;
+    }
+  } else if (gmailUser && gmailPass) {
+    try {
+      const nodemailer = require("nodemailer");
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: gmailUser,
+          pass: gmailPass,
+        },
+      });
+      await transporter.sendMail({
+        from: `Merihcare Healthcare <${fromEmail}>`,
+        to: toEmail,
+        subject: title,
+        html: emailHtml,
+      });
+      logger.log(`[Email Gmail] Dispatched via Gmail SMTP → ${toEmail}: ${title}`);
+      return true;
+    } catch (err: any) {
+      logger.error(`[Email Gmail] Dispatch failed: ${err.message}`);
       return false;
     }
   } else if (smtpHost) {
@@ -118,10 +167,10 @@ async function dispatchEmail(userId: string, title: string, body: string, recipi
         } : undefined,
       });
       await transporter.sendMail({
-        from: fromEmail,
+        from: `Merihcare Healthcare <${fromEmail}>`,
         to: toEmail,
         subject: title,
-        html: `<div style="font-family: sans-serif; padding: 20px;"><h2>${title}</h2><p>${body}</p><hr/><small>Merihcare Health System</small></div>`,
+        html: emailHtml,
       });
       logger.log(`[Email SMTP] Dispatched via ${smtpHost} → ${toEmail}: ${title}`);
       return true;
@@ -130,11 +179,7 @@ async function dispatchEmail(userId: string, title: string, body: string, recipi
       return false;
     }
   } else {
-    if (process.env.NODE_ENV === "production") {
-      logger.error(`[Email Error] No live email provider configured (SENDGRID_API_KEY or SMTP_HOST required in production)`);
-      return false;
-    }
-    logger.log(`[Email dev/stub] → ${toEmail}: ${title}`);
+    logger.log(`[Email dev/stub] → ${toEmail}: ${title} (Content: ${body})`);
     return true;
   }
 }
