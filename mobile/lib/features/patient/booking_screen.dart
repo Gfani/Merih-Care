@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/network/network_providers.dart';
 import '../../core/location/location_service.dart';
+import '../auth/auth_provider.dart';
 
 class BookingScreen extends ConsumerStatefulWidget {
   final String providerId;

@@ -19,7 +19,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   int _currentNavIndex = 0;
   List<dynamic> _upcoming = [];
   List<dynamic> _providers = [];
-  bool _loading = true;
 
   final List<Map<String, dynamic>> _serviceCategories = [
     {'id': 'cat-1', 'name': 'Doctor Visit', 'icon': Icons.medical_services_outlined, 'color': Color(0xFFE6F5F2), 'priceFrom': 800, 'count': 45},
@@ -54,7 +53,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         setState(() {
           _upcoming = allApts.where((a) => a['status'] != 'completed' && a['status'] != 'cancelled').toList();
           _providers = allProvs;
-          _loading = false;
         });
       }
     } catch (e) {
@@ -63,7 +61,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         setState(() {
           _upcoming = [];
           _providers = [];
-          _loading = false;
         });
       }
     }
@@ -531,7 +528,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home, color: AppTheme.primaryColor), label: 'Home'),
           NavigationDestination(icon: Icon(Icons.medical_services_outlined), selectedIcon: Icon(Icons.medical_services, color: AppTheme.primaryColor), label: 'Services'),
-          NavigationDestination(icon: Icon(Icons.calendar_today_outlined), selectedIcon: Icon(Icons.calendar_today, color: AppTheme.primaryColor), label: 'Appointments'),
+          NavigationDestination(icon: Icon(Icons.calendar_today_outlined), selectedIcon: Icon(Icons.calendar_today, color: AppTheme.primaryColor), label: 'Schedule'),
           NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble, color: AppTheme.primaryColor), label: 'Messages'),
           NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person, color: AppTheme.primaryColor), label: 'Profile'),
         ],

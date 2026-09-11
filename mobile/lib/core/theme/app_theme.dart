@@ -103,6 +103,20 @@ class AppTheme {
           borderSide: const BorderSide(color: primaryColor, width: 2),
         ),
       ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: Colors.white,
+        elevation: 2,
+        indicatorColor: primaryLight,
+        height: 65,
+        labelTextStyle: WidgetStateProperty.resolveWith<TextStyle>(
+          (Set<WidgetState> states) => TextStyle(
+            fontSize: 11,
+            fontWeight: states.contains(WidgetState.selected) ? FontWeight.bold : FontWeight.w500,
+            color: states.contains(WidgetState.selected) ? primaryColor : textSecondary,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
     );
   }
 
@@ -131,6 +145,20 @@ class AppTheme {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radiusLg),
           side: const BorderSide(color: Color(0xFF334155), width: 1),
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: const Color(0xFF1E293B),
+        elevation: 2,
+        indicatorColor: primaryDark,
+        height: 65,
+        labelTextStyle: WidgetStateProperty.resolveWith<TextStyle>(
+          (Set<WidgetState> states) => TextStyle(
+            fontSize: 11,
+            fontWeight: states.contains(WidgetState.selected) ? FontWeight.bold : FontWeight.w500,
+            color: states.contains(WidgetState.selected) ? Colors.white : const Color(0xFF94A3B8),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ),
     );
