@@ -35,8 +35,20 @@ export class AppointmentsService {
       order: { date: "DESC" as any, time: "DESC" as any },
     });
     for (const apt of apts) {
-      if (!apt.providerPhone && apt.provider?.user?.phone) {
-        apt.providerPhone = apt.provider.user.phone;
+      if (!apt.providerPhone) {
+        let phone = apt.provider?.phone || apt.provider?.user?.phone || "";
+        if (!phone && (apt.providerId || apt.providerName)) {
+          try {
+            const provRepo = this.dataSource.getRepository(ProviderEntity);
+            const p = apt.providerId
+              ? await provRepo.findOne({ where: { id: apt.providerId }, relations: ["user"] })
+              : await provRepo.findOne({ where: { name: apt.providerName }, relations: ["user"] });
+            if (p) {
+              phone = p.phone || p.user?.phone || "";
+            }
+          } catch (_) {}
+        }
+        apt.providerPhone = phone;
       }
       if (!apt.patientPhone && apt.patient?.phone) {
         apt.patientPhone = apt.patient.phone;
@@ -116,11 +128,13 @@ export class AppointmentsService {
       apt.providerPhone = data.providerPhone || null;
       apt.patientPhone = data.patientPhone || null;
 
-      if (!apt.providerPhone && data.providerId) {
+      if (!apt.providerPhone && (data.providerId || data.providerName)) {
         try {
-          const prov = await manager.findOne(ProviderEntity, { where: { id: data.providerId }, relations: ["user"] });
-          if (prov?.user?.phone) {
-            apt.providerPhone = prov.user.phone;
+          const prov = data.providerId
+            ? await manager.findOne(ProviderEntity, { where: { id: data.providerId }, relations: ["user"] })
+            : await manager.findOne(ProviderEntity, { where: { name: data.providerName }, relations: ["user"] });
+          if (prov?.phone || prov?.user?.phone) {
+            apt.providerPhone = prov.phone || prov.user.phone;
           }
         } catch (_) {}
       }

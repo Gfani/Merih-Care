@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { ProviderEntity } from "../../database/entities/provider.entity";
+import { UserEntity } from "../../database/entities/user.entity";
 import { NotificationsService } from "../notifications/notifications.service";
 import * as crypto from "crypto";
 
@@ -12,6 +13,9 @@ export class ProvidersService {
     private readonly providerRepo: Repository<ProviderEntity>,
     @Optional()
     private readonly notificationsService?: NotificationsService,
+    @Optional()
+    @InjectRepository(UserEntity)
+    private readonly userRepo?: Repository<UserEntity>,
   ) {}
 
   /**
@@ -55,13 +59,31 @@ export class ProvidersService {
 
     const providers = await this.providerRepo.find({
       where,
+      relations: ["user"],
       take: limit,
       skip: offset,
       order: { createdAt: "DESC" as any },
     });
 
-    let results = providers.map((p) => {
-      const copy: any = { ...p, services: p.services };
+    let results: any[] = [];
+    for (const p of providers) {
+      let phone = p.phone || p.user?.phone || "";
+      let email = p.email || p.user?.email || "";
+
+      if ((!phone || !email) && this.userRepo && p.userId) {
+        const u = await this.userRepo.findOne({ where: { id: p.userId } }).catch(() => null);
+        if (u) {
+          if (!phone && u.phone) phone = u.phone;
+          if (!email && u.email) email = u.email;
+        }
+      }
+
+      const copy: any = {
+        ...p,
+        phone,
+        email,
+        services: p.services,
+      };
 
       // Compute dynamic distance if coordinates available
       if (userLat !== undefined && userLon !== undefined && copy.latitude && copy.longitude) {
@@ -72,8 +94,8 @@ export class ProvidersService {
         copy.latitude = this.fuzzCoordinate(copy.latitude);
         copy.longitude = this.fuzzCoordinate(copy.longitude);
       }
-      return copy;
-    });
+      results.push(copy);
+    }
 
     if (specialty && specialty !== "All") {
       const lower = specialty.toLowerCase();

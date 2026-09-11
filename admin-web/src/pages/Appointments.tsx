@@ -303,26 +303,38 @@ export default function AppointmentsSection() {
                   {
                     key: "providerName",
                     header: "Assigned Provider & Contact",
-                    render: (row) => (
-                      <div className="space-y-1">
-                        <div className="font-semibold text-xs text-[#18232e] dark:text-white">
-                          {row.providerName || "Unassigned"}
+                    render: (row) => {
+                      const matchedProv = providers.find(
+                        (p) =>
+                          (row.providerId && (p.id === row.providerId || p.userId === row.providerId)) ||
+                          (row.providerName && p.name && p.name.trim().toLowerCase() === row.providerName.trim().toLowerCase())
+                      );
+                      const displayPhone =
+                        row.providerPhone ||
+                        matchedProv?.phone ||
+                        (matchedProv as any)?.user?.phone ||
+                        "";
+                      return (
+                        <div className="space-y-1">
+                          <div className="font-semibold text-xs text-[#18232e] dark:text-white">
+                            {row.providerName || matchedProv?.name || "Unassigned"}
+                          </div>
+                          {displayPhone ? (
+                            <a
+                              href={`tel:${displayPhone.replace(/\s+/g, "")}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-[#0d7c6a] dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 transition-colors"
+                              title={`Call provider ${row.providerName || displayPhone}`}
+                            >
+                              <Phone size={10} />
+                              <span>{displayPhone}</span>
+                            </a>
+                          ) : (
+                            <span className="text-[10px] text-[#8a9aaa] italic">No phone listed</span>
+                          )}
                         </div>
-                        {row.providerPhone ? (
-                          <a
-                            href={`tel:${row.providerPhone}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-[#0d7c6a] dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 transition-colors"
-                            title={`Call provider ${row.providerName}`}
-                          >
-                            <Phone size={10} />
-                            <span>{row.providerPhone}</span>
-                          </a>
-                        ) : (
-                          <span className="text-[10px] text-[#8a9aaa] italic">No phone listed</span>
-                        )}
-                      </div>
-                    ),
+                      );
+                    },
                   },
                   {
                     key: "schedule",
@@ -561,27 +573,37 @@ export default function AppointmentsSection() {
                       </div>
 
                       {/* Provider Contact Section with Call Button */}
-                      <div className="pt-2 border-t border-slate-200 dark:border-slate-700/60 flex items-center justify-between">
-                        <div>
-                          <p className="text-[10px] text-[#8a9aaa] uppercase font-bold">Assigned Provider</p>
-                          <p className="text-xs font-semibold text-[#18232e] dark:text-white">
-                            {apt.providerName || "Unassigned"}
-                          </p>
-                        </div>
+                      {(() => {
+                        const matchedProv = providers.find(
+                          (p) =>
+                            (apt.providerId && (p.id === apt.providerId || p.userId === apt.providerId)) ||
+                            (apt.providerName && p.name && p.name.trim().toLowerCase() === apt.providerName.trim().toLowerCase())
+                        );
+                        const provPhone = apt.providerPhone || matchedProv?.phone || (matchedProv as any)?.user?.phone;
+                        return (
+                          <div className="pt-2 border-t border-slate-200 dark:border-slate-700/60 flex items-center justify-between">
+                            <div>
+                              <p className="text-[10px] text-[#8a9aaa] uppercase font-bold">Assigned Provider</p>
+                              <p className="text-xs font-semibold text-[#18232e] dark:text-white">
+                                {apt.providerName || matchedProv?.name || "Unassigned"}
+                              </p>
+                            </div>
 
-                        {apt.providerPhone ? (
-                          <a
-                            href={`tel:${apt.providerPhone}`}
-                            className="px-2.5 py-1 bg-[#0d7c6a] hover:bg-[#0a6355] text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm transition-all"
-                            title={`Call Provider ${apt.providerName}`}
-                          >
-                            <Phone size={12} />
-                            Call
-                          </a>
-                        ) : (
-                          <span className="text-[10px] text-[#8a9aaa] italic">No phone</span>
-                        )}
-                      </div>
+                            {provPhone ? (
+                              <a
+                                href={`tel:${provPhone.replace(/\s+/g, "")}`}
+                                className="px-2.5 py-1 bg-[#0d7c6a] hover:bg-[#0a6355] text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm transition-all"
+                                title={`Call Provider ${apt.providerName || provPhone}`}
+                              >
+                                <Phone size={12} />
+                                <span>{provPhone}</span>
+                              </a>
+                            ) : (
+                              <span className="text-[10px] text-[#8a9aaa] italic">No phone</span>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       <div className="flex items-center justify-between pt-1">
                         <span className="font-semibold text-[#4a5a6a] dark:text-slate-300">ETB {apt.amount}</span>
@@ -673,11 +695,14 @@ export default function AppointmentsSection() {
                   className="w-full p-2.5 rounded-lg border border-[#e2e8ee] dark:border-slate-700 bg-white dark:bg-slate-900 text-[#18232e] dark:text-white focus:outline-none focus:border-[#0d7c6a]"
                 >
                   <option value="">-- Open for Provider Matching / Searching --</option>
-                  {providers.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.specialty || "Specialist"}) {p.phone ? `- Tel: ${p.phone}` : ""}
-                    </option>
-                  ))}
+                  {providers.map((p) => {
+                    const phone = p.phone || p.user?.phone;
+                    return (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.specialty || "Specialist"}) {phone ? `- Tel: ${phone}` : ""}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 
@@ -768,14 +793,25 @@ export default function AppointmentsSection() {
                 <span className="text-[#8a9aaa]">Provider:</span>
                 <div className="flex items-center gap-2">
                   <span className="font-bold">{selectedApt.providerName}</span>
-                  {selectedApt.providerPhone && (
-                    <a
-                      href={`tel:${selectedApt.providerPhone}`}
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-[#0d7c6a] hover:underline"
-                    >
-                      <Phone size={10} /> Call ({selectedApt.providerPhone})
-                    </a>
-                  )}
+                  {(() => {
+                    const matchedProv = providers.find(
+                      (p) =>
+                        (selectedApt.providerId && (p.id === selectedApt.providerId || p.userId === selectedApt.providerId)) ||
+                        (selectedApt.providerName && p.name && p.name.trim().toLowerCase() === selectedApt.providerName.trim().toLowerCase())
+                    );
+                    const modalProvPhone = selectedApt.providerPhone || matchedProv?.phone || (matchedProv as any)?.user?.phone;
+                    return modalProvPhone ? (
+                      <a
+                        href={`tel:${modalProvPhone.replace(/\s+/g, "")}`}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-[#0d7c6a] hover:underline"
+                        title={`Call ${selectedApt.providerName || modalProvPhone}`}
+                      >
+                        <Phone size={10} /> Call ({modalProvPhone})
+                      </a>
+                    ) : (
+                      <span className="text-[10px] text-[#8a9aaa] italic">(No phone on file)</span>
+                    );
+                  })()}
                 </div>
               </div>
               <div className="flex justify-between">

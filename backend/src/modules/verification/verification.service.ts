@@ -58,19 +58,25 @@ export class VerificationService {
   }
 
   async getVerificationQueue(): Promise<any[]> {
-    const providers = await this.providerRepo.find({ where: { verified: false } });
+    const providers = await this.providerRepo.find({
+      where: { verified: false },
+      relations: ["user"],
+    });
     const results: any[] = [];
 
     for (const p of providers) {
-      let user: UserEntity | null = null;
-      if (this.userRepo && p.userId) {
-        user = await this.userRepo.findOne({ where: { id: p.userId } });
+      let user: UserEntity | null = p.user || null;
+      if (!user && this.userRepo && p.userId) {
+        user = await this.userRepo.findOne({ where: { id: p.userId } }).catch(() => null);
       }
 
       // Deferral Rule: Providers who have not verified their email OTP are NOT sent to admin approval
       if (user && !user.emailVerified) {
         continue;
       }
+
+      const email = p.email || user?.email || "";
+      const phone = p.phone || user?.phone || "";
 
       results.push({
         id: p.id,
@@ -84,8 +90,8 @@ export class VerificationService {
         education: p.education,
         hospitalAffiliation: p.hospitalAffiliation,
         pricePerVisit: p.pricePerVisit,
-        email: user?.email || "",
-        phone: user?.phone || (p as any).phone || "",
+        email,
+        phone,
         joinedDate: user?.dateJoined || (p.createdAt ? p.createdAt.toISOString().split("T")[0] : ""),
         createdAt: p.createdAt,
         updatedAt: p.updatedAt,

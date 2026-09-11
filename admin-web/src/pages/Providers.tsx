@@ -323,6 +323,36 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
                   </div>
                 )},
                 { key: "status", header: "Verification", render: (row) => <StatusBadge status={row.status as any} /> },
+                {
+                  key: "contact",
+                  header: "Phone / Contact",
+                  render: (row) => {
+                    const phone = row.phone || (row as any).user?.phone;
+                    const email = row.email || (row as any).user?.email;
+                    return (
+                      <div className="space-y-1">
+                        {phone ? (
+                          <a
+                            href={`tel:${phone.replace(/\s+/g, "")}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-[#0d7c6a] dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 transition-colors"
+                            title={`Call ${row.name}`}
+                          >
+                            <Phone size={10} />
+                            <span>{phone}</span>
+                          </a>
+                        ) : (
+                          <span className="text-[10px] text-[#8a9aaa] italic">No phone listed</span>
+                        )}
+                        {email && (
+                          <span className="text-[10px] text-[#8a9aaa] block truncate max-w-[130px]" title={email}>
+                            {email}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  },
+                },
                 { key: "rating", header: "Rating", render: (row) => <Rating value={row.rating as number || 5.0} count={row.reviewCount as number || 0} /> },
                 { key: "experience", header: "Experience", render: (row) => <span className="text-sm">{row.experience as number || 0}y</span> },
                 { key: "completedServices", header: "Services", render: (row) => <span className="font-semibold text-[#0d7c6a] dark:text-cyan-400">{row.completedServices as number || 0}</span> },
@@ -407,6 +437,32 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
                 <p className="text-[#18232e] dark:text-slate-200 font-semibold text-[#0d7c6a] dark:text-cyan-400">{selectedDetails.completedServices || 0}</p>
               </div>
             </div>
+            <div className="p-3 bg-[#f8fafc] dark:bg-slate-800/80 rounded-lg border border-[#eef2f6] dark:border-slate-700 space-y-1.5">
+              <p className="font-semibold text-[#8a9aaa] dark:text-slate-400 uppercase tracking-wider text-[10px]">Direct Contact Information</p>
+              <div className="flex flex-wrap items-center gap-3">
+                {(selectedDetails.phone || (selectedDetails as any).user?.phone) ? (
+                  <a
+                    href={`tel:${(selectedDetails.phone || (selectedDetails as any).user?.phone).replace(/\s+/g, "")}`}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-50 dark:bg-emerald-950/40 text-[#0d7c6a] dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 transition-colors"
+                  >
+                    <Phone size={12} />
+                    <span>Call {selectedDetails.phone || (selectedDetails as any).user?.phone}</span>
+                  </a>
+                ) : (
+                  <span className="text-xs text-[#8a9aaa] italic">No phone on record</span>
+                )}
+                {(selectedDetails.email || (selectedDetails as any).user?.email) && (
+                  <a
+                    href={`mailto:${selectedDetails.email || (selectedDetails as any).user?.email}`}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-semibold border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors"
+                  >
+                    <Mail size={12} />
+                    <span>Email {selectedDetails.email || (selectedDetails as any).user?.email}</span>
+                  </a>
+                )}
+              </div>
+            </div>
+
             <div className="flex justify-between items-center pt-2 border-t border-[#f0f4f7] dark:border-slate-700">
               <Button
                 size="sm"

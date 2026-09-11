@@ -422,8 +422,12 @@ export class AuthService {
         title: "Verify Your Email",
         body: `Your MerihCare registration verification code is ${verifyOtp}. This code expires in 5 minutes.`,
         priority: "critical",
+        recipientEmail: savedUser.email,
+        recipientPhone: savedUser.phone,
         data: { code: verifyOtp, type: "email_verification", recipientEmail: savedUser.email },
-      }).catch(() => {});
+      }).catch((err) => {
+        console.error(`Failed to send verification email: ${err?.message || err}`);
+      });
     }
 
     if (role === "provider" && this.providerRepo) {
@@ -432,6 +436,8 @@ export class AuthService {
         provider.id = "prov-" + crypto.randomUUID();
         provider.userId = savedUser.id;
         provider.name = savedUser.name;
+        provider.email = savedUser.email || "";
+        provider.phone = savedUser.phone || "";
         provider.title = providerDetails?.title || "Healthcare Specialist";
         provider.specialty = providerDetails?.specialty || "General Medicine";
         provider.licenseNumber = providerDetails?.licenseNumber || "";
@@ -592,6 +598,8 @@ export class AuthService {
         title: "MerihCare Password Reset Code",
         body: `Your MerihCare password reset code is ${resetOtp}. This code expires in 5 minutes.`,
         priority: "critical",
+        recipientEmail: user.email,
+        recipientPhone: user.phone,
         data: { code: resetOtp, type: "password_reset", recipientEmail: user.email },
       }).catch((err) => {
         console.error("[AUTH] Failed to send reset email:", err);
@@ -650,6 +658,8 @@ export class AuthService {
           title: "MerihCare Email Verification Code",
           body: `Your MerihCare verification code is ${verifyOtp}. This code expires in 5 minutes.`,
           priority: "critical",
+          recipientEmail: user.email,
+          recipientPhone: user.phone,
           data: { code: verifyOtp, type: "email_verification", recipientEmail: user.email },
         }).catch((err) => {
           console.error("[AUTH] Failed to send verification email:", err);
@@ -824,6 +834,8 @@ export class AuthService {
         provider.id = "prov-" + crypto.randomUUID();
         provider.userId = user.id;
         provider.name = user.name;
+        provider.email = user.email || "";
+        provider.phone = user.phone || "";
         provider.avatar = googleUser.picture || "";
         provider.title = providerDetails?.title || "Healthcare Specialist";
         provider.specialty = providerDetails?.specialty || "General Medicine";

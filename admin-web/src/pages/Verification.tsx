@@ -443,14 +443,14 @@ export default function VerificationSection() {
                             {provider.email}
                           </span>
                         )}
-                        {provider.phone ? (
+                        {(provider.phone || provider.user?.phone) ? (
                           <a
-                            href={`tel:${provider.phone.replace(/\s+/g, "")}`}
+                            href={`tel:${(provider.phone || provider.user?.phone).replace(/\s+/g, "")}`}
                             className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800 hover:underline"
-                            title={`Call ${provider.name || provider.phone}`}
+                            title={`Call ${provider.name || (provider.phone || provider.user?.phone)}`}
                           >
                             <Phone size={12} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
-                            <span>{provider.phone}</span>
+                            <span>{provider.phone || provider.user?.phone}</span>
                           </a>
                         ) : (
                           <span className="text-[#8a9aaa] italic text-[11px]">No phone on file</span>

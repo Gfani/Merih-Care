@@ -145,7 +145,13 @@ export default function UsersSection() {
 
   const allUsers = [
     ...(Array.isArray(patients) ? patients : []).map((p) => ({ ...p, role: "Patient" })),
-    ...(Array.isArray(providers) ? providers : []).map((p) => ({ ...p, role: "Provider", status: p.status === "verified" ? "active" : p.status })),
+    ...(Array.isArray(providers) ? providers : []).map((p) => ({
+      ...p,
+      role: "Provider",
+      phone: p.phone || p.user?.phone || "",
+      email: p.email || p.user?.email || "",
+      status: p.status === "verified" ? "active" : p.status,
+    })),
     ...(Array.isArray(administrators) ? administrators : []).map((a) => ({
       ...a,
       role: a.adminRole === "super_admin" ? "Super Admin" : (a.adminRole ? a.adminRole.replace(/_/g, " ") : "Administrator"),

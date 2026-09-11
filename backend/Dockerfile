@@ -25,6 +25,7 @@ COPY --from=build /app/src ./src
 
 ENV NODE_ENV=production
 ENV UPLOADS_DIR=/app/uploads
+ENV RESEND_FROM_EMAIL="Merihcare <otp@merihcare.live>"
 
 RUN mkdir -p /app/uploads/credentials && chmod -R 777 /app/uploads
 
