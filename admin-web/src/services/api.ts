@@ -836,7 +836,7 @@ export const api = {
     }
   },
 
-  async requestPasswordReset(email: string): Promise<{ success: boolean; message: string; devCode?: string; code?: string }> {
+  async requestPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
     try {
       const res = await axios.post(`${API_URL}/auth/password-reset/request`, { email });
       return res.data;

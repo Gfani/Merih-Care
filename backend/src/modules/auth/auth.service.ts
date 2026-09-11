@@ -560,7 +560,7 @@ export class AuthService {
     }
   }
 
-  async requestPasswordReset(email: string): Promise<{ success: boolean; message: string; devCode?: string }> {
+  async requestPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
     const normalizedEmail = (email || "").trim().toLowerCase();
     let user = await this.userRepo.findOne({ where: { email: normalizedEmail } });
     if (!user && typeof this.userRepo.createQueryBuilder === "function") {
@@ -571,12 +571,13 @@ export class AuthService {
     }
 
     if (!user) {
-      throw new NotFoundException(`No registered account found under "${email}". Please verify your email or sign up.`);
+      throw new NotFoundException(`No registered account found under "${normalizedEmail}". Please verify your email or sign up.`);
     }
 
-    // Generate cryptographically secure 6-digit OTP code (strictly valid for 5 minutes)
+    // Cryptographically random 6-digit OTP
     const resetOtp = crypto.randomInt(100000, 999999).toString();
     user.passwordResetToken = this.hashToken(resetOtp);
+    // Explicit 5-minute expiry
     user.passwordResetExpires = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     await this.userRepo.save(user);
 
@@ -596,7 +597,6 @@ export class AuthService {
     return {
       success: true,
       message: `A 6-digit OTP verification code has been dispatched to ${normalizedEmail}. Valid for 5 minutes.`,
-      devCode: resetOtp,
     };
   }
 
@@ -623,7 +623,7 @@ export class AuthService {
     return { success: true };
   }
 
-  async requestEmailVerification(email: string): Promise<{ success: boolean; message: string; devCode?: string }> {
+  async requestEmailVerification(email: string): Promise<{ success: boolean; message: string }> {
     const normalizedEmail = (email || "").trim().toLowerCase();
     let user = await this.userRepo.findOne({ where: { email: normalizedEmail } });
     if (!user && typeof this.userRepo.createQueryBuilder === "function") {
@@ -655,7 +655,6 @@ export class AuthService {
       return {
         success: true,
         message: `A 6-digit verification code has been dispatched to ${normalizedEmail}. Valid for 5 minutes.`,
-        devCode: verifyOtp,
       };
     }
     return { success: true, message: "Verification code sent if account exists." };

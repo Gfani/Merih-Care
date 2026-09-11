@@ -26,7 +26,6 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
   const [resetNewPassword, setResetNewPassword] = useState("");
   const [resetConfirmPassword, setResetConfirmPassword] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
-  const [devOtpHint, setDevOtpHint] = useState<string | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,7 +88,6 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     setResetNewPassword("");
     setResetConfirmPassword("");
     setResetStep(1);
-    setDevOtpHint(null);
     setOtpModalOpen(true);
   };
 
@@ -105,7 +103,6 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
       return;
     }
     setResetLoading(true);
-    setDevOtpHint(null);
     setResetOtp("");
     setResetNewPassword("");
     setResetConfirmPassword("");
@@ -115,9 +112,6 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
       setResetOtp("");
       setResetNewPassword("");
       setResetConfirmPassword("");
-      if (res?.devCode || res?.code) {
-        setDevOtpHint((res.devCode || res.code) ?? null);
-      }
       setResetStep(2);
     } catch (err: any) {
       toast(err.response?.data?.message || err.message || "Failed to request password reset code", "error");
@@ -342,18 +336,6 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
             <p className="text-[#4a5a6a] dark:text-slate-300 leading-relaxed">
               Enter the 6-digit OTP verification code (valid for 5 minutes) sent to <strong className="text-[#18232e] dark:text-white">{resetEmail}</strong> and your new password.
             </p>
-            {devOtpHint && (
-              <div className="p-2.5 bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 rounded-lg text-teal-800 dark:text-teal-300 text-xs flex items-center justify-between">
-                <span>Verification OTP: <strong className="font-mono font-bold tracking-widest">{devOtpHint}</strong></span>
-                <button
-                  type="button"
-                  onClick={() => setResetOtp(devOtpHint)}
-                  className="text-[10px] font-bold underline hover:opacity-80 cursor-pointer"
-                >
-                  Auto-fill
-                </button>
-              </div>
-            )}
             <Input
               label="6-Digit OTP Code"
               type="text"

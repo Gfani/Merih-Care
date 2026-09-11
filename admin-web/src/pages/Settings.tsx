@@ -56,7 +56,6 @@ export default function SettingsSection() {
   const [settingsOtp, setSettingsOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [sendingOtp, setSendingOtp] = useState(false);
-  const [otpDevHint, setOtpDevHint] = useState<string | null>(null);
 
   const loadSettings = async () => {
     setLoading(true);
@@ -186,12 +185,9 @@ export default function SettingsSection() {
     }
     setSendingOtp(true);
     try {
-      const res = await api.requestPasswordReset(adminEmail);
+      await api.requestPasswordReset(adminEmail);
       toast("6-Digit OTP code sent to your email!", "success");
       setOtpSent(true);
-      if (res?.devCode || res?.code) {
-        setOtpDevHint((res.devCode || res.code) ?? null);
-      }
     } catch (err: any) {
       toast(err.response?.data?.message || err.message || "Failed to send OTP code", "error");
     } finally {
@@ -221,7 +217,6 @@ export default function SettingsSection() {
       setNewPassword("");
       setConfirmPassword("");
       setOtpSent(false);
-      setOtpDevHint(null);
     } catch (err: any) {
       toast(err.response?.data?.message || err.message || "Invalid or expired OTP code", "error");
     }
@@ -423,18 +418,6 @@ export default function SettingsSection() {
                 </Button>
               </div>
 
-              {otpDevHint && (
-                <div className="p-2.5 bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800 rounded-lg text-teal-800 dark:text-teal-300 text-xs flex items-center justify-between">
-                  <span>Verification OTP: <strong className="font-mono font-bold tracking-widest">{otpDevHint}</strong></span>
-                  <button
-                    type="button"
-                    onClick={() => setSettingsOtp(otpDevHint)}
-                    className="text-[10px] font-bold underline hover:opacity-80 cursor-pointer"
-                  >
-                    Auto-fill
-                  </button>
-                </div>
-              )}
 
               <Input
                 label="6-Digit OTP Code"

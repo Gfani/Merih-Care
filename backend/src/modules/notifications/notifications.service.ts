@@ -108,27 +108,34 @@ async function dispatchEmail(userId: string, title: string, body: string, recipi
     </div>
   `;
 
-  // 1. Resend API Dispatch (Official SDK or REST API with merihcare.live)
+  // 1. Resend API Dispatch (Official REST API with merihcare.live)
   if (resendApiKey && resendApiKey.startsWith("re_") && !resendApiKey.includes("xxxx")) {
-    try {
-      const { Resend } = require("resend");
-      const resend = new Resend(resendApiKey);
-      const fromFormatted = fromEmail.includes("<") ? fromEmail : `Merihcare Healthcare <${fromEmail}>`;
-      const response = await resend.emails.send({
-        from: fromFormatted,
-        to: [toEmail],
-        subject: title,
-        html: emailHtml,
-      });
-
-      if (response.error) {
-        logger.warn(`[Resend Error] Delivery failed to ${toEmail}: ${JSON.stringify(response.error)}`);
-      } else {
-        logger.log(`[Resend] Email delivered successfully to ${toEmail} (ID: ${response.data?.id})`);
-        return true;
+    const fromFormatted = fromEmail.includes("<") ? fromEmail : `Merihcare Healthcare <${fromEmail}>`;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const res = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${resendApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: fromFormatted,
+            to: [toEmail],
+            subject: title,
+            html: emailHtml,
+          }),
+        });
+        const result = await res.json();
+        if (res.ok && result.id) {
+          logger.log(`[Resend] Email delivered successfully to ${toEmail} (ID: ${result.id})`);
+          return true;
+        } else {
+          logger.warn(`[Resend Error] Delivery attempt ${attempt} failed to ${toEmail}: ${JSON.stringify(result)}`);
+        }
+      } catch (err: any) {
+        logger.warn(`[Resend Attempt ${attempt} network error]: ${err.message}`);
       }
-    } catch (err: any) {
-      logger.error(`[Resend] Dispatch failed: ${err.message}`);
     }
   } else if (resendApiKey && resendApiKey.includes("xxxx")) {
     logger.warn(`[Resend Notice] RESEND_API_KEY contains placeholder 're_xxxxxxxxx'. Please supply your actual secret API key from resend.com/api-keys.`);
