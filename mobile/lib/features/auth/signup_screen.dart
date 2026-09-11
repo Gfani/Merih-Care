@@ -35,6 +35,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   String _role = 'patient';
   String _title = 'Dr.';
   String _specialty = 'General Medicine';
+  String _verificationChannel = 'sms';
   bool _loading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -868,7 +869,130 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   ),
                 ],
 
-                const SizedBox(height: 32),
+                const SizedBox(height: 20),
+
+                // Verification Channel Selector (SMS vs Email)
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF0F766E).withOpacity(0.35)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF0F766E).withOpacity(0.06),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.mark_email_read_outlined, size: 18, color: Color(0xFF0F766E)),
+                          SizedBox(width: 8),
+                          Text(
+                            'Send Verification Code via:',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF134E4A),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () => setState(() => _verificationChannel = 'sms'),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: _verificationChannel == 'sms' ? const Color(0xFF0F766E) : const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: _verificationChannel == 'sms' ? const Color(0xFF0F766E) : Colors.grey.shade300,
+                                    width: _verificationChannel == 'sms' ? 1.5 : 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.sms_outlined,
+                                      size: 16,
+                                      color: _verificationChannel == 'sms' ? Colors.white : const Color(0xFF4B5563),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Via SMS (Phone)',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: _verificationChannel == 'sms' ? Colors.white : const Color(0xFF4B5563),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: InkWell(
+                              onTap: () => setState(() => _verificationChannel = 'email'),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: _verificationChannel == 'email' ? const Color(0xFF0F766E) : const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: _verificationChannel == 'email' ? const Color(0xFF0F766E) : Colors.grey.shade300,
+                                    width: _verificationChannel == 'email' ? 1.5 : 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.email_outlined,
+                                      size: 16,
+                                      color: _verificationChannel == 'email' ? Colors.white : const Color(0xFF4B5563),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Via Email',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: _verificationChannel == 'email' ? Colors.white : const Color(0xFF4B5563),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _verificationChannel == 'sms'
+                            ? 'A 6-digit verification code will be sent to your phone number via SMS.'
+                            : 'A 6-digit verification code will be delivered to your email inbox.',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 20),
                 ElevatedButton(
                   onPressed: (_loading || _uploadingCv || _uploadingLicense || _uploadingId)
                       ? null
@@ -923,7 +1047,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                                   phoneTrimmed,
                                   role: _role,
                                   providerData: providerData,
-                                  verificationChannel: phoneTrimmed.isNotEmpty ? 'sms' : 'email',
+                                  verificationChannel: _verificationChannel,
                                 );
 
                             if (mounted) {
@@ -936,6 +1060,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                                 context,
                                 _emailController.text.trim(),
                                 phone: phoneTrimmed,
+                                initialChannel: _verificationChannel,
                               );
                               if (!verified || !mounted) return;
 
@@ -1206,10 +1331,15 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     );
   }
 
-  Future<bool> _showEmailVerificationDialog(BuildContext context, String email, {String? phone}) async {
+  Future<bool> _showEmailVerificationDialog(
+    BuildContext context,
+    String email, {
+    String? phone,
+    String initialChannel = 'sms',
+  }) async {
     final otpCtrl = TextEditingController();
     bool loading = false;
-    String selectedChannel = (phone != null && phone.trim().isNotEmpty) ? 'sms' : 'email';
+    String selectedChannel = initialChannel;
     String? errorMsg;
     String? successMsg = selectedChannel == 'sms'
         ? 'A 6-digit verification code was dispatched to your phone ($phone) via SMS.'

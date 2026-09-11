@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Input, Select, Button, toast } from "../components/ui";
 import { api } from "../services/api";
-import { Mail, Lock, User, Eye, EyeOff, ShieldCheck, Activity, Users, Phone, KeyRound, CheckCircle2 } from "lucide-react";
+import { Mail, Lock, User, Eye, EyeOff, ShieldCheck, Activity, Users, Phone, KeyRound, CheckCircle2, Smartphone } from "lucide-react";
 import logo from "../assets/logo.png";
 import GoogleLogo from "../components/GoogleLogo";
 import { validateRealEmail } from "../utils/validation";
@@ -22,7 +22,13 @@ export default function SignUp() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  // Step 2: Email Verification OTP
+  // Verification Channel Option (SMS vs Email)
+  const [verificationChannel, setVerificationChannel] = useState<"sms" | "email">("sms");
+  const [maskedDestination, setMaskedDestination] = useState("");
+  const [resendingSms, setResendingSms] = useState(false);
+  const [resendingEmail, setResendingEmail] = useState(false);
+
+  // Step 2: Verification OTP
   const [emailOtp, setEmailOtp] = useState("");
   const [verifyingOtp, setVerifyingOtp] = useState(false);
 
@@ -47,14 +53,39 @@ export default function SignUp() {
     setLoading(true);
 
     try {
-      await api.signup(name, email, password, department, phone);
+      const res = await api.signup(name, email, password, department, phone, verificationChannel);
       setLoading(false);
-      toast("Registration initiated! A 6-digit OTP has been sent to your email.", "success");
+      const dest = res?.destination || (verificationChannel === "sms" ? phone : email);
+      setMaskedDestination(dest);
+      toast(
+        verificationChannel === "sms"
+          ? `Registration initiated! A 6-digit OTP has been sent via SMS to your phone.`
+          : `Registration initiated! A 6-digit OTP has been sent via Email to your inbox.`,
+        "success"
+      );
       setStep(2);
     } catch (err: any) {
       setLoading(false);
       const message = err.response?.data?.message || err.message || "Failed to submit registration";
       toast(Array.isArray(message) ? message[0] : message, "error");
+    }
+  };
+
+  const handleResendOtp = async (channel: "sms" | "email") => {
+    if (channel === "sms") setResendingSms(true);
+    else setResendingEmail(true);
+    try {
+      const identifier = channel === "sms" ? phone : email;
+      const res = await api.resendVerificationOtp(identifier, channel);
+      setVerificationChannel(channel);
+      const dest = res?.destination || (channel === "sms" ? phone : email);
+      setMaskedDestination(dest);
+      toast(`Verification code resent via ${channel.toUpperCase()}!`, "success");
+    } catch (err: any) {
+      toast(err.response?.data?.message || err.message || `Failed to resend verification OTP via ${channel.toUpperCase()}`, "error");
+    } finally {
+      setResendingSms(false);
+      setResendingEmail(false);
     }
   };
 
@@ -67,8 +98,9 @@ export default function SignUp() {
 
     setVerifyingOtp(true);
     try {
-      await api.confirmEmailVerification(email, emailOtp);
-      toast("Email verified successfully! Your account is now confirmed.", "success");
+      const identifier = verificationChannel === "sms" ? phone : email;
+      await api.confirmEmailVerification(identifier, emailOtp);
+      toast("Account verified successfully! Your account is now confirmed.", "success");
       navigate("/login");
     } catch (err: any) {
       const message = err.response?.data?.message || err.message || "Invalid or expired verification code";
@@ -218,6 +250,44 @@ export default function SignUp() {
                 ]}
               />
 
+              {/* Delivery Channel Selector */}
+              <div className="space-y-1.5 pt-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Send 6-Digit Verification Code via:
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setVerificationChannel("sms")}
+                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                      verificationChannel === "sms"
+                        ? "border-[#0d7c6a] bg-[#0d7c6a]/10 text-[#0d7c6a] dark:text-[#2dd4bf] shadow-sm ring-1 ring-[#0d7c6a]"
+                        : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-750"
+                    }`}
+                  >
+                    <Smartphone size={15} />
+                    <span>Via SMS (Phone)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVerificationChannel("email")}
+                    className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                      verificationChannel === "email"
+                        ? "border-[#0d7c6a] bg-[#0d7c6a]/10 text-[#0d7c6a] dark:text-[#2dd4bf] shadow-sm ring-1 ring-[#0d7c6a]"
+                        : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-750"
+                    }`}
+                  >
+                    <Mail size={15} />
+                    <span>Via Email</span>
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {verificationChannel === "sms"
+                    ? `OTP will be dispatched via SMS directly to your phone (${phone || "entered phone number"}).`
+                    : `OTP will be sent to your email address (${email || "entered email"}).`}
+                </p>
+              </div>
+
               <div className="flex items-start gap-2 pt-1">
                 <input
                   type="checkbox"
@@ -236,7 +306,7 @@ export default function SignUp() {
                 loading={loading}
                 className="w-full !bg-[#0d7c6a] hover:!bg-[#0a6355] text-white py-2.5 rounded-lg text-sm font-semibold shadow-md shadow-teal-900/10 transition-all cursor-pointer"
               >
-                Continue & Verify Email
+                Continue & Send Verification Code
               </Button>
 
               <div className="relative flex py-2 items-center">
@@ -264,15 +334,15 @@ export default function SignUp() {
               </p>
             </form>
           ) : (
-            /* Step 2: Email Verification OTP Form */
+            /* Step 2: Verification OTP Form */
             <form onSubmit={handleVerifyEmailOtp} className="space-y-4">
               <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-emerald-800 dark:text-emerald-300 text-xs space-y-1">
                 <p className="font-bold flex items-center gap-1.5">
                   <CheckCircle2 size={15} />
-                  Verification Code Sent
+                  Verification Code Sent via {verificationChannel.toUpperCase()}
                 </p>
                 <p className="text-[11px] leading-relaxed">
-                  Enter the 6-digit code sent to <strong>{email}</strong>. This code is valid strictly for <strong>5 minutes</strong> to confirm you own this email address.
+                  Enter the 6-digit code sent to <strong className="text-slate-900 dark:text-white">{maskedDestination || (verificationChannel === "sms" ? phone : email)}</strong>. This code is valid strictly for <strong>5 minutes</strong>.
                 </p>
               </div>
 
@@ -280,7 +350,7 @@ export default function SignUp() {
                 label="6-Digit Verification Code"
                 type="text"
                 value={emailOtp}
-                onChange={e => setEmailOtp(e.target.value)}
+                onChange={e => setEmailOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
                 placeholder="e.g. 123456"
                 maxLength={6}
                 required
@@ -292,23 +362,41 @@ export default function SignUp() {
                 loading={verifyingOtp}
                 className="w-full !bg-[#0d7c6a] hover:!bg-[#0a6355] text-white py-2.5 rounded-lg text-sm font-semibold shadow-md shadow-teal-900/10 transition-all cursor-pointer"
               >
-                Verify Email & Complete Registration
+                Verify & Complete Registration
               </Button>
+
+              {/* Resend via SMS vs Email */}
+              <div className="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-2">
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">Didn't receive code?</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={resendingSms || resendingEmail}
+                    onClick={() => handleResendOtp("sms")}
+                    className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-[#0d7c6a] dark:text-[#2dd4bf] hover:bg-[#0d7c6a]/10 rounded border border-[#0d7c6a]/30 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <Smartphone size={12} />
+                    <span>{resendingSms ? "Sending..." : "Resend SMS"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={resendingSms || resendingEmail}
+                    onClick={() => handleResendOtp("email")}
+                    className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-[#0d7c6a] dark:text-[#2dd4bf] hover:bg-[#0d7c6a]/10 rounded border border-[#0d7c6a]/30 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <Mail size={12} />
+                    <span>{resendingEmail ? "Sending..." : "Resend Email"}</span>
+                  </button>
+                </div>
+              </div>
 
               <div className="flex items-center justify-between text-xs pt-2">
                 <button
                   type="button"
                   onClick={() => setStep(1)}
-                  className="text-slate-500 hover:text-slate-700 dark:text-slate-400 hover:underline"
+                  className="text-slate-500 hover:text-slate-700 dark:text-slate-400 hover:underline cursor-pointer"
                 >
                   &larr; Change Details
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSignUp}
-                  className="text-[#0d7c6a] font-semibold hover:underline"
-                >
-                  Resend 5-Min Code
                 </button>
               </div>
             </form>

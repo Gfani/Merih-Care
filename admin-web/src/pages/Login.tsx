@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Input, Button, toast, Modal } from "../components/ui";
 import { api } from "../services/api";
-import { Mail, Lock, Eye, EyeOff, ShieldCheck, Activity, Users, KeyRound } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, ShieldCheck, Activity, Users, KeyRound, Smartphone, RefreshCw } from "lucide-react";
 import logo from "../assets/logo.png";
 import GoogleLogo from "../components/GoogleLogo";
 import { validateRealEmail } from "../utils/validation";
@@ -18,14 +18,18 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  // OTP Password Reset State
+  // OTP Password Reset State (Dual-Channel SMS & Email)
   const [otpModalOpen, setOtpModalOpen] = useState(false);
   const [resetStep, setResetStep] = useState<1 | 2>(1);
-  const [resetEmail, setResetEmail] = useState("");
+  const [resetChannel, setResetChannel] = useState<"sms" | "email">("sms");
+  const [resetIdentifier, setResetIdentifier] = useState("");
+  const [resetMaskedDest, setResetMaskedDest] = useState("");
   const [resetOtp, setResetOtp] = useState("");
   const [resetNewPassword, setResetNewPassword] = useState("");
   const [resetConfirmPassword, setResetConfirmPassword] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
+  const [resendingSms, setResendingSms] = useState(false);
+  const [resendingEmail, setResendingEmail] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,7 +87,9 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
   };
 
   const handleOpenOtpModal = () => {
-    setResetEmail(email || "");
+    setResetIdentifier(email || "");
+    setResetChannel(email ? "email" : "sms");
+    setResetMaskedDest("");
     setResetOtp("");
     setResetNewPassword("");
     setResetConfirmPassword("");
@@ -93,22 +99,32 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
 
   const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!resetEmail) {
-      toast("Please enter your administrator email", "warning");
+    const val = resetIdentifier.trim();
+    if (!val) {
+      toast(resetChannel === "sms" ? "Please enter your mobile phone number" : "Please enter your administrator email", "warning");
       return;
     }
-    const emailCheck = validateRealEmail(resetEmail);
-    if (!emailCheck.isValid) {
-      toast(emailCheck.error || "Please enter a valid email", "warning");
-      return;
+    if (resetChannel === "email") {
+      const emailCheck = validateRealEmail(val);
+      if (!emailCheck.isValid) {
+        toast(emailCheck.error || "Please enter a valid email", "warning");
+        return;
+      }
     }
     setResetLoading(true);
     setResetOtp("");
     setResetNewPassword("");
     setResetConfirmPassword("");
     try {
-      const res = await api.requestPasswordReset(resetEmail);
-      toast("6-Digit OTP code sent to your email! (Valid for 5 minutes)", "success");
+      const res = await api.requestPasswordReset(val, resetChannel);
+      const dest = res.destination || val;
+      setResetMaskedDest(dest);
+      toast(
+        resetChannel === "sms"
+          ? `6-Digit OTP code sent via SMS to ${dest}! (Valid for 5 minutes)`
+          : `6-Digit OTP code sent via Email to ${dest}! (Valid for 5 minutes)`,
+        "success"
+      );
       setResetOtp("");
       setResetNewPassword("");
       setResetConfirmPassword("");
@@ -117,6 +133,23 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
       toast(err.response?.data?.message || err.message || "Failed to request password reset code", "error");
     } finally {
       setResetLoading(false);
+    }
+  };
+
+  const handleResendOtp = async (targetChannel: "sms" | "email") => {
+    if (targetChannel === "sms") setResendingSms(true);
+    else setResendingEmail(true);
+    try {
+      const res = await api.requestPasswordReset(resetIdentifier.trim(), targetChannel);
+      setResetChannel(targetChannel);
+      const dest = res.destination || resetIdentifier.trim();
+      setResetMaskedDest(dest);
+      toast(`New 6-digit OTP code sent via ${targetChannel.toUpperCase()} to ${dest}!`, "success");
+    } catch (err: any) {
+      toast(err.response?.data?.message || err.message || `Failed to resend OTP via ${targetChannel.toUpperCase()}`, "error");
+    } finally {
+      setResendingSms(false);
+      setResendingEmail(false);
     }
   };
 
@@ -136,9 +169,11 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     }
     setResetLoading(true);
     try {
-      await api.confirmPasswordReset(resetEmail, resetOtp.trim(), resetNewPassword);
+      await api.confirmPasswordReset(resetIdentifier.trim(), resetOtp.trim(), resetNewPassword);
       toast("Password reset successfully! You can now sign in with your new password.", "success");
-      setEmail(resetEmail);
+      if (resetIdentifier.includes("@")) {
+        setEmail(resetIdentifier.trim());
+      }
       setPassword(resetNewPassword);
       setOtpModalOpen(false);
     } catch (err: any) {
@@ -306,24 +341,73 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
       >
         {resetStep === 1 ? (
           <form onSubmit={handleRequestOtp} className="space-y-4 text-xs">
+            {/* Channel Selection Toggle */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Choose Verification Delivery Channel:
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setResetChannel("sms")}
+                  className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                    resetChannel === "sms"
+                      ? "border-[#0d7c6a] bg-[#0d7c6a]/10 text-[#0d7c6a] dark:text-[#2dd4bf] shadow-sm ring-1 ring-[#0d7c6a]"
+                      : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-750"
+                  }`}
+                >
+                  <Smartphone size={15} />
+                  <span>Via SMS (Phone)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResetChannel("email")}
+                  className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                    resetChannel === "email"
+                      ? "border-[#0d7c6a] bg-[#0d7c6a]/10 text-[#0d7c6a] dark:text-[#2dd4bf] shadow-sm ring-1 ring-[#0d7c6a]"
+                      : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-750"
+                  }`}
+                >
+                  <Mail size={15} />
+                  <span>Via Email</span>
+                </button>
+              </div>
+            </div>
+
             <p className="text-[#4a5a6a] dark:text-slate-300 leading-relaxed">
-              Enter your registered administrator email address. We will send a secure 6-digit verification OTP valid for <strong>5 minutes</strong>.
+              {resetChannel === "sms"
+                ? "Enter your registered mobile phone number. We will send a secure 6-digit OTP via SMS (valid for 5 minutes)."
+                : "Enter your registered administrator email address. We will send a secure 6-digit OTP code (valid for 5 minutes)."}
             </p>
-            <Input
-              label="Administrator Email"
-              type="email"
-              value={resetEmail}
-              onChange={(e) => setResetEmail(e.target.value)}
-              placeholder="admin@merihcare.et"
-              required
-              leftIcon={<Mail size={16} />}
-            />
+
+            {resetChannel === "sms" ? (
+              <Input
+                label="Administrator Mobile Phone"
+                type="tel"
+                value={resetIdentifier}
+                onChange={(e) => setResetIdentifier(e.target.value)}
+                placeholder="0911223344 or +251911223344"
+                required
+                leftIcon={<Smartphone size={16} />}
+              />
+            ) : (
+              <Input
+                label="Administrator Email"
+                type="email"
+                value={resetIdentifier}
+                onChange={(e) => setResetIdentifier(e.target.value)}
+                placeholder="admin@merihcare.et"
+                required
+                leftIcon={<Mail size={16} />}
+              />
+            )}
+
             <div className="flex justify-end gap-2 pt-2 border-t border-[#f0f4f7] dark:border-slate-700">
               <Button type="button" variant="ghost" onClick={() => setOtpModalOpen(false)}>
                 Cancel
               </Button>
               <Button type="submit" loading={resetLoading}>
-                Send 6-Digit OTP
+                {resetChannel === "sms" ? "Send SMS OTP" : "Send Email OTP"}
               </Button>
             </div>
           </form>
@@ -333,9 +417,15 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
             <input type="text" name="fake_username_remembered" tabIndex={-1} aria-hidden="true" autoComplete="username" style={{ position: "absolute", opacity: 0, height: 0, width: 0, pointerEvents: "none", zIndex: -1 }} />
             <input type="password" name="fake_password_remembered" tabIndex={-1} aria-hidden="true" autoComplete="current-password" style={{ position: "absolute", opacity: 0, height: 0, width: 0, pointerEvents: "none", zIndex: -1 }} />
 
-            <p className="text-[#4a5a6a] dark:text-slate-300 leading-relaxed">
-              Enter the 6-digit OTP verification code (valid for 5 minutes) sent to <strong className="text-[#18232e] dark:text-white">{resetEmail}</strong> and your new password.
-            </p>
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg text-emerald-800 dark:text-emerald-300">
+              <p className="font-semibold text-xs mb-1">
+                6-Digit OTP Dispatched via {resetChannel.toUpperCase()}
+              </p>
+              <p className="text-[11px] leading-relaxed">
+                Sent to <strong className="text-slate-900 dark:text-white">{resetMaskedDest || resetIdentifier}</strong>. Valid strictly for <strong>5 minutes</strong>.
+              </p>
+            </div>
+
             <Input
               label="6-Digit OTP Code"
               type="text"
@@ -374,6 +464,32 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
               required
               leftIcon={<Lock size={16} />}
             />
+
+            {/* Resend via SMS vs Email */}
+            <div className="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-2">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">Didn't receive code?</span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={resendingSms || resendingEmail}
+                  onClick={() => handleResendOtp("sms")}
+                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-[#0d7c6a] dark:text-[#2dd4bf] hover:bg-[#0d7c6a]/10 rounded border border-[#0d7c6a]/30 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <Smartphone size={12} />
+                  <span>{resendingSms ? "Sending..." : "Resend SMS"}</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={resendingSms || resendingEmail}
+                  onClick={() => handleResendOtp("email")}
+                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-[#0d7c6a] dark:text-[#2dd4bf] hover:bg-[#0d7c6a]/10 rounded border border-[#0d7c6a]/30 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <Mail size={12} />
+                  <span>{resendingEmail ? "Sending..." : "Resend Email"}</span>
+                </button>
+              </div>
+            </div>
+
             <div className="flex items-center justify-between pt-2 border-t border-[#f0f4f7] dark:border-slate-700">
               <button
                 type="button"

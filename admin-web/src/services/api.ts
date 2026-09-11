@@ -164,9 +164,17 @@ export const api = {
     }
   },
 
-  async signup(name: string, email: string, pass: string, dept: string, phone?: string): Promise<any> {
+  async signup(name: string, email: string, pass: string, dept: string, phone?: string, verificationChannel: "sms" | "email" = "email"): Promise<any> {
     try {
-      const res = await axios.post(`${API_URL}/auth/signup`, { name, email, password: pass, department: dept, phone });
+      const res = await axios.post(`${API_URL}/auth/signup`, {
+        name,
+        email,
+        password: pass,
+        department: dept,
+        phone,
+        role: "admin",
+        verificationChannel,
+      });
       return res.data;
     } catch (error) {
       if (isDemoMode()) return { success: true };
@@ -841,9 +849,16 @@ export const api = {
     }
   },
 
-  async requestPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
+  async requestPasswordReset(identifier: string, channel: "sms" | "email" = "email"): Promise<{ success: boolean; channel?: string; destination?: string; message: string }> {
     try {
-      const res = await axios.post(`${API_URL}/auth/password-reset/request`, { email });
+      const payload: any = { identifier, channel };
+      if (channel === "email" || identifier.includes("@")) {
+        payload.email = identifier;
+      }
+      if (channel === "sms" || !identifier.includes("@")) {
+        payload.phone = identifier;
+      }
+      const res = await axios.post(`${API_URL}/auth/password-reset/request`, payload);
       return res.data;
     } catch (error) {
       if (isDemoMode()) return { success: true, message: "Reset OTP code sent" };
@@ -851,9 +866,15 @@ export const api = {
     }
   },
 
-  async confirmPasswordReset(email: string, token: string, newPassword: string): Promise<{ success: boolean }> {
+  async confirmPasswordReset(identifier: string, token: string, newPassword: string): Promise<{ success: boolean }> {
     try {
-      const res = await axios.post(`${API_URL}/auth/password-reset/confirm`, { email, token, newPassword });
+      const payload: any = { identifier, token, newPassword };
+      if (identifier.includes("@")) {
+        payload.email = identifier;
+      } else {
+        payload.phone = identifier;
+      }
+      const res = await axios.post(`${API_URL}/auth/password-reset/confirm`, payload);
       return res.data;
     } catch (error) {
       if (isDemoMode()) return { success: true };
@@ -861,12 +882,34 @@ export const api = {
     }
   },
 
-  async confirmEmailVerification(email: string, token: string): Promise<{ success: boolean }> {
+  async confirmEmailVerification(identifier: string, token: string): Promise<{ success: boolean }> {
     try {
-      const res = await axios.post(`${API_URL}/auth/email-verification/confirm`, { email, token });
+      const payload: any = { identifier, token };
+      if (identifier.includes("@")) {
+        payload.email = identifier;
+      } else {
+        payload.phone = identifier;
+      }
+      const res = await axios.post(`${API_URL}/auth/email-verification/confirm`, payload);
       return res.data;
     } catch (error) {
       if (isDemoMode()) return { success: true };
+      throw error;
+    }
+  },
+
+  async resendVerificationOtp(identifier: string, channel: "sms" | "email"): Promise<{ success: boolean; channel?: string; destination?: string; message: string }> {
+    try {
+      const payload: any = { identifier, channel };
+      if (identifier.includes("@")) {
+        payload.email = identifier;
+      } else {
+        payload.phone = identifier;
+      }
+      const res = await axios.post(`${API_URL}/auth/email-verification/request`, payload);
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { success: true, message: "Verification OTP resent" };
       throw error;
     }
   },
