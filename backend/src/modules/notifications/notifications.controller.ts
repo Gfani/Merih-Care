@@ -150,4 +150,13 @@ export class NotificationsController {
   async send(@Body() body: SendNotificationDto) {
     return this.notificationsService.sendNotificationLegacy(body.userId, body.title, body.body);
   }
+
+  // Quick SMS Dispatch / Test Endpoint
+  @Post("test-sms")
+  async testSms(@Body() body: { phone: string; message?: string }) {
+    const msg = body.message || "Your MerihCare verification code is 849201. Valid for 5 minutes.";
+    const success = await this.notificationsService.sendSmsDirect(body.phone, msg);
+    return { success, phone: body.phone, message: msg };
+  }
 }
+

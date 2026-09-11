@@ -227,10 +227,58 @@ async function dispatchEmail(userId: string, title: string, body: string, recipi
   }
 }
 
+function formatPhoneE164(raw: string): string {
+  const digits = raw.replace(/[^\d+]/g, "");
+  if (digits.startsWith("+")) return digits;
+  if (digits.startsWith("00")) return `+${digits.substring(2)}`;
+  if (digits.startsWith("0")) return `+251${digits.substring(1)}`;
+  if (digits.startsWith("251")) return `+${digits}`;
+  if (digits.startsWith("9") || digits.startsWith("7")) return `+251${digits}`;
+  return `+${digits}`;
+}
+
 async function dispatchSms(userId: string, body: string, recipientPhone?: string): Promise<boolean> {
+  const rawPhone = recipientPhone || (userId.startsWith("+") || userId.startsWith("0") ? userId : "");
+  if (!rawPhone) {
+    logger.warn(`[SMS] No recipient phone available for user ${userId}`);
+    return false;
+  }
+  const targetPhone = formatPhoneE164(rawPhone);
+
+  // 1. Textbee Android Gateway (dispatches directly via connected Android SIM)
+  const textbeeDeviceId = process.env.TEXTBEE_DEVICE_ID;
+  const textbeeApiKey = process.env.TEXTBEE_API_KEY;
+
+  if (textbeeDeviceId && textbeeApiKey) {
+    try {
+      const endpoint = `https://api.textbee.dev/api/v1/gateway/devices/${textbeeDeviceId}/send-sms`;
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "x-api-key": textbeeApiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          recipients: [targetPhone],
+          message: `[Merihcare] ${body}`,
+        }),
+      });
+
+      const resData: any = await res.json().catch(() => ({}));
+      if (res.ok && resData.success !== false) {
+        logger.log(`[SMS Textbee Gateway] Dispatched via Android SIM → ${targetPhone}: ${body}`);
+        return true;
+      } else {
+        logger.warn(`[SMS Textbee Gateway] Dispatch failed (${res.status}): ${JSON.stringify(resData)}`);
+      }
+    } catch (err: any) {
+      logger.error(`[SMS Textbee Gateway] Error: ${err.message}`);
+    }
+  }
+
+  // 2. Africa's Talking Gateway (fallback)
   const atKey = process.env.AFRICASTALKING_API_KEY || process.env.AFRICAS_TALKING_API_KEY;
   const atUsername = process.env.AFRICASTALKING_USERNAME || process.env.AFRICAS_TALKING_USERNAME || "sandbox";
-  const targetPhone = recipientPhone || (userId.startsWith("+") ? userId : `+251${userId.replace(/^0/, "")}`);
 
   if (atKey && !atKey.startsWith("mock_")) {
     try {
@@ -265,7 +313,7 @@ async function dispatchSms(userId: string, body: string, recipientPhone?: string
       return false;
     }
   } else {
-    if (process.env.NODE_ENV === "production") {
+    if (process.env.NODE_ENV === "production" && !textbeeDeviceId) {
       logger.error(`[SMS Error] SMS provider credentials are not configured in production`);
       return false;
     }
@@ -273,6 +321,7 @@ async function dispatchSms(userId: string, body: string, recipientPhone?: string
     return true;
   }
 }
+
 
 @Injectable()
 export class NotificationsService {
@@ -666,9 +715,15 @@ export class NotificationsService {
     });
   }
 
+  // Direct SMS Dispatch
+  async sendSmsDirect(phone: string, message: string): Promise<boolean> {
+    return dispatchSms("sms-direct", message, phone);
+  }
+
   // Legacy stub compatibility
   async sendNotificationLegacy(userId: string, title: string, body: string): Promise<any> {
     const n = await this.sendNotification(userId, { type: "general", title, body });
     return { success: true, timestamp: n.createdAt };
   }
 }
+
