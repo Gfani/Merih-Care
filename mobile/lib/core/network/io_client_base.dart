@@ -3,8 +3,8 @@ import 'package:flutter/foundation.dart';
 const String _envApiUrl = String.fromEnvironment('API_URL');
 const String _envRealtimeUrl = String.fromEnvironment('REALTIME_URL');
 
-// Azure production backend URL
-const String _prodBackendUrl = 'https://app-merihcare-prod-backend.agreeablemoss-f06ffa43.uaenorth.azurecontainerapps.io';
+// Production custom domain backend URL
+const String _prodBackendUrl = 'https://api.merihcare.live';
 
 final String defaultApiUrl = _envApiUrl.isNotEmpty
     ? _envApiUrl
