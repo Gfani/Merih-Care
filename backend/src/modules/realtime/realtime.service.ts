@@ -57,6 +57,14 @@ export class RealtimeService {
   emitNewServiceRequest(data: any) {
     this.emitToRoom("providers", "new_service_request", data);
     this.emitToRoom("admin", "new_service_request", data);
+    if (this.server) {
+      this.server.emit("new_service_request", {
+        v: 1,
+        event: "new_service_request",
+        data,
+        ts: new Date().toISOString(),
+      });
+    }
   }
 
   /** Provider accepted or rejected a request — notify the patient */
@@ -98,5 +106,32 @@ export class RealtimeService {
       providerId,
       ts: new Date().toISOString(),
     });
+  }
+
+  /** User removed (deleted) - broadcast immediately to admin room and clients */
+  emitUserRemoved(userId: string) {
+    const payload = { userId, ts: new Date().toISOString() };
+    this.emitToRoom("admin", "user_removed", payload);
+    if (this.server) {
+      this.server.emit("user_removed", { v: 1, event: "user_removed", data: payload, ts: payload.ts });
+    }
+  }
+
+  /** User status changed (suspended / active) - broadcast immediately to admin room and clients */
+  emitUserStatusChanged(userId: string, status: string) {
+    const payload = { userId, status, ts: new Date().toISOString() };
+    this.emitToRoom("admin", "user_status_changed", payload);
+    if (this.server) {
+      this.server.emit("user_status_changed", { v: 1, event: "user_status_changed", data: payload, ts: payload.ts });
+    }
+  }
+
+  /** New provider or administrator requested approval - broadcast immediately to admin room and clients */
+  emitApprovalRequested(data: any) {
+    const payload = { ...data, ts: new Date().toISOString() };
+    this.emitToRoom("admin", "approval_requested", payload);
+    if (this.server) {
+      this.server.emit("approval_requested", { v: 1, event: "approval_requested", data: payload, ts: payload.ts });
+    }
   }
 }

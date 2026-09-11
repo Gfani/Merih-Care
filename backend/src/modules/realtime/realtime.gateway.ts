@@ -112,20 +112,34 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     if (!userId) { socket.disconnect(); return; }
 
     // Auto-join personal room
-    const personalRoom = role === "provider" ? `provider:${userId}` : `patient:${userId}`;
+    const personalRoom = role === "provider" ? `provider:${userId}` : (role === "admin" || role === "super_admin" ? `admin:${userId}` : `patient:${userId}`);
     socket.join(personalRoom);
 
     // Join providers broadcast room
     if (role === "provider") socket.join("providers");
 
+    // Auto-join admin room for immediate real-time dashboard events
+    if (role === "admin" || role === "super_admin") {
+      socket.join("admin");
+      adminSocketCount.count += 1;
+      if (!adminMetricsInterval) {
+        adminMetricsInterval = setInterval(() => this.broadcastAdminMetrics(), 10000);
+        adminMetricsInterval.unref();
+      }
+    }
+
+    const roomsSet = new Set([personalRoom]);
+    if (role === "admin" || role === "super_admin") roomsSet.add("admin");
+    if (role === "provider") roomsSet.add("providers");
+
     socketUserMap.set(socket.id, {
       userId, role,
-      rooms: new Set([personalRoom]),
+      rooms: roomsSet,
       lastPong: Date.now(),
       lastLocationAt: new Map(),
     });
 
-    this.presence.registerSession(socket.id, userId, role, [personalRoom]);
+    this.presence.registerSession(socket.id, userId, role, Array.from(roomsSet));
     this.realtimeService.emitUserPresence(userId, role, "online");
 
     // Emit connection established — client must receive this to show LIVE badge
@@ -140,7 +154,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   handleDisconnect(socket: Socket) {
     const info = socketUserMap.get(socket.id);
     if (info) {
-      if (info.role === "admin") {
+      if (info.role === "admin" || info.role === "super_admin") {
         adminSocketCount.count = Math.max(0, adminSocketCount.count - 1);
         if (adminSocketCount.count === 0 && adminMetricsInterval) {
           clearInterval(adminMetricsInterval);
@@ -208,7 +222,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   @SubscribeMessage("join_admin")
   handleJoinAdmin(@ConnectedSocket() socket: Socket) {
     const role = (socket as any).role;
-    if (role !== "admin") {
+    if (role !== "admin" && role !== "super_admin") {
       socket.emit("error", { message: "Admin role required" });
       return { ok: false, error: "Forbidden" };
     }

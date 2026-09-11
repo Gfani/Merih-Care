@@ -1,10 +1,11 @@
-import { Controller, Get, Put, Delete, Body, Param, UseGuards, Query, Req, ForbiddenException } from "@nestjs/common";
+import { Controller, Get, Put, Delete, Body, Param, UseGuards, Query, Req, ForbiddenException, Optional } from "@nestjs/common";
 import { UsersService } from "./users.service";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 import { RolesGuard } from "../../shared/guards/roles.guard";
 import { Roles } from "../../shared/decorators/roles.decorator";
 import { PaginationQueryDto } from "../../shared/dtos/pagination-query.dto";
 import { IsNotEmpty, IsIn } from "class-validator";
+import { RealtimeService } from "../realtime/realtime.service";
 
 export class UpdateUserRoleDto {
   @IsNotEmpty()
@@ -16,7 +17,10 @@ export class UpdateUserRoleDto {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles("admin", "super_admin")
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    @Optional() private readonly realtimeService?: RealtimeService,
+  ) {}
 
   @Get()
   async getUsers(@Query() query: any) {
@@ -25,12 +29,20 @@ export class UsersController {
 
   @Put(":id/suspend")
   async suspendUser(@Param("id") id: string) {
-    return this.usersService.toggleUserSuspension(id);
+    const res = await this.usersService.toggleUserSuspension(id);
+    if (this.realtimeService) {
+      this.realtimeService.emitUserStatusChanged(id, (res as any)?.status || "suspended");
+    }
+    return res;
   }
 
   @Put(":id/reactivate")
   async reactivateUser(@Param("id") id: string) {
-    return this.usersService.reactivateUser(id);
+    const res = await this.usersService.reactivateUser(id);
+    if (this.realtimeService) {
+      this.realtimeService.emitUserStatusChanged(id, "active");
+    }
+    return res;
   }
 
   @Put(":id/role")
@@ -47,6 +59,10 @@ export class UsersController {
     if (actorId === id) {
       throw new ForbiddenException("Administrators cannot delete their own account");
     }
-    return this.usersService.deleteUser(id);
+    const result = await this.usersService.deleteUser(id);
+    if (this.realtimeService) {
+      this.realtimeService.emitUserRemoved(id);
+    }
+    return result;
   }
 }

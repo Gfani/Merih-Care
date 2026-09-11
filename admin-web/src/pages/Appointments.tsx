@@ -6,6 +6,7 @@ import {
   Calendar as CalendarIcon, Clock, MapPin, UserCheck, ShieldAlert,
   Phone, ChevronLeft, ChevronRight, Plus, UserPlus, Sparkles, Check, RefreshCw
 } from "lucide-react";
+import { useRealtimeSocket } from "../hooks/useRealtimeSocket";
 
 export default function AppointmentsSection() {
   const [tab, setTab] = useState<"list" | "calendar">("list");
@@ -77,17 +78,46 @@ export default function AppointmentsSection() {
     return () => clearInterval(timer);
   }, []);
 
+  // Real-time socket events for immediate service request and appointment updates
+  useRealtimeSocket({
+    new_service_request: (data: any) => {
+      const apt = data?.data || data;
+      if (apt?.appointmentId || apt?.id) {
+        const id = apt.appointmentId || apt.id;
+        setAppointments((prev) => [{ ...apt, id }, ...prev.filter((a) => a.id !== id)]);
+      } else {
+        loadData();
+      }
+    },
+    appointment_status_update: (data: any) => {
+      const apt = data?.data || data;
+      const targetId = apt?.appointmentId || apt?.id;
+      if (targetId) {
+        setAppointments((prev) =>
+          prev.map((a) => (a.id === targetId ? { ...a, ...apt, id: targetId } : a))
+        );
+      } else {
+        loadData();
+      }
+    },
+  });
+
   const handleUpdateStatus = async () => {
     if (!selectedApt) return;
+    const targetId = selectedApt.id;
+    // Optimistic status update
+    setAppointments((prev) =>
+      prev.map((a) => (a.id === targetId ? { ...a, status: newStatus } : a))
+    );
     setUpdating(true);
     try {
-      await api.updateAppointmentStatus(selectedApt.id, newStatus, statusReason);
-      toast(`Appointment #${selectedApt.id} updated to ${newStatus}`, "success");
+      await api.updateAppointmentStatus(targetId, newStatus, statusReason);
+      toast(`Appointment #${targetId} updated to ${newStatus}`, "success");
       setStatusModal(false);
       setStatusReason("");
-      loadData();
     } catch {
       toast("Failed to update appointment status.", "error");
+      loadData();
     } finally {
       setUpdating(false);
     }

@@ -59,39 +59,47 @@ export class VerificationService {
 
   async getVerificationQueue(): Promise<any[]> {
     const providers = await this.providerRepo.find({ where: { verified: false } });
-    return Promise.all(
-      providers.map(async (p) => {
-        let user: UserEntity | null = null;
-        if (this.userRepo && p.userId) {
-          user = await this.userRepo.findOne({ where: { id: p.userId } });
-        }
-        return {
-          id: p.id,
-          userId: p.userId,
-          name: p.name,
-          avatar: p.avatar,
-          title: p.title,
-          specialty: p.specialty,
-          licenseNumber: p.licenseNumber,
-          experience: p.experience,
-          education: p.education,
-          hospitalAffiliation: p.hospitalAffiliation,
-          pricePerVisit: p.pricePerVisit,
-          email: user?.email || "",
-          phone: user?.phone || "",
-          joinedDate: user?.dateJoined || (p.createdAt ? p.createdAt.toISOString().split("T")[0] : ""),
-          createdAt: p.createdAt,
-          updatedAt: p.updatedAt,
-          status: p.status,
-          verified: p.verified,
-          available: p.available,
-          services: p.services,
-          cvUrl: this.normalizeDocUrl(p.cvUrl),
-          licenseDocumentUrl: this.normalizeDocUrl(p.licenseDocumentUrl),
-          idDocumentUrl: this.normalizeDocUrl(p.idDocumentUrl),
-        };
-      })
-    );
+    const results: any[] = [];
+
+    for (const p of providers) {
+      let user: UserEntity | null = null;
+      if (this.userRepo && p.userId) {
+        user = await this.userRepo.findOne({ where: { id: p.userId } });
+      }
+
+      // Deferral Rule: Providers who have not verified their email OTP are NOT sent to admin approval
+      if (user && !user.emailVerified) {
+        continue;
+      }
+
+      results.push({
+        id: p.id,
+        userId: p.userId,
+        name: p.name,
+        avatar: p.avatar,
+        title: p.title,
+        specialty: p.specialty,
+        licenseNumber: p.licenseNumber,
+        experience: p.experience,
+        education: p.education,
+        hospitalAffiliation: p.hospitalAffiliation,
+        pricePerVisit: p.pricePerVisit,
+        email: user?.email || "",
+        phone: user?.phone || (p as any).phone || "",
+        joinedDate: user?.dateJoined || (p.createdAt ? p.createdAt.toISOString().split("T")[0] : ""),
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+        status: p.status,
+        verified: p.verified,
+        available: p.available,
+        services: p.services,
+        cvUrl: this.normalizeDocUrl(p.cvUrl),
+        licenseDocumentUrl: this.normalizeDocUrl(p.licenseDocumentUrl),
+        idDocumentUrl: this.normalizeDocUrl(p.idDocumentUrl),
+      });
+    }
+
+    return results;
   }
 
   async approveProvider(id: string, actorId: string): Promise<ProviderEntity> {

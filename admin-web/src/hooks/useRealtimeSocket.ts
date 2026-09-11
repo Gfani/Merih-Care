@@ -19,11 +19,12 @@ export interface RealtimeEvent {
 }
 
 export interface UseRealtimeSocketOptions {
-  token: string | null;
+  token?: string | null;
   baseUrl?: string;
   /** Only activate HTTP polling when the caller explicitly passes true */
   fallbackPoll?: boolean;
-  onEvent?: (event: string, payload: RealtimeEvent) => void;
+  onEvent?: (event: string, payload: any) => void;
+  [eventName: string]: any;
 }
 
 export interface UseRealtimeSocketReturn {
@@ -49,15 +50,25 @@ const HEARTBEAT_STALE_MS = 35_000;
 
 const BACKEND_URL = API_URL.replace(/\/api\/v1\/?$/, "");
 
-export function useRealtimeSocket({
-  token,
-  baseUrl = BACKEND_URL,
-  fallbackPoll = false,
-  onEvent,
-}: UseRealtimeSocketOptions): UseRealtimeSocketReturn {
+export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRealtimeSocketReturn {
+  const {
+    token: propToken,
+    baseUrl = BACKEND_URL,
+    fallbackPoll = false,
+    onEvent,
+  } = options;
+
+  const effectiveToken =
+    propToken ||
+    (typeof window !== "undefined"
+      ? localStorage.getItem("token") || localStorage.getItem("admin_token")
+      : null);
+
   const socketRef = useRef<Socket | null>(null);
   const lastPongRef = useRef<number | null>(null);
   const joinedRoomsRef = useRef<Array<{ event: string; data: any }>>([]);
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   const [isLive, setIsLive] = useState(false);
   const [connectionEstablished, setConnectionEstablished] = useState(false);
@@ -73,7 +84,7 @@ export function useRealtimeSocket({
   }, [connected, connectionEstablished, heartbeatAge]);
 
   useEffect(() => {
-    if (!token) {
+    if (!effectiveToken) {
       setConnectionState("disconnected");
       return;
     }
@@ -82,7 +93,7 @@ export function useRealtimeSocket({
 
     const origin = baseUrl.replace(/\/api\/v\d+.*$/, "");
     const socket = io(`${origin}/realtime`, {
-      auth: { token },
+      auth: { token: effectiveToken },
       // ONLY use polling as a transport if fallbackPoll is explicitly true
       transports: fallbackPoll ? ["polling", "websocket"] : ["websocket"],
       reconnection: true,
@@ -97,6 +108,9 @@ export function useRealtimeSocket({
       setConnectionEstablished(true);
       setLastUpdated(payload.ts);
       setConnectionState("connected");
+
+      // Register with admin room immediately for realtime platform updates
+      socket.emit("join_admin", {});
 
       // Re-join previously joined rooms on reconnect
       for (const room of joinedRoomsRef.current) {
@@ -140,11 +154,18 @@ export function useRealtimeSocket({
       "notification",
       "admin_metrics",
       "new_message",
+      "user_removed",
+      "user_status_changed",
+      "approval_requested",
     ];
     for (const evt of eventNames) {
-      socket.on(evt, (payload: RealtimeEvent) => {
+      socket.on(evt, (payload: any) => {
         setLastUpdated(payload?.ts || new Date().toISOString());
         onEvent?.(evt, payload);
+        const customHandler = optionsRef.current[evt];
+        if (typeof customHandler === "function") {
+          customHandler(payload?.data !== undefined ? payload.data : payload);
+        }
       });
     }
 
@@ -169,7 +190,7 @@ export function useRealtimeSocket({
       setIsLive(false);
       setConnectionState("disconnected");
     };
-  }, [token, baseUrl, fallbackPoll]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [effectiveToken, baseUrl, fallbackPoll]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const on = useCallback((event: string, handler: (payload: any) => void) => {
     socketRef.current?.on(event, handler);

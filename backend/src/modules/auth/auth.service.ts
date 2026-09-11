@@ -8,6 +8,7 @@ import * as bcrypt from "bcryptjs";
 import * as crypto from "crypto";
 import { JwtService } from "@nestjs/jwt";
 import { NotificationsService } from "../notifications/notifications.service";
+import { RealtimeService } from "../realtime/realtime.service";
 
 export const DISPOSABLE_EMAIL_DOMAINS = new Set([
   "mailinator.com",
@@ -225,6 +226,9 @@ export class AuthService {
     @Optional()
     @InjectRepository(ProviderEntity)
     private readonly providerRepo?: Repository<ProviderEntity>,
+    @Optional()
+    @Inject(forwardRef(() => RealtimeService))
+    private readonly realtimeService?: RealtimeService,
   ) {}
 
   private hashToken(token: string): string {
@@ -673,6 +677,19 @@ export class AuthService {
     user.emailVerificationToken = null;
     user.emailVerificationExpires = null;
     await this.userRepo.save(user);
+
+    // Notify administrators live that a verified provider or admin has entered the approval queue
+    if ((user.role === "provider" || user.role === "admin") && this.realtimeService) {
+      this.realtimeService.emitApprovalRequested({
+        userId: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        adminRole: user.adminRole,
+      });
+    }
+
     return { success: true };
   }
 
@@ -825,6 +842,17 @@ export class AuthService {
         provider.verified = false;
         provider.services = ["Doctor Visit", "Home Nursing"];
         await this.providerRepo.save(provider);
+      }
+
+      if ((targetRole === "provider" || targetRole === "admin") && this.realtimeService) {
+        this.realtimeService.emitApprovalRequested({
+          userId: user.id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          adminRole: user.adminRole,
+        });
       }
     } else {
       if (this.providerRepo && googleUser.picture) {

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { SearchBar, Button, Card, DataTable, Avatar, StatusBadge, Rating, ConfirmDialog, Modal, toast, SkeletonCard, Input } from "../components/ui";
 import { api } from "../services/api";
 import { AlertTriangle, MessageSquare, Phone, Mail, Send } from "lucide-react";
+import { useRealtimeSocket } from "../hooks/useRealtimeSocket";
 
 interface ProvidersSectionProps {
   onVerification?: () => void;
@@ -68,15 +69,49 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
     loadProviders();
   }, []);
 
+  // Real-time updates without refreshing
+  useRealtimeSocket({
+    user_status_changed: (data: any) => {
+      const targetId = data?.userId || data?.id;
+      const newStatus = data?.status;
+      if (targetId && newStatus) {
+        setProviders((prev) =>
+          prev.map((p) =>
+            p.id === targetId || p.userId === targetId ? { ...p, status: newStatus } : p
+          )
+        );
+      }
+    },
+    user_removed: (data: any) => {
+      const removedId = data?.userId || data?.id;
+      if (removedId) {
+        setProviders((prev) =>
+          prev.filter((p) => p.id !== removedId && p.userId !== removedId)
+        );
+      }
+    },
+    approval_requested: () => {
+      loadProviders();
+    },
+  });
+
   const confirmToggleSuspend = async () => {
     if (!selectedProvider) return;
+    const targetId = selectedProvider.id;
+    const currentStatus = selectedProvider.status;
+    const nextStatus = currentStatus === "suspended" ? "verified" : "suspended";
+
+    // Optimistically toggle provider status immediately without waiting or refreshing
+    setProviders((prev) =>
+      prev.map((p) => (p.id === targetId ? { ...p, status: nextStatus } : p))
+    );
+
     try {
-      const currentStatus = selectedProvider.status;
-      await api.toggleProviderSuspension(selectedProvider.id, currentStatus);
+      await api.toggleProviderSuspension(targetId, currentStatus);
       toast(`Provider ${currentStatus === "suspended" ? "restored" : "suspended"} successfully.`, "success");
-      loadProviders();
     } catch (err: any) {
       toast(err.message || "Failed to update provider status.", "error");
+      loadProviders();
     } finally {
       setSuspendModal(false);
       setSelectedProvider(null);

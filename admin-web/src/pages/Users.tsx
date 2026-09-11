@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { SearchBar, Select, Input, Card, DataTable, Avatar, StatusBadge, Button, ConfirmDialog, Modal, Alert, toast, SkeletonCard } from "../components/ui";
 import { api } from "../services/api";
-import { Download, CheckSquare, Square, ShieldAlert, ShieldCheck, UserPlus, Trash2, KeyRound, Calendar, Activity, FileText, Lock } from "lucide-react";
+import { Download, CheckSquare, Square, ShieldAlert, ShieldCheck, UserPlus, Trash2, KeyRound, Calendar, Activity, FileText, Lock, Phone } from "lucide-react";
+import { useRealtimeSocket } from "../hooks/useRealtimeSocket";
 
 export default function UsersSection() {
   const [search, setSearch] = useState("");
@@ -95,6 +96,31 @@ export default function UsersSection() {
     loadData();
   }, []);
 
+  // Real-time socket event listeners for instant multi-client reflection without refresh
+  useRealtimeSocket({
+    user_removed: (data: any) => {
+      const removedId = data?.userId || data?.id;
+      if (removedId) {
+        setPatients((prev) => prev.filter((p) => p.id !== removedId));
+        setProviders((prev) => prev.filter((p) => p.id !== removedId));
+        setAdministrators((prev) => prev.filter((a) => a.id !== removedId));
+        setSelectedIds((prev) => prev.filter((id) => id !== removedId));
+      }
+    },
+    user_status_changed: (data: any) => {
+      const targetId = data?.userId || data?.id;
+      const newStatus = data?.status;
+      if (targetId && newStatus) {
+        setPatients((prev) => prev.map((p) => p.id === targetId ? { ...p, status: newStatus } : p));
+        setProviders((prev) => prev.map((p) => p.id === targetId ? { ...p, status: newStatus } : p));
+        setAdministrators((prev) => prev.map((a) => a.id === targetId ? { ...a, status: newStatus } : a));
+      }
+    },
+    approval_requested: () => {
+      loadData();
+    },
+  });
+
   const handleOpenDetails = async (user: any) => {
     setSelectedDetails(user);
     setActiveDetailsTab("profile");
@@ -156,13 +182,20 @@ export default function UsersSection() {
   const handleToggleSuspend = async () => {
     if (!selectedUser) return;
     const isSuspended = selectedUser.status === "suspended";
+    const nextStatus = isSuspended ? "active" : "suspended";
+    const targetId = selectedUser.id;
+
+    // Optimistically update status across state lists immediately without waiting or refreshing
+    setPatients((prev) => prev.map((p) => p.id === targetId ? { ...p, status: nextStatus } : p));
+    setProviders((prev) => prev.map((p) => p.id === targetId ? { ...p, status: nextStatus } : p));
+    setAdministrators((prev) => prev.map((a) => a.id === targetId ? { ...a, status: nextStatus } : a));
 
     try {
       await api.toggleUserSuspension(selectedUser.id, selectedUser.status);
       toast(`User ${isSuspended ? "restored" : "suspended"} successfully`, "info");
-      loadData();
     } catch {
       toast("Action failed. Please check network connection.", "error");
+      loadData();
     } finally {
       setSuspendModal(false);
     }
@@ -188,17 +221,26 @@ export default function UsersSection() {
 
   const confirmDeleteUser = async () => {
     if (!userToDelete) return;
+    const targetId = userToDelete.id;
+    const isAdmin = userToDelete.isAdminAccount || userToDelete.role?.toLowerCase().includes("admin");
+
+    // Optimistically remove user immediately without waiting or refreshing
+    setPatients((prev) => prev.filter((p) => p.id !== targetId));
+    setProviders((prev) => prev.filter((p) => p.id !== targetId));
+    setAdministrators((prev) => prev.filter((a) => a.id !== targetId));
+    setSelectedIds((prev) => prev.filter((id) => id !== targetId));
+
     try {
-      if (userToDelete.isAdminAccount || userToDelete.role?.toLowerCase().includes("admin")) {
-        await api.deleteAdministrator(userToDelete.id);
+      if (isAdmin) {
+        await api.deleteAdministrator(targetId);
         toast(`Administrator ${userToDelete.name || userToDelete.email} removed successfully`, "success");
       } else {
-        await api.deleteUser(userToDelete.id);
+        await api.deleteUser(targetId);
         toast(`User ${userToDelete.name || userToDelete.email} removed successfully`, "success");
       }
-      loadData();
     } catch (err: any) {
       toast(err.response?.data?.message || err.message || "Failed to remove account.", "error");
+      loadData();
     } finally {
       setDeleteModal(false);
       setUserToDelete(null);
@@ -432,7 +474,26 @@ export default function UsersSection() {
                   ),
                 },
                 { key: "status", header: "Status", render: (row) => <StatusBadge status={row.status as any} /> },
-                { key: "phone", header: "Phone", render: (row) => <span className="text-[#8a9aaa] text-xs">{row.phone as string}</span> },
+                {
+                  key: "phone",
+                  header: "Phone",
+                  render: (row) => {
+                    const phone = (row.phone as string) || "";
+                    if (!phone) {
+                      return <span className="text-[#8a9aaa] text-xs italic">N/A</span>;
+                    }
+                    return (
+                      <a
+                        href={`tel:${phone.replace(/\s+/g, "")}`}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0d7c6a] dark:text-cyan-400 hover:underline"
+                        title={`Call ${row.name || phone}`}
+                      >
+                        <Phone size={12} className="text-[#0d7c6a] dark:text-cyan-400 shrink-0" />
+                        <span>{phone}</span>
+                      </a>
+                    );
+                  },
+                },
                 {
                   key: "memberSince",
                   header: "Joined",
@@ -641,7 +702,20 @@ export default function UsersSection() {
 
                 {activeDetailsTab === "profile" && (
                   <div className="grid grid-cols-2 gap-2.5 p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700">
-                    <div><span className="text-[#8a9aaa] block">Phone Number:</span> <strong className="text-[#18232e] dark:text-white">{selectedDetails.phone || "N/A"}</strong></div>
+                    <div>
+                      <span className="text-[#8a9aaa] block">Phone Number:</span>
+                      {selectedDetails.phone ? (
+                        <a
+                          href={`tel:${selectedDetails.phone.replace(/\s+/g, "")}`}
+                          className="inline-flex items-center gap-1.5 font-bold text-[#0d7c6a] dark:text-cyan-400 hover:underline"
+                        >
+                          <Phone size={13} />
+                          <span>{selectedDetails.phone}</span>
+                        </a>
+                      ) : (
+                        <strong className="text-[#18232e] dark:text-white">N/A</strong>
+                      )}
+                    </div>
                     <div><span className="text-[#8a9aaa] block">Primary Location:</span> <strong className="text-[#18232e] dark:text-white">{selectedDetails.location || "Addis Ababa"}</strong></div>
                     <div><span className="text-[#8a9aaa] block">Member Registered:</span> <strong className="text-[#18232e] dark:text-white">{selectedDetails.memberSince || selectedDetails.joinedDate || "2026-08"}</strong></div>
                     <div><span className="text-[#8a9aaa] block">Account Status:</span> <strong className="text-[#18232e] dark:text-white capitalize">{selectedDetails.status}</strong></div>
@@ -719,7 +793,20 @@ export default function UsersSection() {
               <div className="grid grid-cols-2 gap-2.5 p-3 bg-[#f8fafc] dark:bg-slate-700/50 rounded-lg">
                 <div><span className="text-[#8a9aaa] block">Role:</span> <strong className="text-[#18232e] dark:text-white">{selectedDetails.role}</strong></div>
                 <div><span className="text-[#8a9aaa] block">Status:</span> <strong className="text-[#18232e] dark:text-white capitalize">{selectedDetails.status}</strong></div>
-                <div><span className="text-[#8a9aaa] block">Phone:</span> <strong className="text-[#18232e] dark:text-white">{selectedDetails.phone || "N/A"}</strong></div>
+                <div>
+                  <span className="text-[#8a9aaa] block">Phone:</span>
+                  {selectedDetails.phone ? (
+                    <a
+                      href={`tel:${selectedDetails.phone.replace(/\s+/g, "")}`}
+                      className="inline-flex items-center gap-1.5 font-bold text-[#0d7c6a] dark:text-cyan-400 hover:underline"
+                    >
+                      <Phone size={13} />
+                      <span>{selectedDetails.phone}</span>
+                    </a>
+                  ) : (
+                    <strong className="text-[#18232e] dark:text-white">N/A</strong>
+                  )}
+                </div>
                 <div><span className="text-[#8a9aaa] block">Location:</span> <strong className="text-[#18232e] dark:text-white">{selectedDetails.location || "Addis Ababa"}</strong></div>
               </div>
             )}

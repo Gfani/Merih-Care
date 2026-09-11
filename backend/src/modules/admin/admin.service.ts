@@ -116,6 +116,11 @@ export class AdminService {
     const mockAdmins: UserEntity[] = [];
 
     for (const a of admins) {
+      // Must complete email OTP verification before appearing in pending approval queue
+      if (!a.emailVerified) {
+        continue;
+      }
+
       const email = (a.email || "").toLowerCase();
       const name = (a.name || "").toLowerCase();
       const isMock =

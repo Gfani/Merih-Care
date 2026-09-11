@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Alert, Card, Avatar, StatusBadge, Button, DataTable, ConfirmDialog, Modal, toast, SkeletonCard, Input } from "../components/ui";
 import { api, API_URL } from "../services/api";
-import { Trash2, UserPlus, KeyRound, ShieldCheck } from "lucide-react";
+import { Trash2, UserPlus, KeyRound, ShieldCheck, Phone } from "lucide-react";
+import { useRealtimeSocket } from "../hooks/useRealtimeSocket";
 const BASE_API = API_URL;
 
 interface DocumentInfo {
@@ -191,16 +192,38 @@ export default function VerificationSection() {
     }
   }, []);
 
+  // Real-time socket event listeners for immediate approval & removal reflection
+  useRealtimeSocket({
+    approval_requested: (data: any) => {
+      if (data?.role === "provider") {
+        loadData();
+      } else if (data?.role === "admin" && isSuperAdmin) {
+        loadAdmins();
+      }
+    },
+    user_removed: (data: any) => {
+      const removedId = data?.userId || data?.id;
+      if (removedId) {
+        setProviders((prev) => prev.filter((p) => p.id !== removedId && p.userId !== removedId));
+        setPendingAdmins((prev) => prev.filter((a) => a.id !== removedId));
+        setActiveAdmins((prev) => prev.filter((a) => a.id !== removedId));
+      }
+    },
+  });
+
   const pending = providers.filter(p => !p.verified || p.status === "pending_verification" || p.status === "pending" || p.status === "needs_fix");
 
   const handleApprove = async () => {
     if (!selectedProvider) return;
+    const targetId = selectedProvider.id;
+    // Optimistic removal from queue immediately without waiting or refreshing
+    setProviders((prev) => prev.filter((p) => p.id !== targetId && p.userId !== targetId));
     try {
-      await api.approveProvider(selectedProvider.id);
+      await api.approveProvider(targetId);
       toast(`${selectedProvider?.name} has been verified!`, "success");
-      loadData();
     } catch {
       toast("Failed to approve provider", "error");
+      loadData();
     } finally {
       setApproveModal(false);
     }
@@ -208,12 +231,15 @@ export default function VerificationSection() {
 
   const handleReject = async () => {
     if (!selectedProvider) return;
+    const targetId = selectedProvider.id;
+    // Optimistic removal from queue immediately without waiting or refreshing
+    setProviders((prev) => prev.filter((p) => p.id !== targetId && p.userId !== targetId));
     try {
-      await api.rejectProvider(selectedProvider.id, rejectReason || "Documents did not pass checks");
+      await api.rejectProvider(targetId, rejectReason || "Documents did not pass checks");
       toast(`Verification rejected for ${selectedProvider?.name}`, "warning");
-      loadData();
     } catch {
       toast("Failed to reject provider", "error");
+      loadData();
     } finally {
       setRejectModal(false);
     }
@@ -234,14 +260,18 @@ export default function VerificationSection() {
 
   const handleApproveAdmin = async () => {
     if (!selectedAdmin) return;
+    const targetId = selectedAdmin.id;
+    // Optimistically approve admin immediately
+    setPendingAdmins((prev) => prev.filter((a) => a.id !== targetId));
+    setActiveAdmins((prev) => [selectedAdmin, ...prev]);
     try {
-      await api.approveAdminAccount(selectedAdmin.id);
+      await api.approveAdminAccount(targetId);
       toast(`${selectedAdmin?.name} has been approved as an administrator!`, "success");
-      loadAdmins();
-      loadActiveAdmins();
     } catch (err: any) {
       const errMsg = err.response?.data?.message || err.message || "Failed to approve administrator";
       toast(errMsg, "error");
+      loadAdmins();
+      loadActiveAdmins();
     } finally {
       setAdminApproveModal(false);
     }
@@ -249,14 +279,17 @@ export default function VerificationSection() {
 
   const handleRejectAdmin = async () => {
     if (!selectedAdmin) return;
+    const targetId = selectedAdmin.id;
+    // Optimistically reject admin immediately
+    setPendingAdmins((prev) => prev.filter((a) => a.id !== targetId));
     try {
-      await api.rejectAdminAccount(selectedAdmin.id);
+      await api.rejectAdminAccount(targetId);
       toast(`Administrative request for ${selectedAdmin?.name} rejected and removed.`, "info");
-      loadAdmins();
-      loadActiveAdmins();
     } catch (err: any) {
       const errMsg = err.response?.data?.message || err.message || "Failed to reject administrator";
       toast(errMsg, "error");
+      loadAdmins();
+      loadActiveAdmins();
     } finally {
       setAdminRejectModal(false);
     }
@@ -292,15 +325,20 @@ export default function VerificationSection() {
 
   const handleDeleteAdminConfirm = async () => {
     if (!adminToDelete) return;
+    const targetId = adminToDelete.id;
+    // Optimistic removal
+    setActiveAdmins((prev) => prev.filter((a) => a.id !== targetId));
+    setPendingAdmins((prev) => prev.filter((a) => a.id !== targetId));
     try {
-      await api.deleteAdministrator(adminToDelete.id);
+      await api.deleteAdministrator(targetId);
       toast(`Administrator ${adminToDelete.name || adminToDelete.email} removed`, "success");
-      setDeleteAdminModal(false);
-      setAdminToDelete(null);
-      loadActiveAdmins();
-      loadAdmins();
     } catch (err: any) {
       toast(err.response?.data?.message || err.message || "Failed to remove administrator", "error");
+      loadActiveAdmins();
+      loadAdmins();
+    } finally {
+      setDeleteAdminModal(false);
+      setAdminToDelete(null);
     }
   };
 
@@ -397,14 +435,28 @@ export default function VerificationSection() {
                         {provider.education || "Medical Qualification"}
                       </span>
                     </div>
-                    {(provider.email || provider.phone) && (
-                      <div className="col-span-2 border-t border-[#e2e8f0] dark:border-slate-700 pt-1.5 mt-0.5">
-                        <span className="text-[#8a9aaa] dark:text-slate-400 text-[10px] uppercase font-bold block">Contact</span>
-                        <span className="font-medium text-[#18232e] dark:text-white">
-                          {provider.email || ""} {provider.phone ? `• ${provider.phone}` : ""}
-                        </span>
+                    <div className="col-span-2 border-t border-[#e2e8f0] dark:border-slate-700 pt-1.5 mt-0.5 space-y-1">
+                      <span className="text-[#8a9aaa] dark:text-slate-400 text-[10px] uppercase font-bold block">Direct Provider Contact</span>
+                      <div className="flex flex-wrap items-center gap-2.5 text-xs">
+                        {provider.email && (
+                          <span className="font-medium text-[#18232e] dark:text-white">
+                            {provider.email}
+                          </span>
+                        )}
+                        {provider.phone ? (
+                          <a
+                            href={`tel:${provider.phone.replace(/\s+/g, "")}`}
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800 hover:underline"
+                            title={`Call ${provider.name || provider.phone}`}
+                          >
+                            <Phone size={12} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                            <span>{provider.phone}</span>
+                          </a>
+                        ) : (
+                          <span className="text-[#8a9aaa] italic text-[11px]">No phone on file</span>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </div>
 
                   {/* Submitted Documents */}
@@ -828,13 +880,30 @@ export default function VerificationSection() {
                       </span>
                     </div>
 
-                    <div className="col-span-2 p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700">
+                    <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700">
                       <span className="text-[10px] font-bold uppercase text-[#8a9aaa] dark:text-slate-400 block">
                         Certified Medical Qualification
                       </span>
                       <span className="font-medium text-[#18232e] dark:text-white">
                         {selectedDocProvider.education || "University Healthcare Degree"}
                       </span>
+                    </div>
+
+                    <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700">
+                      <span className="text-[10px] font-bold uppercase text-[#8a9aaa] dark:text-slate-400 block">
+                        Direct Phone Contact
+                      </span>
+                      {selectedDocProvider.phone ? (
+                        <a
+                          href={`tel:${selectedDocProvider.phone.replace(/\s+/g, "")}`}
+                          className="inline-flex items-center gap-1.5 font-bold text-sm text-[#0d7c6a] dark:text-cyan-400 hover:underline"
+                        >
+                          <Phone size={14} className="shrink-0" />
+                          <span>{selectedDocProvider.phone}</span>
+                        </a>
+                      ) : (
+                        <span className="text-sm text-[#8a9aaa] italic">N/A</span>
+                      )}
                     </div>
                   </div>
 

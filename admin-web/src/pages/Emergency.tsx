@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Alert, Card, Button, Modal, toast, SkeletonCard } from "../components/ui";
 import { api } from "../services/api";
 import { AlertTriangle, MapPin, Clock, ShieldAlert, CheckCircle2, Siren, UserRound } from "lucide-react";
+import { useRealtimeSocket } from "../hooks/useRealtimeSocket";
 
 export default function EmergencySection() {
   const [emergencies, setEmergencies] = useState<any[]>([]);
@@ -32,6 +33,14 @@ export default function EmergencySection() {
     return () => clearInterval(timer);
   }, []);
 
+  // Immediate real-time update on emergency alerts without refreshing
+  useRealtimeSocket({
+    emergency_alert: () => {
+      loadData(false);
+      toast("Emergency Alert Updated!", "warning");
+    },
+  });
+
   const handleRespondClick = (req: any) => {
     setSelectedEmergency(req);
     setResponderName("");
@@ -40,12 +49,21 @@ export default function EmergencySection() {
 
   const handleConfirmDispatch = async () => {
     if (!selectedEmergency) return;
+    const targetId = selectedEmergency.id;
+    // Optimistically mark as dispatched immediately
+    setEmergencies((prev) =>
+      prev.map((e) =>
+        e.id === targetId
+          ? { ...e, status: "dispatched", responder: responderName || "Addis Emergency Unit" }
+          : e
+      )
+    );
     try {
-      await api.dispatchEmergency(selectedEmergency.id, responderName || "Addis Emergency Unit");
+      await api.dispatchEmergency(targetId, responderName || "Addis Emergency Unit");
       toast(`Emergency responder dispatched for ${selectedEmergency.patient}`, "success");
-      loadData();
     } catch {
       toast("Failed to dispatch responder", "error");
+      loadData(false);
     } finally {
       setDispatchModal(false);
       setSelectedEmergency(null);

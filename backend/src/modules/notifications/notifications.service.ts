@@ -341,21 +341,55 @@ export class NotificationsService {
     // 3. Dispatch to each enabled channel
     await this.attemptDelivery(notification, "in_app", true);
 
+    const isOtp = opts.data?.type === "password_reset" || opts.data?.type === "email_verification";
+
+    if (isOtp) {
+      // Fast-track OTP: deliver email immediately without waiting for other channels
+      const emailPromise = (async () => {
+        const ok = await dispatchEmail(userId, opts.title, opts.body, recipientEmail).catch(() => false);
+        await this.attemptDelivery(notification, "email", ok, ok ? null : "Email dispatch failed").catch(() => {});
+        return ok;
+      })();
+
+      // SMS backup dispatched concurrently in background if phone is provided
+      if (recipientPhone && (isCritical || prefs.sms)) {
+        dispatchSms(userId, opts.body, recipientPhone)
+          .then(ok => this.attemptDelivery(notification, "sms", ok, ok ? null : "SMS dispatch failed"))
+          .catch(() => {});
+      }
+
+      await emailPromise;
+      return notification;
+    }
+
+    // Parallel multi-channel dispatch for regular notifications
+    const channelTasks: Promise<any>[] = [];
+
     if (isCritical || prefs.push) {
-      const ok = await dispatchPush(userId, opts.title, opts.body, payloadData, prefs.pushToken).catch(() => false);
-      await this.attemptDelivery(notification, "push", ok, ok ? null : "FCM dispatch failed");
+      channelTasks.push(
+        dispatchPush(userId, opts.title, opts.body, payloadData, prefs.pushToken)
+          .catch(() => false)
+          .then(ok => this.attemptDelivery(notification, "push", ok, ok ? null : "FCM dispatch failed"))
+      );
     }
 
     if (isCritical || prefs.email) {
-      const ok = await dispatchEmail(userId, opts.title, opts.body, recipientEmail).catch(() => false);
-      await this.attemptDelivery(notification, "email", ok, ok ? null : "Email dispatch failed");
+      channelTasks.push(
+        dispatchEmail(userId, opts.title, opts.body, recipientEmail)
+          .catch(() => false)
+          .then(ok => this.attemptDelivery(notification, "email", ok, ok ? null : "Email dispatch failed"))
+      );
     }
 
     if (isCritical || prefs.sms) {
-      const ok = await dispatchSms(userId, opts.body, recipientPhone).catch(() => false);
-      await this.attemptDelivery(notification, "sms", ok, ok ? null : "SMS dispatch failed");
+      channelTasks.push(
+        dispatchSms(userId, opts.body, recipientPhone)
+          .catch(() => false)
+          .then(ok => this.attemptDelivery(notification, "sms", ok, ok ? null : "SMS dispatch failed"))
+      );
     }
 
+    await Promise.allSettled(channelTasks);
     return notification;
   }
 
