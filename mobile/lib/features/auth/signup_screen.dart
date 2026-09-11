@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:file_picker/file_picker.dart';
 import 'auth_provider.dart';
 import 'widgets/google_logo.dart';
+import '../../core/storage/secure_storage.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
@@ -1056,6 +1057,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                             if (!mounted) return;
 
                             if (result.success) {
+                              if (phoneTrimmed.isNotEmpty) {
+                                SecureStorage.instance.writeLastPhone(phoneTrimmed);
+                              }
+                              SecureStorage.instance.writeLastEmail(_emailController.text.trim());
+
                               final verified = await _showEmailVerificationDialog(
                                 context,
                                 _emailController.text.trim(),

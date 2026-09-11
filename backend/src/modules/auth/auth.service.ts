@@ -618,6 +618,21 @@ export class AuthService {
     return clean;
   }
 
+  async lookupContact(identifier: string): Promise<{ found: boolean; email?: string; phone?: string }> {
+    if (!identifier || !identifier.trim()) {
+      return { found: false };
+    }
+    const user = await this.findUserByIdentifier(identifier.trim());
+    if (!user) {
+      return { found: false };
+    }
+    return {
+      found: true,
+      email: user.email || undefined,
+      phone: user.phone || undefined,
+    };
+  }
+
   async requestPasswordReset(
     identifier: string,
     requestedChannel?: "email" | "sms"

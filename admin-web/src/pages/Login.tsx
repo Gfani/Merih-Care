@@ -23,6 +23,8 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
   const [resetStep, setResetStep] = useState<1 | 2>(1);
   const [resetChannel, setResetChannel] = useState<"sms" | "email">("sms");
   const [resetIdentifier, setResetIdentifier] = useState("");
+  const [savedEmail, setSavedEmail] = useState("");
+  const [savedPhone, setSavedPhone] = useState("");
   const [resetMaskedDest, setResetMaskedDest] = useState("");
   const [resetOtp, setResetOtp] = useState("");
   const [resetNewPassword, setResetNewPassword] = useState("");
@@ -86,15 +88,31 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     }
   };
 
-  const handleOpenOtpModal = () => {
-    setResetIdentifier(email || "");
-    setResetChannel(email ? "email" : "sms");
+  const handleOpenOtpModal = async () => {
+    const currentEmail = email || localStorage.getItem("admin_email") || "";
+    let currentPhone = localStorage.getItem("admin_phone") || "";
+    setSavedEmail(currentEmail);
+    setSavedPhone(currentPhone);
+    setResetChannel("sms");
+    setResetIdentifier(currentPhone);
     setResetMaskedDest("");
     setResetOtp("");
     setResetNewPassword("");
     setResetConfirmPassword("");
     setResetStep(1);
     setOtpModalOpen(true);
+
+    // If phone is empty but email is available, automatically look up phone from backend
+    if (!currentPhone && currentEmail) {
+      try {
+        const contact = await api.lookupContact(currentEmail);
+        if (contact && contact.phone) {
+          setSavedPhone(contact.phone);
+          setResetIdentifier(contact.phone);
+          localStorage.setItem("admin_phone", contact.phone);
+        }
+      } catch {}
+    }
   };
 
   const handleRequestOtp = async (e: React.FormEvent) => {
@@ -349,7 +367,24 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => setResetChannel("sms")}
+                  onClick={async () => {
+                    setResetChannel("sms");
+                    if (savedPhone) {
+                      setResetIdentifier(savedPhone);
+                    } else {
+                      const emailToLookup = savedEmail || (resetIdentifier.includes("@") ? resetIdentifier : "");
+                      if (emailToLookup) {
+                        try {
+                          const contact = await api.lookupContact(emailToLookup);
+                          if (contact && contact.phone) {
+                            setSavedPhone(contact.phone);
+                            setResetIdentifier(contact.phone);
+                            localStorage.setItem("admin_phone", contact.phone);
+                          }
+                        } catch {}
+                      }
+                    }
+                  }}
                   className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
                     resetChannel === "sms"
                       ? "border-[#0d7c6a] bg-[#0d7c6a]/10 text-[#0d7c6a] dark:text-[#2dd4bf] shadow-sm ring-1 ring-[#0d7c6a]"
@@ -361,7 +396,10 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setResetChannel("email")}
+                  onClick={() => {
+                    setResetChannel("email");
+                    setResetIdentifier(savedEmail || (resetIdentifier.includes("@") ? resetIdentifier : ""));
+                  }}
                   className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
                     resetChannel === "email"
                       ? "border-[#0d7c6a] bg-[#0d7c6a]/10 text-[#0d7c6a] dark:text-[#2dd4bf] shadow-sm ring-1 ring-[#0d7c6a]"

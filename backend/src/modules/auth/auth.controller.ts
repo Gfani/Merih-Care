@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Delete, Put, Body, Param, Req, UnauthorizedException, BadRequestException, UseGuards } from "@nestjs/common";
+import { Controller, Post, Get, Delete, Put, Body, Param, Req, UnauthorizedException, BadRequestException, UseGuards, HttpCode, HttpStatus } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 import { IsEmail, IsNotEmpty, MinLength, MaxLength, IsOptional, Matches, IsIn, Length, IsString } from "class-validator";
 import { Request } from "express";
@@ -388,6 +388,13 @@ export class AuthController {
   async confirmEmailVerification(@Body() body: EmailVerificationConfirmDto) {
     const id = body.identifier || body.email || body.phone || "";
     return this.authService.confirmEmailVerification(id, body.token);
+  }
+
+  @Post("lookup-contact")
+  @HttpCode(HttpStatus.OK)
+  async lookupContact(@Body() body: { identifier?: string; email?: string; phone?: string }) {
+    const id = body.identifier || body.email || body.phone || "";
+    return this.authService.lookupContact(id);
   }
 
   @Get("sessions")

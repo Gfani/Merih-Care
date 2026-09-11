@@ -434,6 +434,29 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  Future<Map<String, dynamic>?> lookupContact(String identifier) async {
+    try {
+      if (identifier.trim().isEmpty) return null;
+      final client = _ref.read(apiClientProvider);
+      final response = await client.dio.post('/auth/lookup-contact', data: {
+        'identifier': identifier.trim(),
+      });
+      final dynamic raw = response.data;
+      if (raw is Map<String, dynamic>) {
+        final data = raw['data'] ?? raw;
+        if (data is Map<String, dynamic> && data['found'] == true) {
+          return {
+            'email': data['email']?.toString(),
+            'phone': data['phone']?.toString(),
+          };
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> logout() async {
     await SecureStorage.instance.deleteToken();
     state = AuthState(status: AuthStatus.unauthenticated);

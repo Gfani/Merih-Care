@@ -190,6 +190,17 @@
         }
       }
     },
+    "/api/v1/auth/lookup-contact": {
+      "post": {
+        "operationId": "AuthController_lookupContact",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/auth/sessions": {
       "get": {
         "operationId": "AuthController_getSessions",

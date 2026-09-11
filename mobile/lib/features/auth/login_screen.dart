@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'auth_provider.dart';
 import 'widgets/google_logo.dart';
+import '../../core/storage/secure_storage.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -16,6 +17,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _loading = false;
+  String? _savedPhone;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedCredentials();
+  }
+
+  Future<void> _loadSavedCredentials() async {
+    final email = await SecureStorage.instance.readLastEmail();
+    final phone = await SecureStorage.instance.readLastPhone();
+    if (mounted) {
+      setState(() {
+        if (email != null && email.isNotEmpty && _emailController.text.isEmpty) {
+          _emailController.text = email;
+        }
+        _savedPhone = phone;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -256,9 +277,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  void _showForgotPasswordDialog(BuildContext context) {
+  void _showForgotPasswordDialog(BuildContext context) async {
     final emailCtrl = TextEditingController(text: _emailController.text.trim());
-    final phoneCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController(text: _savedPhone ?? '');
     final otpCtrl = TextEditingController();
     final newPassCtrl = TextEditingController();
     final confirmPassCtrl = TextEditingController();
@@ -270,6 +291,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     bool loading = false;
     String? errorMsg;
     String? successMsg;
+
+    // Check SecureStorage for saved phone
+    if (phoneCtrl.text.isEmpty) {
+      final p = await SecureStorage.instance.readLastPhone();
+      if (p != null && p.isNotEmpty) {
+        phoneCtrl.text = p;
+        _savedPhone = p;
+      }
+    }
+
+    // If email is present and phone is still empty, automatically lookup phone in backend
+    if (phoneCtrl.text.isEmpty && emailCtrl.text.isNotEmpty) {
+      final contact = await ref.read(authProvider.notifier).lookupContact(emailCtrl.text);
+      if (contact != null && contact['phone'] != null && contact['phone']!.isNotEmpty) {
+        phoneCtrl.text = contact['phone']!;
+        _savedPhone = contact['phone']!;
+        SecureStorage.instance.writeLastPhone(contact['phone']!);
+      }
+    }
+
+    if (!context.mounted) return;
 
     showDialog(
       context: context,
@@ -314,7 +356,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           children: [
                             Expanded(
                               child: GestureDetector(
-                                onTap: loading ? null : () => setDialogState(() => selectedChannel = 'sms'),
+                                onTap: loading
+                                    ? null
+                                    : () async {
+                                        setDialogState(() => selectedChannel = 'sms');
+                                        if (phoneCtrl.text.trim().isEmpty) {
+                                          final p = await SecureStorage.instance.readLastPhone() ?? _savedPhone;
+                                          if (p != null && p.isNotEmpty) {
+                                            setDialogState(() => phoneCtrl.text = p);
+                                          } else if (emailCtrl.text.trim().isNotEmpty) {
+                                            final contact = await ref.read(authProvider.notifier).lookupContact(emailCtrl.text.trim());
+                                            if (contact != null && contact['phone'] != null && contact['phone']!.isNotEmpty) {
+                                              setDialogState(() => phoneCtrl.text = contact['phone']!);
+                                              _savedPhone = contact['phone']!;
+                                              SecureStorage.instance.writeLastPhone(contact['phone']!);
+                                            }
+                                          }
+                                        }
+                                      },
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(vertical: 8),
                                   decoration: BoxDecoration(
@@ -348,7 +407,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                             Expanded(
                               child: GestureDetector(
-                                onTap: loading ? null : () => setDialogState(() => selectedChannel = 'email'),
+                                onTap: loading
+                                    ? null
+                                    : () async {
+                                        setDialogState(() => selectedChannel = 'email');
+                                        if (emailCtrl.text.trim().isEmpty) {
+                                          final e = await SecureStorage.instance.readLastEmail() ?? _emailController.text.trim();
+                                          if (e.isNotEmpty) {
+                                            setDialogState(() => emailCtrl.text = e);
+                                          } else if (phoneCtrl.text.trim().isNotEmpty) {
+                                            final contact = await ref.read(authProvider.notifier).lookupContact(phoneCtrl.text.trim());
+                                            if (contact != null && contact['email'] != null && contact['email']!.isNotEmpty) {
+                                              setDialogState(() => emailCtrl.text = contact['email']!);
+                                              SecureStorage.instance.writeLastEmail(contact['email']!);
+                                            }
+                                          }
+                                        }
+                                      },
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(vertical: 8),
                                   decoration: BoxDecoration(

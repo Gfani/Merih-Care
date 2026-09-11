@@ -914,6 +914,16 @@ export const api = {
     }
   },
 
+  async lookupContact(identifier: string): Promise<{ found: boolean; email?: string; phone?: string }> {
+    try {
+      const res = await axios.post(`${API_URL}/auth/lookup-contact`, { identifier });
+      const d = res.data;
+      return d?.data || d;
+    } catch {
+      return { found: false };
+    }
+  },
+
   async getMedicalRecords(patientId: string): Promise<any[]> {
     try {
       const res = await axios.get(`${API_URL}/medical-records/${patientId}`, { headers: getHeaders() });
