@@ -1,4 +1,4 @@
-import { Injectable, Optional, Inject, forwardRef, NotFoundException } from "@nestjs/common";
+import { Injectable, Optional, Inject, forwardRef, NotFoundException, BadRequestException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { UserEntity } from "../../database/entities/user.entity";
@@ -320,7 +320,8 @@ export class AuthService {
     role: string,
     adminRole?: string,
     phone?: string,
-    providerDetails?: ProviderRegistrationDetails
+    providerDetails?: ProviderRegistrationDetails,
+    verificationChannel?: "email" | "sms"
   ): Promise<UserEntity> {
     validateRealEmail(email);
     validateStrongPassword(pass);
@@ -415,18 +416,20 @@ export class AuthService {
 
     const savedUser = await this.userRepo.save(user);
 
-    // Send verification code to ensure email validity and prevent fake emails
+    // Send verification code via user's selected channel (SMS or Email)
     if (this.notificationsService) {
+      const channel: "email" | "sms" = verificationChannel || (savedUser.phone ? "sms" : "email");
       await this.notificationsService.sendNotification(savedUser.id, {
         type: "verification_update",
-        title: "Verify Your Email",
+        title: channel === "sms" ? "MerihCare Verification Code" : "Verify Your Email",
         body: `Your MerihCare registration verification code is ${verifyOtp}. This code expires in 5 minutes.`,
         priority: "critical",
         recipientEmail: savedUser.email,
         recipientPhone: savedUser.phone,
-        data: { code: verifyOtp, type: "email_verification", recipientEmail: savedUser.email },
+        targetChannel: channel,
+        data: { code: verifyOtp, type: "email_verification", recipientEmail: savedUser.email, channel },
       }).catch((err) => {
-        console.error(`Failed to send verification email: ${err?.message || err}`);
+        console.error(`Failed to send verification code: ${err?.message || err}`);
       });
     }
 
@@ -570,58 +573,110 @@ export class AuthService {
     }
   }
 
-  async requestPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
-    const normalizedEmail = (email || "").trim().toLowerCase();
-    let user = await this.userRepo.findOne({ where: { email: normalizedEmail } });
-    if (!user && typeof this.userRepo.createQueryBuilder === "function") {
-      user = await this.userRepo
-        .createQueryBuilder("user")
-        .where("LOWER(user.email) = :email", { email: normalizedEmail })
-        .getOne();
+  private async findUserByIdentifier(identifier: string): Promise<UserEntity | null> {
+    const raw = (identifier || "").trim();
+    if (!raw) return null;
+
+    if (raw.includes("@")) {
+      const lower = raw.toLowerCase();
+      let user = await this.userRepo.findOne({ where: { email: lower } });
+      if (!user && typeof this.userRepo.createQueryBuilder === "function") {
+        user = await this.userRepo
+          .createQueryBuilder("user")
+          .where("LOWER(user.email) = :email", { email: lower })
+          .getOne();
+      }
+      return user;
     }
 
+    // Phone number lookup (supports local 09..., 07..., +251..., and non-formatted)
+    const digitsOnly = raw.replace(/\D/g, "");
+    let user = await this.userRepo.findOne({ where: { phone: raw } });
+    if (!user && digitsOnly.length >= 9) {
+      const last9 = digitsOnly.slice(-9);
+      user = await this.userRepo
+        .createQueryBuilder("user")
+        .where("REPLACE(REPLACE(REPLACE(user.phone, '+', ''), '-', ''), ' ', '') LIKE :p", {
+          p: `%${last9}`,
+        })
+        .getOne();
+    }
+    return user;
+  }
+
+  private maskDestination(str: string): string {
+    if (!str) return "";
+    if (str.includes("@")) {
+      const [name, domain] = str.split("@");
+      if (name.length <= 2) return `${name}***@${domain}`;
+      return `${name.substring(0, 2)}***${name.slice(-1)}@${domain}`;
+    }
+    const clean = str.replace(/[^\d+]/g, "");
+    if (clean.length > 6) {
+      return `${clean.substring(0, 4)}****${clean.slice(-2)}`;
+    }
+    return clean;
+  }
+
+  async requestPasswordReset(
+    identifier: string,
+    requestedChannel?: "email" | "sms"
+  ): Promise<{ success: boolean; message: string; channel: string; destination: string }> {
+    const user = await this.findUserByIdentifier(identifier);
     if (!user) {
-      throw new NotFoundException(`No registered account found under "${normalizedEmail}". Please verify your email or sign up.`);
+      throw new NotFoundException(`No registered account found matching "${identifier}". Please check the phone/email or sign up.`);
+    }
+
+    let channel: "email" | "sms" = requestedChannel || (identifier.includes("@") ? "email" : "sms");
+    if (channel === "sms" && !user.phone) {
+      channel = "email";
     }
 
     // Cryptographically random 6-digit OTP
     const resetOtp = crypto.randomInt(100000, 999999).toString();
     user.passwordResetToken = this.hashToken(resetOtp);
-    // Explicit 5-minute expiry
     user.passwordResetExpires = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     await this.userRepo.save(user);
 
-    // Dispatch password reset code via notification service
+    // Dispatch password reset code via notification service to chosen channel
     if (this.notificationsService) {
       await this.notificationsService.sendNotification(user.id, {
         type: "general",
-        title: "MerihCare Password Reset Code",
+        title: channel === "sms" ? "MerihCare Password Reset Code" : "MerihCare Password Reset Code",
         body: `Your MerihCare password reset code is ${resetOtp}. This code expires in 5 minutes.`,
         priority: "critical",
         recipientEmail: user.email,
         recipientPhone: user.phone,
-        data: { code: resetOtp, type: "password_reset", recipientEmail: user.email },
+        targetChannel: channel,
+        data: { code: resetOtp, type: "password_reset", recipientEmail: user.email, channel },
       }).catch((err) => {
-        console.error("[AUTH] Failed to send reset email:", err);
+        console.error("[AUTH] Failed to send reset code:", err);
       });
     }
 
+    const dest = channel === "sms" ? (user.phone || identifier) : user.email;
+    const masked = this.maskDestination(dest);
+
     return {
       success: true,
-      message: `A 6-digit OTP verification code has been dispatched to ${normalizedEmail}. Valid for 5 minutes.`,
+      channel,
+      destination: masked,
+      message: `A 6-digit password reset code has been dispatched via ${channel.toUpperCase()} to ${masked}. Valid for 5 minutes.`,
     };
   }
 
-  async confirmPasswordReset(email: string, token: string, newPass: string): Promise<{ success: boolean }> {
-    const user = await this.userRepo.findOne({ where: { email } });
+  async confirmPasswordReset(identifier: string, token: string, newPass: string): Promise<{ success: boolean; message: string }> {
+    const user = await this.findUserByIdentifier(identifier);
     const hashed = this.hashToken(token);
     if (!user || user.passwordResetToken !== hashed) {
-      throw new Error("Invalid or expired password reset token");
+      throw new BadRequestException("Invalid or expired password reset token");
     }
 
     if (user.passwordResetExpires && new Date(user.passwordResetExpires).getTime() < Date.now()) {
-      throw new Error("Password reset token has expired");
+      throw new BadRequestException("Password reset token has expired (codes expire in 5 minutes)");
     }
+
+    validateStrongPassword(newPass);
 
     user.password = await this.hashPassword(newPass);
     user.passwordResetToken = null;
@@ -632,60 +687,75 @@ export class AuthService {
 
     // Invalidate all active sessions for security
     await this.revokeAllUserSessions(user.id);
-    return { success: true };
+    return { success: true, message: "Password has been updated successfully. You can now log in." };
   }
 
-  async requestEmailVerification(email: string): Promise<{ success: boolean; message: string }> {
-    const normalizedEmail = (email || "").trim().toLowerCase();
-    let user = await this.userRepo.findOne({ where: { email: normalizedEmail } });
-    if (!user && typeof this.userRepo.createQueryBuilder === "function") {
-      user = await this.userRepo
-        .createQueryBuilder("user")
-        .where("LOWER(user.email) = :email", { email: normalizedEmail })
-        .getOne();
-    }
-
+  async requestEmailVerification(
+    identifier: string,
+    requestedChannel?: "email" | "sms"
+  ): Promise<{ success: boolean; message: string; channel: string; destination: string }> {
+    const user = await this.findUserByIdentifier(identifier);
     if (user) {
+      let channel: "email" | "sms" = requestedChannel || (identifier.includes("@") ? "email" : "sms");
+      if (channel === "sms" && !user.phone) {
+        channel = "email";
+      }
+
       const verifyOtp = crypto.randomInt(100000, 999999).toString();
       user.emailVerificationToken = this.hashToken(verifyOtp);
       user.emailVerificationExpires = new Date(Date.now() + 5 * 60 * 1000).toISOString();
       await this.userRepo.save(user);
 
-      // Dispatch email verification code via notification service
+      // Dispatch verification code via notification service
       if (this.notificationsService) {
         await this.notificationsService.sendNotification(user.id, {
           type: "verification_update",
-          title: "MerihCare Email Verification Code",
+          title: channel === "sms" ? "MerihCare Verification Code" : "MerihCare Email Verification Code",
           body: `Your MerihCare verification code is ${verifyOtp}. This code expires in 5 minutes.`,
           priority: "critical",
           recipientEmail: user.email,
           recipientPhone: user.phone,
-          data: { code: verifyOtp, type: "email_verification", recipientEmail: user.email },
+          targetChannel: channel,
+          data: { code: verifyOtp, type: "email_verification", recipientEmail: user.email, channel },
         }).catch((err) => {
-          console.error("[AUTH] Failed to send verification email:", err);
+          console.error("[AUTH] Failed to send verification code:", err);
         });
       }
 
+      const dest = channel === "sms" ? (user.phone || identifier) : user.email;
+      const masked = this.maskDestination(dest);
+
       return {
         success: true,
-        message: `A 6-digit verification code has been dispatched to ${normalizedEmail}. Valid for 5 minutes.`,
+        channel,
+        destination: masked,
+        message: `A 6-digit verification code has been dispatched via ${channel.toUpperCase()} to ${masked}. Valid for 5 minutes.`,
       };
     }
-    return { success: true, message: "Verification code sent if account exists." };
+    return {
+      success: true,
+      channel: requestedChannel || "email",
+      destination: identifier,
+      message: "Verification code dispatched if account exists.",
+    };
   }
 
-  async confirmEmailVerification(email: string, token: string): Promise<{ success: boolean }> {
-    const user = await this.userRepo.findOne({ where: { email } });
+  async confirmEmailVerification(identifier: string, token: string): Promise<{ success: boolean; message: string }> {
+    const user = await this.findUserByIdentifier(identifier);
     const hashed = this.hashToken(token);
     if (!user || user.emailVerificationToken !== hashed) {
-      throw new Error("Invalid email verification token");
+      throw new BadRequestException("Invalid email verification token");
     }
     if (user.emailVerificationExpires && new Date(user.emailVerificationExpires) < new Date()) {
-      throw new Error("Email verification token has expired");
+      throw new BadRequestException("Email verification token has expired (codes expire in 5 minutes)");
     }
     user.emailVerified = true;
     user.emailVerificationToken = null;
     user.emailVerificationExpires = null;
+    if (user.role === "patient") {
+      user.status = "active";
+      user.isApproved = true;
+    }
     await this.userRepo.save(user);
 
     // Notify administrators live that a verified provider or admin has entered the approval queue
@@ -700,7 +770,7 @@ export class AuthService {
       });
     }
 
-    return { success: true };
+    return { success: true, message: "Account verification successful!" };
   }
 
   async getUserById(id: string): Promise<any> {

@@ -162,6 +162,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     String phone, {
     String role = 'patient',
     Map<String, dynamic>? providerData,
+    String? verificationChannel,
   }) async {
     state = state.copyWith(errorMessage: null);
     try {
@@ -174,6 +175,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
         'phone': phone,
         'role': role,
       };
+      if (verificationChannel != null) {
+        payload['verificationChannel'] = verificationChannel;
+      }
       if (providerData != null) {
         payload.addAll(providerData);
       }
@@ -311,16 +315,24 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(user: user);
   }
 
-  Future<Map<String, dynamic>> requestPasswordReset(String email) async {
+  Future<Map<String, dynamic>> requestPasswordReset(String identifier, {String channel = 'sms'}) async {
     try {
       final client = _ref.read(apiClientProvider);
       final response = await client.dio.post('/auth/password-reset/request', data: {
-        'email': email,
+        'identifier': identifier,
+        'email': identifier.contains('@') ? identifier : null,
+        'phone': !identifier.contains('@') ? identifier : null,
+        'channel': channel,
       });
       final dynamic raw = response.data;
       final msg = (raw is Map<String, dynamic> ? raw['message'] : null) ??
           'Password reset OTP sent. It expires in 5 minutes.';
-      return {'success': true, 'message': msg.toString()};
+      return {
+        'success': true,
+        'message': msg.toString(),
+        'channel': (raw is Map<String, dynamic> ? raw['channel'] : channel).toString(),
+        'destination': (raw is Map<String, dynamic> ? raw['destination'] : identifier).toString(),
+      };
     } on DioException catch (e) {
       final dynamic body = e.response?.data;
       String msg = 'Failed to request password reset';
@@ -335,11 +347,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<Map<String, dynamic>> confirmPasswordReset(String email, String token, String newPassword) async {
+  Future<Map<String, dynamic>> confirmPasswordReset(String identifier, String token, String newPassword) async {
     try {
       final client = _ref.read(apiClientProvider);
       final response = await client.dio.post('/auth/password-reset/confirm', data: {
-        'email': email,
+        'identifier': identifier,
+        'email': identifier.contains('@') ? identifier : null,
+        'phone': !identifier.contains('@') ? identifier : null,
         'token': token,
         'newPassword': newPassword,
       });
@@ -361,16 +375,18 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<Map<String, dynamic>> confirmEmailVerification(String email, String token) async {
+  Future<Map<String, dynamic>> confirmEmailVerification(String identifier, String token) async {
     try {
       final client = _ref.read(apiClientProvider);
       final response = await client.dio.post('/auth/email-verification/confirm', data: {
-        'email': email,
+        'identifier': identifier,
+        'email': identifier.contains('@') ? identifier : null,
+        'phone': !identifier.contains('@') ? identifier : null,
         'token': token,
       });
       final dynamic raw = response.data;
       final msg = (raw is Map<String, dynamic> ? raw['message'] : null) ??
-          'Email verified successfully.';
+          'Account verified successfully.';
       return {'success': true, 'message': msg.toString()};
     } on DioException catch (e) {
       final dynamic body = e.response?.data;
@@ -386,16 +402,24 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<Map<String, dynamic>> resendEmailVerification(String email) async {
+  Future<Map<String, dynamic>> resendEmailVerification(String identifier, {String channel = 'sms', String? phone}) async {
     try {
       final client = _ref.read(apiClientProvider);
       final response = await client.dio.post('/auth/email-verification/request', data: {
-        'email': email,
+        'identifier': identifier,
+        'email': identifier.contains('@') ? identifier : null,
+        'phone': phone ?? (!identifier.contains('@') ? identifier : null),
+        'channel': channel,
       });
       final dynamic raw = response.data;
       final msg = (raw is Map<String, dynamic> ? raw['message'] : null) ??
           'Verification OTP resent. Valid for 5 minutes.';
-      return {'success': true, 'message': msg.toString()};
+      return {
+        'success': true,
+        'message': msg.toString(),
+        'channel': (raw is Map<String, dynamic> ? raw['channel'] : channel).toString(),
+        'destination': (raw is Map<String, dynamic> ? raw['destination'] : identifier).toString(),
+      };
     } on DioException catch (e) {
       final dynamic body = e.response?.data;
       String msg = 'Failed to resend OTP';

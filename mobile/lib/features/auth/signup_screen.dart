@@ -915,13 +915,15 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                                   }
                                 : null;
 
+                            final phoneTrimmed = _phoneController.text.trim();
                             final result = await ref.read(authProvider.notifier).signup(
                                   _nameController.text.trim(),
                                   _emailController.text.trim(),
                                   _passwordController.text,
-                                  _phoneController.text.trim(),
+                                  phoneTrimmed,
                                   role: _role,
                                   providerData: providerData,
+                                  verificationChannel: phoneTrimmed.isNotEmpty ? 'sms' : 'email',
                                 );
 
                             if (mounted) {
@@ -933,6 +935,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                               final verified = await _showEmailVerificationDialog(
                                 context,
                                 _emailController.text.trim(),
+                                phone: phoneTrimmed,
                               );
                               if (!verified || !mounted) return;
 
@@ -1203,11 +1206,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     );
   }
 
-  Future<bool> _showEmailVerificationDialog(BuildContext context, String email) async {
+  Future<bool> _showEmailVerificationDialog(BuildContext context, String email, {String? phone}) async {
     final otpCtrl = TextEditingController();
     bool loading = false;
+    String selectedChannel = (phone != null && phone.trim().isNotEmpty) ? 'sms' : 'email';
     String? errorMsg;
-    String? successMsg = 'A 6-digit verification code was sent to your email. Valid for 5 minutes.';
+    String? successMsg = selectedChannel == 'sms'
+        ? 'A 6-digit verification code was dispatched to your phone ($phone) via SMS.'
+        : 'A 6-digit verification code was sent to $email.';
     bool isVerified = false;
 
     await showDialog(
@@ -1218,11 +1224,15 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
           final theme = Theme.of(context);
 
           return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: Row(
               children: [
-                Icon(Icons.mark_email_read_outlined, color: theme.primaryColor),
+                Icon(
+                  selectedChannel == 'sms' ? Icons.sms_outlined : Icons.mark_email_read_outlined,
+                  color: theme.primaryColor,
+                ),
                 const SizedBox(width: 8),
-                const Text('Verify Your Email'),
+                const Text('Account Verification', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ],
             ),
             content: SingleChildScrollView(
@@ -1232,6 +1242,128 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Channel toggle between SMS and Email
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF3F4F6),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: loading ? null : () async {
+                                if (selectedChannel == 'sms') return;
+                                setDialogState(() {
+                                  selectedChannel = 'sms';
+                                  loading = true;
+                                  errorMsg = null;
+                                  successMsg = null;
+                                });
+                                final res = await ref.read(authProvider.notifier).resendEmailVerification(
+                                  email,
+                                  channel: 'sms',
+                                  phone: phone,
+                                );
+                                setDialogState(() {
+                                  loading = false;
+                                  if (res['success'] == true) {
+                                    successMsg = 'Verification code dispatched to ${res['destination'] ?? phone ?? 'phone'} via SMS.';
+                                  } else {
+                                    errorMsg = res['message'] ?? 'Failed to send SMS';
+                                  }
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: selectedChannel == 'sms' ? Colors.white : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(8),
+                                  boxShadow: selectedChannel == 'sms'
+                                      ? const [BoxShadow(color: Color(0x0D000000), blurRadius: 4, offset: Offset(0, 2))]
+                                      : null,
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.sms,
+                                      size: 16,
+                                      color: selectedChannel == 'sms' ? theme.primaryColor : const Color(0xFF6B7280),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Via SMS',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: selectedChannel == 'sms' ? FontWeight.bold : FontWeight.normal,
+                                        color: selectedChannel == 'sms' ? theme.primaryColor : const Color(0xFF4B5563),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: loading ? null : () async {
+                                if (selectedChannel == 'email') return;
+                                setDialogState(() {
+                                  selectedChannel = 'email';
+                                  loading = true;
+                                  errorMsg = null;
+                                  successMsg = null;
+                                });
+                                final res = await ref.read(authProvider.notifier).resendEmailVerification(
+                                  email,
+                                  channel: 'email',
+                                );
+                                setDialogState(() {
+                                  loading = false;
+                                  if (res['success'] == true) {
+                                    successMsg = 'Verification code sent to $email via Email.';
+                                  } else {
+                                    errorMsg = res['message'] ?? 'Failed to send Email';
+                                  }
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: selectedChannel == 'email' ? Colors.white : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(8),
+                                  boxShadow: selectedChannel == 'email'
+                                      ? const [BoxShadow(color: Color(0x0D000000), blurRadius: 4, offset: Offset(0, 2))]
+                                      : null,
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.email,
+                                      size: 16,
+                                      color: selectedChannel == 'email' ? theme.primaryColor : const Color(0xFF6B7280),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Via Email',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: selectedChannel == 'email' ? FontWeight.bold : FontWeight.normal,
+                                        color: selectedChannel == 'email' ? theme.primaryColor : const Color(0xFF4B5563),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     if (errorMsg != null)
                       Container(
                         width: double.infinity,
@@ -1263,23 +1395,25 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                         ),
                       ),
                     Text(
-                      'To prevent fake registrations, please enter the 6-digit code sent to $email.',
+                      selectedChannel == 'sms'
+                          ? 'Enter the 6-digit code sent to ${phone ?? 'your phone'}.'
+                          : 'Enter the 6-digit code sent to $email.',
                       style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     const Text(
-                      '• This security OTP expires in 5 minutes.',
+                      '• This security code expires in 5 minutes.',
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F766E)),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
                     TextField(
                       controller: otpCtrl,
                       keyboardType: TextInputType.number,
                       maxLength: 6,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 6),
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 6),
                       decoration: const InputDecoration(
-                        labelText: '6-Digit Code',
+                        labelText: '6-Digit OTP Code',
                         hintText: '123456',
                         prefixIcon: Icon(Icons.security),
                         counterText: '',
@@ -1290,10 +1424,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          'Didn\'t receive the code?',
+                          'Didn\'t receive it?',
                           style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
                         ),
-                        TextButton(
+                        TextButton.icon(
+                          icon: Icon(
+                            selectedChannel == 'sms' ? Icons.sms : Icons.email,
+                            size: 14,
+                          ),
                           onPressed: loading
                               ? null
                               : () async {
@@ -1302,7 +1440,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                                     errorMsg = null;
                                     successMsg = null;
                                   });
-                                  final res = await ref.read(authProvider.notifier).resendEmailVerification(email);
+                                  final res = await ref.read(authProvider.notifier).resendEmailVerification(
+                                    email,
+                                    channel: selectedChannel,
+                                    phone: phone,
+                                  );
                                   setDialogState(() {
                                     loading = false;
                                     if (res['success'] == true) {
@@ -1317,7 +1459,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                             minimumSize: const Size(50, 30),
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
-                          child: const Text('Resend Code', style: TextStyle(fontSize: 12)),
+                          label: Text(
+                            selectedChannel == 'sms' ? 'Resend SMS' : 'Resend Email',
+                            style: const TextStyle(fontSize: 12),
+                          ),
                         ),
                       ],
                     ),

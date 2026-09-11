@@ -88,6 +88,10 @@ export class SignUpDto {
   @IsOptional()
   @MaxLength(500)
   idDocumentUrl?: string;
+
+  @IsOptional()
+  @IsIn(["email", "sms"])
+  verificationChannel?: "email" | "sms";
 }
 
 export class GoogleAuthDto {
@@ -148,15 +152,35 @@ export class LogoutDto {
 }
 
 export class PasswordResetRequestDto {
-  @IsEmail()
+  @IsOptional()
   @MaxLength(100)
-  email: string;
+  email?: string;
+
+  @IsOptional()
+  @MaxLength(50)
+  phone?: string;
+
+  @IsOptional()
+  @MaxLength(100)
+  identifier?: string;
+
+  @IsOptional()
+  @IsIn(["email", "sms"])
+  channel?: "email" | "sms";
 }
 
 export class PasswordResetConfirmDto {
-  @IsEmail()
+  @IsOptional()
   @MaxLength(100)
-  email: string;
+  email?: string;
+
+  @IsOptional()
+  @MaxLength(50)
+  phone?: string;
+
+  @IsOptional()
+  @MaxLength(100)
+  identifier?: string;
 
   @IsNotEmpty()
   @Length(6, 6)
@@ -172,15 +196,35 @@ export class PasswordResetConfirmDto {
 }
 
 export class EmailVerificationRequestDto {
-  @IsEmail()
+  @IsOptional()
   @MaxLength(100)
-  email: string;
+  email?: string;
+
+  @IsOptional()
+  @MaxLength(50)
+  phone?: string;
+
+  @IsOptional()
+  @MaxLength(100)
+  identifier?: string;
+
+  @IsOptional()
+  @IsIn(["email", "sms"])
+  channel?: "email" | "sms";
 }
 
 export class EmailVerificationConfirmDto {
-  @IsEmail()
+  @IsOptional()
   @MaxLength(100)
-  email: string;
+  email?: string;
+
+  @IsOptional()
+  @MaxLength(50)
+  phone?: string;
+
+  @IsOptional()
+  @MaxLength(100)
+  identifier?: string;
 
   @IsNotEmpty()
   @Length(6, 6)
@@ -278,7 +322,8 @@ export class AuthController {
         targetRole,
         targetAdminRole,
         body.phone,
-        providerDetails
+        providerDetails,
+        body.verificationChannel
       );
 
       if (user.isApproved) {
@@ -320,25 +365,29 @@ export class AuthController {
   @Post("password-reset/request")
   @UseGuards(RateLimiterGuard)
   async requestPasswordReset(@Body() body: PasswordResetRequestDto) {
-    return this.authService.requestPasswordReset(body.email);
+    const id = body.identifier || body.email || body.phone || "";
+    return this.authService.requestPasswordReset(id, body.channel);
   }
 
   @Post("password-reset/confirm")
   @UseGuards(RateLimiterGuard)
   async confirmPasswordReset(@Body() body: PasswordResetConfirmDto) {
-    return this.authService.confirmPasswordReset(body.email, body.token, body.newPassword);
+    const id = body.identifier || body.email || body.phone || "";
+    return this.authService.confirmPasswordReset(id, body.token, body.newPassword);
   }
 
   @Post("email-verification/request")
   @UseGuards(RateLimiterGuard)
   async requestEmailVerification(@Body() body: EmailVerificationRequestDto) {
-    return this.authService.requestEmailVerification(body.email);
+    const id = body.identifier || body.email || body.phone || "";
+    return this.authService.requestEmailVerification(id, body.channel);
   }
 
   @Post("email-verification/confirm")
   @UseGuards(RateLimiterGuard)
   async confirmEmailVerification(@Body() body: EmailVerificationConfirmDto) {
-    return this.authService.confirmEmailVerification(body.email, body.token);
+    const id = body.identifier || body.email || body.phone || "";
+    return this.authService.confirmEmailVerification(id, body.token);
   }
 
   @Get("sessions")

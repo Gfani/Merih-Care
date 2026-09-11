@@ -428,6 +428,17 @@
         }
       }
     },
+    "/api/v1/notifications/test-sms": {
+      "post": {
+        "operationId": "NotificationsController_testSms",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/users": {
       "get": {
         "operationId": "UsersController_getUsers",
@@ -1093,6 +1104,17 @@
         ],
         "responses": {
           "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/appointments/book": {
+      "post": {
+        "operationId": "AppointmentsController_bookAppointment",
+        "parameters": [],
+        "responses": {
+          "201": {
             "description": ""
           }
         }
@@ -3950,7 +3972,7 @@
           },
           "time": {
             "type": "string",
-            "description": "Booking Time (HH:MM)"
+            "description": "Booking Time (HH:MM or HH:MM AM/PM)"
           },
           "location": {
             "type": "string",

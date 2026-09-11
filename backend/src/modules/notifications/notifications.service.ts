@@ -26,6 +26,7 @@ export interface SendNotificationOptions {
   idempotencyKey?: string;
   recipientEmail?: string;
   recipientPhone?: string;
+  targetChannel?: "email" | "sms" | "all";
 }
 
 const logger = new Logger("NotificationDispatchers");
@@ -399,16 +400,30 @@ export class NotificationsService {
     await this.attemptDelivery(notification, "in_app", true);
 
     const isOtp = opts.data?.type === "password_reset" || opts.data?.type === "email_verification";
+    const targetChannel = opts.targetChannel || (opts.data?.channel as "email" | "sms" | "all");
 
     if (isOtp) {
-      // Fast-track OTP: deliver email immediately without waiting for other channels
+      // If user explicitly chose SMS:
+      if (targetChannel === "sms" && recipientPhone) {
+        const smsOk = await dispatchSms(userId, opts.body, recipientPhone).catch(() => false);
+        await this.attemptDelivery(notification, "sms", smsOk, smsOk ? null : "SMS dispatch failed").catch(() => {});
+        return notification;
+      }
+
+      // If user explicitly chose Email:
+      if (targetChannel === "email" && recipientEmail) {
+        const emailOk = await dispatchEmail(userId, opts.title, opts.body, recipientEmail).catch(() => false);
+        await this.attemptDelivery(notification, "email", emailOk, emailOk ? null : "Email dispatch failed").catch(() => {});
+        return notification;
+      }
+
+      // Default dual delivery: deliver email immediately and dispatch SMS backup
       const emailPromise = (async () => {
         const ok = await dispatchEmail(userId, opts.title, opts.body, recipientEmail).catch(() => false);
         await this.attemptDelivery(notification, "email", ok, ok ? null : "Email dispatch failed").catch(() => {});
         return ok;
       })();
 
-      // SMS backup dispatched concurrently in background if phone is provided
       if (recipientPhone && (isCritical || prefs.sms)) {
         dispatchSms(userId, opts.body, recipientPhone)
           .then(ok => this.attemptDelivery(notification, "sms", ok, ok ? null : "SMS dispatch failed"))
@@ -422,7 +437,7 @@ export class NotificationsService {
     // Parallel multi-channel dispatch for regular notifications
     const channelTasks: Promise<any>[] = [];
 
-    if (isCritical || prefs.push) {
+    if ((!targetChannel || targetChannel === "all") && (isCritical || prefs.push)) {
       channelTasks.push(
         dispatchPush(userId, opts.title, opts.body, payloadData, prefs.pushToken)
           .catch(() => false)
@@ -430,7 +445,7 @@ export class NotificationsService {
       );
     }
 
-    if (isCritical || prefs.email) {
+    if ((targetChannel === "email" || targetChannel === "all" || !targetChannel) && (isCritical || prefs.email)) {
       channelTasks.push(
         dispatchEmail(userId, opts.title, opts.body, recipientEmail)
           .catch(() => false)
@@ -438,7 +453,7 @@ export class NotificationsService {
       );
     }
 
-    if (isCritical || prefs.sms) {
+    if ((targetChannel === "sms" || targetChannel === "all" || !targetChannel) && (isCritical || prefs.sms)) {
       channelTasks.push(
         dispatchSms(userId, opts.body, recipientPhone)
           .catch(() => false)

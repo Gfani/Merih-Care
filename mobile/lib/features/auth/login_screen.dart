@@ -258,11 +258,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   void _showForgotPasswordDialog(BuildContext context) {
     final emailCtrl = TextEditingController(text: _emailController.text.trim());
+    final phoneCtrl = TextEditingController();
     final otpCtrl = TextEditingController();
     final newPassCtrl = TextEditingController();
     final confirmPassCtrl = TextEditingController();
 
     int step = 1; // 1: request, 2: verify
+    String selectedChannel = 'sms'; // 'sms' or 'email'
+    String activeIdentifier = '';
+    String maskedDestination = '';
     bool loading = false;
     String? errorMsg;
     String? successMsg;
@@ -275,14 +279,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           final theme = Theme.of(context);
 
           return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: Row(
               children: [
                 Icon(
-                  step == 1 ? Icons.lock_reset : Icons.mark_email_read_outlined,
+                  step == 1
+                      ? (selectedChannel == 'sms' ? Icons.sms_outlined : Icons.lock_reset)
+                      : Icons.security,
                   color: theme.primaryColor,
                 ),
                 const SizedBox(width: 8),
-                Text(step == 1 ? 'Forgot Password' : 'Enter 5-Min OTP'),
+                Text(
+                  step == 1 ? 'Reset Password' : 'Enter 5-Min Code',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
               ],
             ),
             content: SingleChildScrollView(
@@ -292,6 +302,90 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (step == 1) ...[
+                      // Channel toggle between SMS and Email
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3F4F6),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: loading ? null : () => setDialogState(() => selectedChannel = 'sms'),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: selectedChannel == 'sms' ? Colors.white : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(8),
+                                    boxShadow: selectedChannel == 'sms'
+                                        ? const [BoxShadow(color: Color(0x0D000000), blurRadius: 4, offset: Offset(0, 2))]
+                                        : null,
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.sms,
+                                        size: 16,
+                                        color: selectedChannel == 'sms' ? theme.primaryColor : const Color(0xFF6B7280),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Via SMS',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: selectedChannel == 'sms' ? FontWeight.bold : FontWeight.normal,
+                                          color: selectedChannel == 'sms' ? theme.primaryColor : const Color(0xFF4B5563),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: loading ? null : () => setDialogState(() => selectedChannel = 'email'),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: selectedChannel == 'email' ? Colors.white : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(8),
+                                    boxShadow: selectedChannel == 'email'
+                                        ? const [BoxShadow(color: Color(0x0D000000), blurRadius: 4, offset: Offset(0, 2))]
+                                        : null,
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.email,
+                                        size: 16,
+                                        color: selectedChannel == 'email' ? theme.primaryColor : const Color(0xFF6B7280),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Via Email',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: selectedChannel == 'email' ? FontWeight.bold : FontWeight.normal,
+                                          color: selectedChannel == 'email' ? theme.primaryColor : const Color(0xFF4B5563),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
                     if (errorMsg != null)
                       Container(
                         width: double.infinity,
@@ -322,32 +416,50 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           style: const TextStyle(color: Color(0xFF166534), fontSize: 12),
                         ),
                       ),
+
                     if (step == 1) ...[
-                      const Text(
-                        'Enter your account email. We will send a secure 6-digit OTP valid for exactly 5 minutes.',
-                        style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: emailCtrl,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: const InputDecoration(
-                          labelText: 'Email Address',
-                          prefixIcon: Icon(Icons.email_outlined),
-                        ),
-                      ),
-                    ] else ...[
                       Text(
-                        'Enter the 6-digit code sent to ${emailCtrl.text.trim()}. This OTP expires in 5 minutes.',
+                        selectedChannel == 'sms'
+                            ? 'Enter your registered mobile phone number. We will send a 6-digit OTP via SMS.'
+                            : 'Enter your account email. We will send a secure 6-digit OTP code.',
                         style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 14),
+                      if (selectedChannel == 'sms')
+                        TextField(
+                          controller: phoneCtrl,
+                          keyboardType: TextInputType.phone,
+                          decoration: const InputDecoration(
+                            labelText: 'Phone Number',
+                            hintText: '0911223344 or +251911223344',
+                            prefixIcon: Icon(Icons.phone_android),
+                          ),
+                        )
+                      else
+                        TextField(
+                          controller: emailCtrl,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: const InputDecoration(
+                            labelText: 'Email Address',
+                            hintText: 'name@example.com',
+                            prefixIcon: Icon(Icons.email_outlined),
+                          ),
+                        ),
+                    ] else ...[
+                      Text(
+                        'Enter the 6-digit code sent via ${selectedChannel.toUpperCase()} to $maskedDestination.',
+                        style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+                      ),
+                      const SizedBox(height: 14),
                       TextField(
                         controller: otpCtrl,
                         keyboardType: TextInputType.number,
                         maxLength: 6,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 6),
                         decoration: const InputDecoration(
                           labelText: '6-Digit OTP Code',
+                          hintText: '123456',
                           prefixIcon: Icon(Icons.security),
                           counterText: '',
                         ),
@@ -370,6 +482,83 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           prefixIcon: Icon(Icons.lock_outline),
                         ),
                       ),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Didn\'t receive it?',
+                            style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                          ),
+                          Row(
+                            children: [
+                              TextButton(
+                                onPressed: loading
+                                    ? null
+                                    : () async {
+                                        setDialogState(() {
+                                          loading = true;
+                                          errorMsg = null;
+                                          successMsg = null;
+                                        });
+                                        final res = await ref.read(authProvider.notifier).requestPasswordReset(
+                                          activeIdentifier,
+                                          channel: 'sms',
+                                        );
+                                        setDialogState(() {
+                                          loading = false;
+                                          if (res['success'] == true) {
+                                            selectedChannel = 'sms';
+                                            maskedDestination = res['destination'] ?? activeIdentifier;
+                                            successMsg = res['message'] ?? 'SMS OTP sent. Valid for 5 minutes.';
+                                          } else {
+                                            errorMsg = res['message'] ?? 'Failed to resend SMS';
+                                          }
+                                        });
+                                      },
+                                style: TextButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: const Size(40, 30),
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                child: const Text('Resend SMS', style: TextStyle(fontSize: 12)),
+                              ),
+                              const Text(' | ', style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+                              TextButton(
+                                onPressed: loading
+                                    ? null
+                                    : () async {
+                                        setDialogState(() {
+                                          loading = true;
+                                          errorMsg = null;
+                                          successMsg = null;
+                                        });
+                                        final res = await ref.read(authProvider.notifier).requestPasswordReset(
+                                          activeIdentifier,
+                                          channel: 'email',
+                                        );
+                                        setDialogState(() {
+                                          loading = false;
+                                          if (res['success'] == true) {
+                                            selectedChannel = 'email';
+                                            maskedDestination = res['destination'] ?? activeIdentifier;
+                                            successMsg = res['message'] ?? 'Email OTP sent. Valid for 5 minutes.';
+                                          } else {
+                                            errorMsg = res['message'] ?? 'Failed to resend Email';
+                                          }
+                                        });
+                                      },
+                                style: TextButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: const Size(40, 30),
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                child: const Text('Resend Email', style: TextStyle(fontSize: 12)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ],
                   ],
                 ),
@@ -385,22 +574,39 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   onPressed: loading
                       ? null
                       : () async {
-                          final email = emailCtrl.text.trim();
-                          if (email.isEmpty || !email.contains('@')) {
-                            setDialogState(() => errorMsg = 'Please enter a valid email address');
-                            return;
+                          final identifier = selectedChannel == 'sms'
+                              ? phoneCtrl.text.trim()
+                              : emailCtrl.text.trim();
+
+                          if (selectedChannel == 'sms') {
+                            if (identifier.length < 9) {
+                              setDialogState(() => errorMsg = 'Please enter a valid phone number (e.g. 0911223344)');
+                              return;
+                            }
+                          } else {
+                            if (identifier.isEmpty || !identifier.contains('@')) {
+                              setDialogState(() => errorMsg = 'Please enter a valid email address');
+                              return;
+                            }
                           }
+
                           setDialogState(() {
                             loading = true;
                             errorMsg = null;
                             successMsg = null;
                           });
 
-                          final res = await ref.read(authProvider.notifier).requestPasswordReset(email);
+                          final res = await ref.read(authProvider.notifier).requestPasswordReset(
+                            identifier,
+                            channel: selectedChannel,
+                          );
+
                           setDialogState(() {
                             loading = false;
                             if (res['success'] == true) {
                               step = 2;
+                              activeIdentifier = identifier;
+                              maskedDestination = res['destination'] ?? identifier;
                               successMsg = res['message'] ?? 'OTP code sent. Valid for 5 minutes.';
                             } else {
                               errorMsg = res['message'] ?? 'Failed to send OTP';
@@ -413,7 +619,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           width: 18,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text('Send 5-Min Code'),
+                      : Text(selectedChannel == 'sms' ? 'Send SMS Code' : 'Send Email Code'),
                 )
               else
                 ElevatedButton(
@@ -444,7 +650,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           });
 
                           final res = await ref.read(authProvider.notifier).confirmPasswordReset(
-                                emailCtrl.text.trim(),
+                                activeIdentifier,
                                 otp,
                                 newPass,
                               );
