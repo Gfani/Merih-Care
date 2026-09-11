@@ -72,11 +72,12 @@ async function dispatchPush(userId: string, title: string, body: string, data?: 
 }
 
 async function dispatchEmail(userId: string, title: string, body: string, recipientEmail?: string): Promise<boolean> {
+  const resendApiKey = process.env.RESEND_API_KEY;
   const sendgridKey = process.env.SENDGRID_API_KEY;
   const smtpHost = process.env.SMTP_HOST;
   const gmailUser = process.env.GMAIL_USER || (process.env.SMTP_USER && process.env.SMTP_USER.includes("@gmail.com") ? process.env.SMTP_USER : undefined);
   const gmailPass = process.env.GMAIL_APP_PASSWORD || (gmailUser ? process.env.SMTP_PASSWORD : undefined);
-  const fromEmail = process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM || gmailUser || "no-reply@merihcare.et";
+  const fromEmail = process.env.RESEND_FROM_EMAIL || process.env.SENDGRID_FROM_EMAIL || process.env.MAIL_FROM || gmailUser || "otp@merihcare.live";
   const toEmail = recipientEmail && recipientEmail.includes("@")
     ? recipientEmail
     : `${userId}@merihcare.et`;
@@ -85,6 +86,7 @@ async function dispatchEmail(userId: string, title: string, body: string, recipi
   console.log("\n====================================================================");
   console.log(`✉️  MERIHCARE OUTBOUND EMAIL DISPATCH`);
   console.log(`   TO:      ${toEmail}`);
+  console.log(`   FROM:    ${fromEmail}`);
   console.log(`   SUBJECT: ${title}`);
   console.log(`   CONTENT: ${body}`);
   console.log("====================================================================\n");
@@ -105,6 +107,32 @@ async function dispatchEmail(userId: string, title: string, body: string, recipi
       </p>
     </div>
   `;
+
+  // 1. Resend API Dispatch (Official SDK or REST API with merihcare.live)
+  if (resendApiKey && resendApiKey.startsWith("re_") && !resendApiKey.includes("xxxx")) {
+    try {
+      const { Resend } = require("resend");
+      const resend = new Resend(resendApiKey);
+      const fromFormatted = fromEmail.includes("<") ? fromEmail : `Merihcare Healthcare <${fromEmail}>`;
+      const response = await resend.emails.send({
+        from: fromFormatted,
+        to: [toEmail],
+        subject: title,
+        html: emailHtml,
+      });
+
+      if (response.error) {
+        logger.warn(`[Resend Error] Delivery failed to ${toEmail}: ${JSON.stringify(response.error)}`);
+      } else {
+        logger.log(`[Resend] Email delivered successfully to ${toEmail} (ID: ${response.data?.id})`);
+        return true;
+      }
+    } catch (err: any) {
+      logger.error(`[Resend] Dispatch failed: ${err.message}`);
+    }
+  } else if (resendApiKey && resendApiKey.includes("xxxx")) {
+    logger.warn(`[Resend Notice] RESEND_API_KEY contains placeholder 're_xxxxxxxxx'. Please supply your actual secret API key from resend.com/api-keys.`);
+  }
 
   if (sendgridKey && !sendgridKey.startsWith("SG.mock") && sendgridKey.trim().length > 10) {
     try {
