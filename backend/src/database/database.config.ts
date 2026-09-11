@@ -113,7 +113,7 @@ export const getDatabaseConfig = (configService: any): TypeOrmModuleOptions => {
       entities,
       migrations: ["dist/database/migrations/*.js"],
       migrationsRun: false,
-      synchronize: false,
+      synchronize: true,
     };
   }
 
