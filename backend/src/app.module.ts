@@ -83,7 +83,9 @@ import { RealtimeModule } from "./modules/realtime/realtime.module";
     // Dynamic Environment Configuration
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: process.env.NODE_ENV ? `.env.${process.env.NODE_ENV}` : ".env",
+      envFilePath: process.env.NODE_ENV
+        ? [`.env.${process.env.NODE_ENV}`, ".env"]
+        : [".env"],
     }),
 
     // Global Task Scheduler
