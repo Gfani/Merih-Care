@@ -41,9 +41,14 @@ export const resolveApiUrl = (): string => {
     const customApi = localStorage.getItem("merihcare_api_url");
     if (customApi) return customApi;
 
+    const hostname = window.location.hostname;
+    // When accessing via custom domain merihcare.live or admin.merihcare.live
+    if (hostname.endsWith("merihcare.live")) {
+      return "https://api.merihcare.live/api/v1";
+    }
+
     // Dynamically detect Azure Container Apps environment
     // e.g. hostname: app-merihcare-prod-admin.agreeablemoss-f06ffa43.uaenorth.azurecontainerapps.io
-    const hostname = window.location.hostname;
     if (hostname.includes(".azurecontainerapps.io")) {
       const parts = hostname.split(".");
       const domainSuffix = parts.slice(1).join(".");
@@ -54,7 +59,7 @@ export const resolveApiUrl = (): string => {
     return envUrl;
   }
   if (import.meta.env.PROD) {
-    return "https://api.merihcare.et/api/v1";
+    return "https://api.merihcare.live/api/v1";
   }
   return "http://localhost:3000/api/v1";
 };

@@ -142,7 +142,7 @@ jobs:
           file: ./admin-web/Dockerfile
           push: true
           build-args: |
-            VITE_API_URL=https://app-merihcare-prod-backend.agreeablemoss-f06ffa43.uaenorth.azurecontainerapps.io/api/v1
+            VITE_API_URL=https://api.merihcare.live/api/v1
           tags: ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-admin-web:${{ github.sha }},${{ secrets.ACR_LOGIN_SERVER }}/merihcare-admin-web:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max

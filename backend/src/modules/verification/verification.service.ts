@@ -51,7 +51,7 @@ export class VerificationService {
     const apiBase =
       process.env.API_BASE_URL ||
       (process.env.NODE_ENV === "production" || process.env.CONTAINER_APP_NAME
-        ? "https://app-merihcare-prod-backend.agreeablemoss-f06ffa43.uaenorth.azurecontainerapps.io/api/v1"
+        ? "https://api.merihcare.live/api/v1"
         : `http://localhost:${port}/api/v1`);
 
     return `${apiBase}/uploads/view/${encodeURIComponent(fileKey)}`;

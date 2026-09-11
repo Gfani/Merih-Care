@@ -56,7 +56,7 @@ async function bootstrap() {
         configuredOrigins.includes(origin) ||
         origin.endsWith(".azurecontainerapps.io") ||
         origin.endsWith(".azurestaticapps.net") ||
-        origin.endsWith(".azurewebsites.net") ||
+        origin.endsWith("merihcare.live") ||
         origin.endsWith("merihcare.et") ||
         origin.includes("localhost");
 
