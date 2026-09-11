@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ConflictException } from "@nestjs/common";
+import { Injectable, BadRequestException, ConflictException, Optional, Inject, forwardRef } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, DataSource, In } from "typeorm";
 import { AppointmentEntity } from "../../database/entities/appointment.entity";
@@ -7,6 +7,7 @@ import { UserEntity } from "../../database/entities/user.entity";
 import { ProviderEntity } from "../../database/entities/provider.entity";
 import { ServiceEntity } from "../../database/entities/service.entity";
 import { RealtimeService } from "../realtime/realtime.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import * as crypto from "crypto";
 
 @Injectable()
@@ -20,6 +21,9 @@ export class AppointmentsService {
     private readonly cancellationRepo: Repository<CancellationReasonEntity>,
     private readonly dataSource: DataSource,
     private readonly realtimeService: RealtimeService,
+    @Optional()
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notificationsService?: NotificationsService,
   ) {}
 
   async getAllAppointments(limit = 50, offset = 0, patientId?: string): Promise<AppointmentEntity[]> {
@@ -171,26 +175,52 @@ export class AppointmentsService {
 
     // Broadcast live update to all subscribed WebSocket clients (Admin portal + Provider dashboard)
     try {
-      this.realtimeService.emitNewServiceRequest({
+      const eventPayload = {
+        id: result.id,
         appointmentId: result.id,
+        patientId: result.patientId,
         patientName: result.patientName,
+        patientPhone: result.patientPhone,
+        providerId: result.providerId,
+        providerName: result.providerName,
+        providerPhone: result.providerPhone,
         service: result.service,
         status: result.status,
         date: result.date,
         time: result.time,
         location: result.location,
         amount: result.amount,
-      });
-      this.realtimeService.emitAppointmentUpdate(result.id, result.status, {
-        appointmentId: result.id,
-        patientName: result.patientName,
-        service: result.service,
-        status: result.status,
-        date: result.date,
-        time: result.time,
-        location: result.location,
-        amount: result.amount,
-      });
+        createdAt: result.createdAt,
+      };
+
+      this.realtimeService.emitNewServiceRequest(eventPayload);
+      this.realtimeService.emitAppointmentUpdate(result.id, result.status, eventPayload);
+
+      // Explicitly notify admin room for instant UI card addition
+      this.realtimeService.emitToRoom("admin", "new_service_request", eventPayload);
+      this.realtimeService.emitToRoom("admin", "appointment_status_update", eventPayload);
+
+      // Direct notification to assigned provider room if known
+      if (result.providerId) {
+        this.realtimeService.emitToRoom(`provider:${result.providerId}`, "new_service_request", eventPayload);
+      }
+
+      // Send in-app notification to the assigned provider
+      if (this.notificationsService && result.providerId) {
+        const provUserId = result.provider?.userId || result.providerId;
+        this.notificationsService.sendNotification(provUserId, {
+          type: "appointment_update",
+          title: "New Patient Care Request",
+          body: `${result.patientName} requested ${result.service} on ${result.date} at ${result.time}.`,
+          priority: "critical",
+          data: {
+            appointmentId: result.id,
+            type: "appointment_request",
+            patientName: result.patientName,
+            location: result.location,
+          },
+        }).catch(() => {});
+      }
     } catch (_) {}
 
     return result;

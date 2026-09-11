@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { AppointmentsService } from "./appointments.service";
 import { AppointmentsController } from "./appointments.controller";
@@ -7,6 +7,7 @@ import { AppointmentStatusHistoryEntity } from "../../database/entities/appointm
 import { CancellationReasonEntity } from "../../database/entities/appointment-history.entity";
 import { AuthModule } from "../auth/auth.module";
 import { RealtimeModule } from "../realtime/realtime.module";
+import { NotificationsModule } from "../notifications/notifications.module";
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { RealtimeModule } from "../realtime/realtime.module";
     ]),
     AuthModule,
     RealtimeModule,
+    forwardRef(() => NotificationsModule),
   ],
   controllers: [AppointmentsController],
   providers: [AppointmentsService],

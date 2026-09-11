@@ -62,9 +62,11 @@ export class CreateAppointmentDto {
   @IsDateString()
   date: string;
 
-  @ApiProperty({ description: "Booking Time (HH:MM)" })
+  @ApiProperty({ description: "Booking Time (HH:MM or HH:MM AM/PM)" })
   @IsNotEmpty()
-  @Matches(/^([0-9]|0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/, { message: "Time must be in HH:MM format" })
+  @Matches(/^([0-9]|0[0-9]|1[0-9]|2[0-3]):[0-5][0-9](\s*(AM|PM|am|pm))?$/i, { 
+    message: "Time must be in HH:MM or HH:MM AM/PM format" 
+  })
   time: string;
 
   @ApiProperty({ description: "Visit Location Address" })
@@ -190,8 +192,32 @@ export class AppointmentsController {
   }
 
   @Post()
-  async createAppointment(@Body() body: CreateAppointmentDto) {
-    return this.appointmentsService.createAppointment(body);
+  async createAppointment(@Body() body: CreateAppointmentDto, @Req() req: any) {
+    const data: any = { ...body };
+    if (!data.patientId && req.user) {
+      data.patientId = req.user.id || req.user.sub;
+      data.patientName = data.patientName || req.user.name;
+    }
+    return this.appointmentsService.createAppointment(data);
+  }
+
+  @Post("book")
+  async bookAppointment(@Body() body: any, @Req() req: any) {
+    const data: any = { ...body };
+    if (!data.patientId && req.user) {
+      data.patientId = req.user.id || req.user.sub;
+      data.patientName = data.patientName || req.user.name;
+    }
+    if (data.address && !data.location) {
+      data.location = data.address;
+    }
+    if (data.notes && !data.visitNotes) {
+      data.visitNotes = data.notes;
+    }
+    if (!data.serviceId) {
+      data.serviceId = "srv-1";
+    }
+    return this.appointmentsService.createAppointment(data);
   }
 
   @Put(":id/status")

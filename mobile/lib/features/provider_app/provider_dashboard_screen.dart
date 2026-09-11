@@ -67,7 +67,7 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
   Future<void> _acceptIncomingRequest(dynamic req) async {
     try {
       final client = ref.read(apiClientProvider);
-      final aptId = req['id']?.toString() ?? 'apt-1';
+      final aptId = req['id']?.toString() ?? req['appointmentId']?.toString() ?? 'apt-1';
       await client.dio.put('/appointments/$aptId/status', data: {
         'status': 'accepted',
       });
@@ -79,10 +79,10 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
         ),
       );
       _loadDashboardData();
-      context.push('/provider/active-request');
+      context.push('/provider/active-request', extra: req);
     } catch (_) {
       if (!mounted) return;
-      context.push('/provider/active-request');
+      context.push('/provider/active-request', extra: req);
     }
   }
 
@@ -281,20 +281,7 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
                       ),
                     ),
 
-                    const SizedBox(height: 16),
-
-                    // ─── Simulate On-Demand Dispatch Button ───────────────────────────────
-                    ElevatedButton.icon(
-                      onPressed: () => context.push('/provider/active-request'),
-                      icon: const Icon(Icons.flash_on, size: 18),
-                      label: const Text('Simulate On-Demand Request Flow'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.secondaryColor,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 8),
 
                     // ─── Incoming Requests List ───────────────────────────────────────────
                     SectionHeaderWidget(

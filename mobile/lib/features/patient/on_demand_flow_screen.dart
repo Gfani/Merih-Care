@@ -167,12 +167,22 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
           final dynamic apt = check.data;
           if (apt is Map<String, dynamic>) {
             final status = apt['status']?.toString();
-            if (status == 'accepted' || status == 'scheduled' || status == 'on_the_way' || status == 'in_progress') {
-              timer.cancel();
+            if (apt['providerName'] != null) {
               _matchedProvider['id'] = apt['providerId']?.toString() ?? 'p-1';
               _matchedProvider['name'] = apt['providerName']?.toString() ?? 'Assigned Healthcare Provider';
               _matchedProvider['phone'] = apt['providerPhone']?.toString() ?? '+251 91 122 3344';
+            }
+
+            if (_currentStep == OnDemandStep.findingProvider && (status == 'accepted' || status == 'scheduled' || status == 'on_the_way' || status == 'in_progress')) {
               setState(() => _currentStep = OnDemandStep.providerMatched);
+            } else if ((_currentStep == OnDemandStep.providerMatched || _currentStep == OnDemandStep.liveTracking) && status == 'arrived') {
+              setState(() => _currentStep = OnDemandStep.providerArrived);
+            } else if ((_currentStep == OnDemandStep.providerArrived || _currentStep == OnDemandStep.liveTracking) && status == 'in_progress') {
+              _startVisitTimer();
+            } else if (status == 'completed') {
+              timer.cancel();
+              _visitTimer?.cancel();
+              setState(() => _currentStep = OnDemandStep.rateProvider);
             }
           }
         } catch (e) {
@@ -776,9 +786,29 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
                 ],
               ),
               const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: () => setState(() => _currentStep = OnDemandStep.providerArrived),
-                child: const Text('Simulate Provider Arrival'),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF86EFAC)),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF16A34A)),
+                    ),
+                    SizedBox(width: 10),
+                    Text(
+                      'Live: Clinician is en route to your home',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF15803D)),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

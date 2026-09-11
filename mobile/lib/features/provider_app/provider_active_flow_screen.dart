@@ -16,7 +16,8 @@ enum ProviderFlowStep {
 }
 
 class ProviderActiveFlowScreen extends ConsumerStatefulWidget {
-  const ProviderActiveFlowScreen({super.key});
+  final Map<String, dynamic>? requestData;
+  const ProviderActiveFlowScreen({super.key, this.requestData});
 
   @override
   ConsumerState<ProviderActiveFlowScreen> createState() => _ProviderActiveFlowScreenState();
@@ -52,7 +53,33 @@ class _ProviderActiveFlowScreenState extends ConsumerState<ProviderActiveFlowScr
   @override
   void initState() {
     super.initState();
-    _startCountdown();
+    if (widget.requestData != null) {
+      final d = widget.requestData!;
+      _requestData['id'] = d['id'] ?? d['appointmentId'] ?? _requestData['id'];
+      _requestData['patientName'] = d['patientName'] ?? (d['patient'] is Map ? d['patient']['name'] : null) ?? _requestData['patientName'];
+      _requestData['patientPhone'] = d['patientPhone'] ?? (d['patient'] is Map ? d['patient']['phone'] : null) ?? _requestData['patientPhone'];
+      _requestData['service'] = d['service'] ?? (d['serviceRelation'] is Map ? d['serviceRelation']['name'] : null) ?? _requestData['service'];
+      _requestData['address'] = d['location'] ?? d['address'] ?? _requestData['address'];
+      _requestData['grossFee'] = d['amount'] != null
+          ? (d['amount'] as num).toDouble()
+          : (d['estimatedEarnings'] != null ? (d['estimatedEarnings'] as num).toDouble() : 800.0);
+
+      final status = d['status']?.toString();
+      if (status == 'accepted') {
+        _currentStep = ProviderFlowStep.accepted;
+      } else if (status == 'on_the_way') {
+        _currentStep = ProviderFlowStep.navigating;
+      } else if (status == 'arrived') {
+        _currentStep = ProviderFlowStep.arrived;
+      } else if (status == 'in_progress') {
+        _currentStep = ProviderFlowStep.inProgress;
+        _startVisitTimer();
+      } else {
+        _currentStep = ProviderFlowStep.accepted;
+      }
+    } else {
+      _startCountdown();
+    }
   }
 
   @override
@@ -82,21 +109,44 @@ class _ProviderActiveFlowScreenState extends ConsumerState<ProviderActiveFlowScr
     });
   }
 
-  Future<void> _acceptDispatch() async {
-    _countdownTimer?.cancel();
+  void _startVisitTimer() {
+    _visitSeconds = 0;
+    _visitTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      setState(() => _visitSeconds++);
+    });
+  }
+
+  Future<void> _updateAppointmentStatus(String status, {String? notes}) async {
     try {
       final client = ref.read(apiClientProvider);
       final aptId = _requestData['id']?.toString() ?? 'apt-1';
       await client.dio.put('/appointments/$aptId/status', data: {
-        'status': 'accepted',
+        'status': status,
+        if (notes != null) 'visitNotes': notes,
       });
     } catch (e) {
-      print('[PROVIDER] Accept dispatch error: $e');
+      print('[PROVIDER] Update status to $status error: $e');
     }
+  }
+
+  Future<void> _acceptDispatch() async {
+    _countdownTimer?.cancel();
+    await _updateAppointmentStatus('accepted');
     setState(() => _currentStep = ProviderFlowStep.accepted);
   }
 
-  void _startVisit() {
+  Future<void> _startNavigation() async {
+    await _updateAppointmentStatus('on_the_way');
+    setState(() => _currentStep = ProviderFlowStep.navigating);
+  }
+
+  Future<void> _markArrived() async {
+    await _updateAppointmentStatus('arrived');
+    setState(() => _currentStep = ProviderFlowStep.arrived);
+  }
+
+  Future<void> _startVisit() async {
+    await _updateAppointmentStatus('in_progress');
     setState(() {
       _currentStep = ProviderFlowStep.inProgress;
       _visitSeconds = 0;
@@ -105,6 +155,13 @@ class _ProviderActiveFlowScreenState extends ConsumerState<ProviderActiveFlowScr
     _visitTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() => _visitSeconds++);
     });
+  }
+
+  Future<void> _finishVisit() async {
+    _visitTimer?.cancel();
+    final notes = '${_clinicalNotesController.text.trim()} | Prescriptions: ${_prescriptionsController.text.trim()}';
+    await _updateAppointmentStatus('completed', notes: notes);
+    setState(() => _currentStep = ProviderFlowStep.completed);
   }
 
   String _formatTimer(int seconds) {
@@ -325,7 +382,7 @@ class _ProviderActiveFlowScreenState extends ConsumerState<ProviderActiveFlowScr
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
-            onPressed: () => setState(() => _currentStep = ProviderFlowStep.navigating),
+            onPressed: _startNavigation,
             icon: const Icon(Icons.navigation_outlined, size: 18),
             label: const Text('Start Turn-by-Turn GPS Navigation'),
           ),
@@ -391,7 +448,7 @@ class _ProviderActiveFlowScreenState extends ConsumerState<ProviderActiveFlowScr
           padding: const EdgeInsets.all(16),
           color: Colors.white,
           child: ElevatedButton(
-            onPressed: () => setState(() => _currentStep = ProviderFlowStep.arrived),
+            onPressed: _markArrived,
             child: const Text('I Have Arrived at Patient Location'),
           ),
         ),
@@ -516,10 +573,7 @@ class _ProviderActiveFlowScreenState extends ConsumerState<ProviderActiveFlowScr
           ),
           const SizedBox(height: 20),
           ElevatedButton(
-            onPressed: () {
-              _visitTimer?.cancel();
-              setState(() => _currentStep = ProviderFlowStep.completed);
-            },
+            onPressed: _finishVisit,
             child: const Text('Finish Visit & Process Settlement'),
           ),
         ],

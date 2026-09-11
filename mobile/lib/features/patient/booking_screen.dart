@@ -165,12 +165,27 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                           setState(() => _submitting = true);
                           try {
                             final client = ref.read(apiClientProvider);
+                            final auth = ref.read(authProvider);
+                            final user = auth.user;
+                            final patientId = user?['id']?.toString();
+                            final patientName = user?['name']?.toString() ?? (user?['email']?.toString().split('@')[0] ?? 'Patient');
+                            final patientPhone = user?['phone']?.toString();
+
+                            final m = _selectedDate.month.toString().padLeft(2, '0');
+                            final d = _selectedDate.day.toString().padLeft(2, '0');
+                            final dateStr = '${_selectedDate.year}-$m-$d';
+
                             final response = await client.dio.post('/appointments/book', data: {
                               'providerId': widget.providerId,
-                              'date': '${_selectedDate.year}-${_selectedDate.month}-${_selectedDate.day}',
+                              'patientId': patientId,
+                              'patientName': patientName,
+                              'patientPhone': patientPhone,
+                              'date': dateStr,
                               'time': _selectedTime,
+                              'location': _addressController.text.trim(),
                               'address': _addressController.text.trim(),
                               'notes': _notesController.text.trim(),
+                              'amount': 800.0,
                             });
                             setState(() => _submitting = false);
                             if (mounted) {
@@ -178,10 +193,12 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                               // Direct user to secure Stripe payment flow
                               context.replace('/payment?appointmentId=$apptId');
                             }
-                          } catch (_) {
+                          } catch (err) {
                             setState(() => _submitting = false);
-                            // Fallback mock check and redirect
-                            context.replace('/payment?appointmentId=new-mock-id');
+                            print('[BOOKING] Error booking appointment: $err');
+                            if (mounted) {
+                              context.replace('/appointments');
+                            }
                           }
                         }
                       },

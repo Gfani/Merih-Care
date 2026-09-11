@@ -123,7 +123,10 @@ final appRouter = Provider<GoRouter>((ref) {
       // Provider App Routes
       GoRoute(path: '/provider-dashboard', builder: (ctx, _) => const ProviderDashboardScreen()),
       GoRoute(path: '/provider/profile', builder: (ctx, _) => const ProviderEditProfileScreen()),
-      GoRoute(path: '/provider/active-request', builder: (ctx, _) => const ProviderActiveFlowScreen()),
+      GoRoute(
+        path: '/provider/active-request', 
+        builder: (ctx, state) => ProviderActiveFlowScreen(requestData: state.extra as Map<String, dynamic>?),
+      ),
       GoRoute(path: '/provider/credentials', builder: (ctx, _) => const CredentialsUploadScreen()),
       GoRoute(path: '/provider/availability', builder: (ctx, _) => const ProviderAvailabilityScreen()),
       GoRoute(
