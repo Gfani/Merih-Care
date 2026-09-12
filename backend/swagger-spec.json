@@ -43,6 +43,27 @@
         }
       }
     },
+    "/api/v1/auth/apple": {
+      "post": {
+        "operationId": "AuthController_appleAuth",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppleAuthDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/auth/signup": {
       "post": {
         "operationId": "AuthController_signup",
@@ -3809,6 +3830,10 @@
         "properties": {}
       },
       "GoogleAuthDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "AppleAuthDto": {
         "type": "object",
         "properties": {}
       },

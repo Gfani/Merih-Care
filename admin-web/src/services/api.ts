@@ -209,6 +209,38 @@ export const api = {
     }
   },
 
+  async appleAuth(
+    identityToken: string,
+    role: string = "admin",
+    givenName?: string,
+    familyName?: string
+  ): Promise<{ access_token: string; user: any }> {
+    try {
+      const res = await axios.post(`${API_URL}/auth/apple`, { identityToken, role, givenName, familyName });
+      const payload = res.data;
+      const user = payload.user || {
+        id: payload.id || "admin-user",
+        email: payload.email,
+        name: payload.name || "Administrator",
+        role: payload.role || payload.adminRole || role,
+      };
+      const token = payload.access_token || payload.token;
+      if (token) {
+        localStorage.setItem("admin_token", token);
+        localStorage.setItem("admin_user", JSON.stringify(user));
+      }
+      return { access_token: token, user };
+    } catch (error) {
+      if (isDemoMode()) {
+        const mockUser = { id: "u-apple-admin", name: "Apple Administrator", email: "admin@icloud.com", role: "admin" };
+        localStorage.setItem("admin_token", "mock-apple-token");
+        localStorage.setItem("admin_user", JSON.stringify(mockUser));
+        return { access_token: "mock-apple-token", user: mockUser };
+      }
+      throw error;
+    }
+  },
+
   logout() {
     localStorage.removeItem("admin_token");
     localStorage.removeItem("admin_user");

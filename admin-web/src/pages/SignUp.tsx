@@ -5,12 +5,13 @@ import { api } from "../services/api";
 import { Mail, Lock, User, Eye, EyeOff, ShieldCheck, Activity, Users, Phone, KeyRound, CheckCircle2, Smartphone } from "lucide-react";
 import logo from "../assets/logo.png";
 import GoogleLogo from "../components/GoogleLogo";
+import AppleLogo from "../components/AppleLogo";
 import { validateRealEmail } from "../utils/validation";
 import { useAuth } from "../context/AuthContext";
 
 export default function SignUp() {
   const navigate = useNavigate();
-  const { googleLogin } = useAuth();
+  const { googleLogin, appleLogin } = useAuth();
   const [step, setStep] = useState<1 | 2>(1);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -21,6 +22,7 @@ export default function SignUp() {
   const [agree, setAgree] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
 
   // Verification Channel Option (SMS vs Email)
   const [verificationChannel, setVerificationChannel] = useState<"sms" | "email">("sms");
@@ -120,6 +122,20 @@ export default function SignUp() {
     } catch (err: any) {
       setGoogleLoading(false);
       const message = err.response?.data?.message || err.message || "Failed to sign up with Google";
+      toast(Array.isArray(message) ? message[0] : message, "error");
+    }
+  };
+
+  const handleAppleSignUp = async () => {
+    setAppleLoading(true);
+    try {
+      await appleLogin();
+      setAppleLoading(false);
+      toast("Authenticated successfully via Apple!", "success");
+      navigate("/");
+    } catch (err: any) {
+      setAppleLoading(false);
+      const message = err.response?.data?.message || err.message || "Failed to sign up with Apple";
       toast(Array.isArray(message) ? message[0] : message, "error");
     }
   };
@@ -315,16 +331,31 @@ export default function SignUp() {
                 <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
               </div>
 
-              <Button
-                type="button"
-                variant="outline"
-                loading={googleLoading}
-                onClick={handleGoogleSignUp}
-                className="w-full flex items-center justify-center gap-2 py-2.5 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-              >
-                <GoogleLogo className="w-4 h-4" />
-                <span>Google Workspace</span>
-              </Button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  loading={googleLoading}
+                  disabled={loading || googleLoading || appleLoading}
+                  onClick={handleGoogleSignUp}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                >
+                  <GoogleLogo className="w-3.5 h-3.5" />
+                  <span>Google</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  loading={appleLoading}
+                  disabled={loading || googleLoading || appleLoading}
+                  onClick={handleAppleSignUp}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 border-slate-900 dark:border-slate-700 bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-black dark:hover:bg-slate-100 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                >
+                  <AppleLogo size={14} />
+                  <span>Apple</span>
+                </Button>
+              </div>
 
               <p className="text-center text-xs text-slate-500 dark:text-slate-400 pt-2">
                 Already have an administrative account?{" "}

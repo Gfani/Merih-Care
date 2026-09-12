@@ -5,18 +5,20 @@ import { api } from "../services/api";
 import { Mail, Lock, Eye, EyeOff, ShieldCheck, Activity, Users, KeyRound, Smartphone, RefreshCw } from "lucide-react";
 import logo from "../assets/logo.png";
 import GoogleLogo from "../components/GoogleLogo";
+import AppleLogo from "../components/AppleLogo";
 import { validateRealEmail } from "../utils/validation";
 
 import { useAuth } from "../context/AuthContext";
 
 export default function Login({ onLogin }: { onLogin?: () => void }) {
   const navigate = useNavigate();
-  const { login, googleLogin } = useAuth();
+  const { login, googleLogin, appleLogin } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
 
   // OTP Password Reset State (Dual-Channel SMS & Email)
   const [otpModalOpen, setOtpModalOpen] = useState(false);
@@ -84,6 +86,24 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     } catch (err: any) {
       setGoogleLoading(false);
       const errMsg = err.response?.data?.message || err.message || "Failed to sign in with Google";
+      toast(Array.isArray(errMsg) ? errMsg[0] : errMsg, "error");
+    }
+  };
+
+  const handleAppleLogin = async () => {
+    setAppleLoading(true);
+    try {
+      await appleLogin();
+      setAppleLoading(false);
+      toast("Authenticated successfully via Apple!", "success");
+      if (onLogin) {
+        onLogin();
+      } else {
+        navigate("/");
+      }
+    } catch (err: any) {
+      setAppleLoading(false);
+      const errMsg = err.response?.data?.message || err.message || "Failed to sign in with Apple";
       toast(Array.isArray(errMsg) ? errMsg[0] : errMsg, "error");
     }
   };
@@ -343,19 +363,35 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleGoogleLogin}
-            disabled={loading || googleLoading}
-            className="w-full flex items-center justify-center gap-3 py-2.5 px-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 font-semibold text-sm shadow-sm transition-all hover:shadow cursor-pointer"
-          >
-            {googleLoading ? (
-              <div className="w-4 h-4 border-2 border-[#0d7c6a] border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <GoogleLogo size={18} />
-            )}
-            <span>Sign In with Google</span>
-          </button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={handleGoogleLogin}
+              disabled={loading || googleLoading || appleLoading}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 font-semibold text-xs shadow-sm transition-all hover:shadow cursor-pointer"
+            >
+              {googleLoading ? (
+                <div className="w-4 h-4 border-2 border-[#0d7c6a] border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <GoogleLogo size={16} />
+              )}
+              <span>Google</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleAppleLogin}
+              disabled={loading || googleLoading || appleLoading}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border border-slate-900 dark:border-slate-700 bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-black dark:hover:bg-slate-100 font-semibold text-xs shadow-sm transition-all hover:shadow cursor-pointer"
+            >
+              {appleLoading ? (
+                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <AppleLogo size={16} />
+              )}
+              <span>Apple</span>
+            </button>
+          </div>
 
           <div className="text-center text-xs text-slate-500 dark:text-slate-400 pt-2">
             Don't have an administrator account?{" "}

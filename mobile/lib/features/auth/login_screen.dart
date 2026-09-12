@@ -312,6 +312,103 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+
+                // Continue with Apple Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: _loading
+                        ? null
+                        : () async {
+                            setState(() => _loading = true);
+                            final result = await ref.read(authProvider.notifier).signInWithApple();
+                            if (mounted) setState(() => _loading = false);
+                            if (!mounted) return;
+
+                            if (result.success) {
+                              if (result.pendingApproval) {
+                                await showDialog(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Row(
+                                      children: [
+                                        Icon(Icons.hourglass_top_rounded, color: Color(0xFF0D7C6A)),
+                                        SizedBox(width: 8),
+                                        Text('Pending Approval'),
+                                      ],
+                                    ),
+                                    content: Text(result.message ?? 'Your account is pending administrator approval.'),
+                                    actions: [
+                                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+                                    ],
+                                  ),
+                                );
+                              } else {
+                                final user = ref.read(authProvider).user;
+                                final role = user?['role'];
+                                if (role == 'provider') {
+                                  context.go('/provider-dashboard');
+                                } else {
+                                  context.go('/dashboard');
+                                }
+                              }
+                            } else {
+                              final err = result.message ?? 'Apple Sign-in failed.';
+                              final isSuspended = err.toLowerCase().contains('suspended');
+                              if (isSuspended) {
+                                showDialog(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                    title: const Row(
+                                      children: [
+                                        Icon(Icons.block, color: Colors.red),
+                                        SizedBox(width: 8),
+                                        Text('Account Suspended'),
+                                      ],
+                                    ),
+                                    content: Text(err),
+                                    actions: [
+                                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+                                    ],
+                                  ),
+                                );
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(err),
+                                    backgroundColor: Colors.red.shade700,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      backgroundColor: Colors.black,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.apple, size: 22, color: Colors.white),
+                        SizedBox(width: 10),
+                        Text(
+                          'Continue with Apple',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 24),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,

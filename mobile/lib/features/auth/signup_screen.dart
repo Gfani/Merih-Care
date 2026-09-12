@@ -1219,6 +1219,103 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+
+                // Sign up with Apple Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: _loading
+                        ? null
+                        : () async {
+                            final providerData = _role == 'provider'
+                                ? {
+                                    'title': _title,
+                                    'specialty': _specialty,
+                                    'licenseNumber': _licenseNumberController.text.trim(),
+                                    'experience': int.tryParse(_experienceController.text.trim()) ?? 0,
+                                    'education': _educationController.text.trim(),
+                                    'hospitalAffiliation': _hospitalAffiliationController.text.trim(),
+                                    'cvUrl': _cvUrlController.text.trim(),
+                                    'licenseDocumentUrl': _licenseDocController.text.trim(),
+                                    'idDocumentUrl': _idDocController.text.trim(),
+                                  }
+                                : null;
+
+                            setState(() => _loading = true);
+                            final result = await ref.read(authProvider.notifier).signInWithApple(
+                                  role: _role,
+                                  providerData: providerData,
+                                );
+                            if (mounted) setState(() => _loading = false);
+                            if (!mounted) return;
+
+                            if (result.success) {
+                              if (result.pendingApproval || _role == 'provider') {
+                                await showDialog(
+                                  context: context,
+                                  barrierDismissible: false,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Row(
+                                      children: [
+                                        Icon(Icons.verified_user_outlined, color: Color(0xFF0F766E)),
+                                        SizedBox(width: 8),
+                                        Text('Application Received'),
+                                      ],
+                                    ),
+                                    content: Text(
+                                      result.message ??
+                                          'Your Apple sign-in was successful. Your provider application is pending administrator verification.',
+                                    ),
+                                    actions: [
+                                      ElevatedButton(
+                                        onPressed: () {
+                                          Navigator.of(ctx).pop();
+                                          context.go('/login');
+                                        },
+                                        child: const Text('Back to Sign In'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              } else {
+                                context.go('/dashboard');
+                              }
+                            } else {
+                              final err = result.message ?? 'Apple sign-up failed.';
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(err),
+                                  backgroundColor: Colors.red.shade700,
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      backgroundColor: Colors.black,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.apple, size: 22, color: Colors.white),
+                        SizedBox(width: 10),
+                        Text(
+                          'Sign up with Apple',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 24),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,

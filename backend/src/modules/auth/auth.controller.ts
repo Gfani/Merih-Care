@@ -139,6 +139,63 @@ export class GoogleAuthDto {
   idDocumentUrl?: string;
 }
 
+export class AppleAuthDto {
+  @IsNotEmpty()
+  @IsString()
+  identityToken: string;
+
+  @IsOptional()
+  @IsString()
+  authorizationCode?: string;
+
+  @IsOptional()
+  @IsString()
+  givenName?: string;
+
+  @IsOptional()
+  @IsString()
+  familyName?: string;
+
+  @IsOptional()
+  @IsIn(["patient", "provider", "admin"])
+  role?: string;
+
+  @IsOptional()
+  @MaxLength(100)
+  title?: string;
+
+  @IsOptional()
+  @MaxLength(100)
+  specialty?: string;
+
+  @IsOptional()
+  @MaxLength(100)
+  licenseNumber?: string;
+
+  @IsOptional()
+  experience?: number;
+
+  @IsOptional()
+  @MaxLength(255)
+  education?: string;
+
+  @IsOptional()
+  @MaxLength(255)
+  hospitalAffiliation?: string;
+
+  @IsOptional()
+  @MaxLength(500)
+  cvUrl?: string;
+
+  @IsOptional()
+  @MaxLength(500)
+  licenseDocumentUrl?: string;
+
+  @IsOptional()
+  @MaxLength(500)
+  idDocumentUrl?: string;
+}
+
 export class RefreshDto {
   @IsNotEmpty()
   @MaxLength(500)
@@ -281,6 +338,36 @@ export class AuthController {
       return await this.authService.googleAuth(
         body.idToken,
         body.role || "patient",
+        providerDetails,
+        (req.headers["user-agent"] as string) || "Unknown",
+        req.ip || "127.0.0.1"
+      );
+    } catch (err: any) {
+      throw new BadRequestException(err.message);
+    }
+  }
+
+  @Post("apple")
+  async appleAuth(@Body() body: AppleAuthDto, @Req() req: Request) {
+    try {
+      const providerDetails = body.role === "provider" ? {
+        title: body.title,
+        specialty: body.specialty,
+        licenseNumber: body.licenseNumber,
+        experience: body.experience,
+        education: body.education,
+        hospitalAffiliation: body.hospitalAffiliation,
+        cvUrl: body.cvUrl,
+        licenseDocumentUrl: body.licenseDocumentUrl,
+        idDocumentUrl: body.idDocumentUrl,
+      } : undefined;
+
+      const userName = [body.givenName, body.familyName].filter(Boolean).join(" ") || undefined;
+
+      return await this.authService.appleAuth(
+        body.identityToken,
+        body.role || "patient",
+        userName,
         providerDetails,
         (req.headers["user-agent"] as string) || "Unknown",
         req.ip || "127.0.0.1"
