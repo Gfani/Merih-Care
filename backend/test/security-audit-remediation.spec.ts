@@ -161,7 +161,7 @@ describe("Security Audit Remediation Test Suite", () => {
       await expect(
         authService.googleAuth(forgedToken)
       ).rejects.toThrow(UnauthorizedException);
-    });
+    }, 10000);
   });
 
   describe("3. Strict Granular RBAC in RolesGuard", () => {

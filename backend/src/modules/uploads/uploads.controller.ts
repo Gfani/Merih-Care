@@ -25,7 +25,7 @@ export class UploadsController {
   @Post("credential")
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor("file"))
-  async uploadCredential(@UploadedFile() file: any, @Req() req: any) {
+  async uploadCredential(@UploadedFile() file: any, @Req() req?: any) {
     if (!file) {
       throw new BadRequestException("No file uploaded");
     }
@@ -54,21 +54,21 @@ export class UploadsController {
     this.uploadsService.scanForMalware(file.originalname, file.buffer);
 
     const sanitizedName = this.uploadsService.sanitizeFilename(file.originalname);
-    const userId = req.user?.id || "credentials";
+    const userId = req?.user?.id || "credentials";
     return this.uploadsService.handleUpload(sanitizedName, file.buffer, file.mimetype, userId);
   }
 
   @Post()
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor("file"))
-  async uploadFile(@UploadedFile() file: any, @Req() req: any) {
+  async uploadFile(@UploadedFile() file: any, @Req() req?: any) {
     if (!file) {
       throw new BadRequestException("No file uploaded");
     }
 
-    // Size limit: 15MB
-    if (file.size > 15 * 1024 * 1024) {
-      throw new BadRequestException("File size exceeds the 15MB limit");
+    // Size limit: 10MB
+    if (file.size > 10 * 1024 * 1024) {
+      throw new BadRequestException("File size exceeds the 10MB limit");
     }
 
     // Permitted file types: images and documents

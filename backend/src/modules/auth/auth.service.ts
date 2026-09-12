@@ -793,9 +793,11 @@ export class AuthService {
     if (emailCandidate) {
       user = await this.userRepo.findOne({ where: { email: emailCandidate.toLowerCase() } });
       if (user && phoneCandidate) {
-        if (!user.phone || !this.isSamePhoneNumber(user.phone, phoneCandidate)) {
-          // If mismatch with existing account, do not leak or proceed
-          user = null;
+        if (!user.phone) {
+          throw new BadRequestException("This account has no registered phone number on file. Please reset your password via Email.");
+        }
+        if (!this.isSamePhoneNumber(user.phone, phoneCandidate)) {
+          throw new BadRequestException("The entered phone number is not associated with this user account. Password reset code can only be sent to the registered phone number.");
         }
       }
     } else if (phoneCandidate) {
@@ -806,7 +808,7 @@ export class AuthService {
 
     let channel: "email" | "sms" = requestedChannel || (isEmailIdentifier ? "email" : "sms");
 
-    // UNIFORM TIMING / RESPONSE: Prevent account enumeration
+    // UNIFORM TIMING / RESPONSE: Prevent account enumeration when user does not exist
     if (!user) {
       const masked = this.maskDestination(identifier);
       return {
@@ -818,7 +820,7 @@ export class AuthService {
     }
 
     if (channel === "sms" && !user.phone) {
-      channel = "email";
+      throw new BadRequestException("This account has no registered phone number on file. Please reset your password via Email.");
     }
 
     // Cryptographically random 6-digit OTP
@@ -881,11 +883,11 @@ export class AuthService {
 
     if (phoneCandidate) {
       if (!user.phone || !this.isSamePhoneNumber(user.phone, phoneCandidate)) {
-        throw new BadRequestException("Invalid or expired password reset token");
+        throw new BadRequestException("The entered phone number is not associated with this user account");
       }
     }
     if (emailCandidate && user.email.toLowerCase() !== emailCandidate.toLowerCase()) {
-      throw new BadRequestException("Invalid or expired password reset token");
+      throw new BadRequestException("The entered email address is not associated with this user account");
     }
 
     // Check brute-force OTP attempts lockout
@@ -1080,13 +1082,14 @@ export class AuthService {
     } else {
       try {
         const response = await fetch(
-          `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
+          `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`,
+          { signal: AbortSignal.timeout(3000) }
         );
         if (response.ok) {
           googleUser = await response.json();
         }
       } catch (err) {
-        // Network failure
+        // Network failure or timeout
       }
     }
 

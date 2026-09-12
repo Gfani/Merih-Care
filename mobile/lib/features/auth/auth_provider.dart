@@ -551,7 +551,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final token = await SecureStorage.instance.readToken();
       if (token != null && token.isNotEmpty) {
         final client = _ref.read(apiClientProvider);
-        await client.dio.post('/auth/logout', data: {'refresh_token': token});
+        await client.dio
+            .post('/auth/logout', data: {'refresh_token': token})
+            .timeout(const Duration(milliseconds: 1500));
       }
     } catch (_) {
       // Best-effort network session revocation

@@ -1,8 +1,28 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
 import 'package:merihcare/features/auth/auth_provider.dart';
 import 'package:merihcare/core/storage/secure_storage.dart';
+import 'package:merihcare/core/network/api_client.dart';
+import 'package:merihcare/core/network/network_providers.dart';
+
+class _MockApiClient extends ApiClient {
+  _MockApiClient() : super(baseUrl: 'http://localhost') {
+    dio.interceptors.clear();
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) => handler.resolve(
+          Response(
+            requestOptions: options,
+            statusCode: 200,
+            data: {'success': true},
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 void main() {
   setUp(() {
@@ -51,7 +71,11 @@ void main() {
     });
 
     test('Logout should reset AuthState to unauthenticated and clear stored token', () async {
-      final container = ProviderContainer();
+      final container = ProviderContainer(
+        overrides: [
+          apiClientProvider.overrideWithValue(_MockApiClient()),
+        ],
+      );
       final notifier = container.read(authProvider.notifier);
 
       await SecureStorage.instance.writeToken('mock-active-token');
