@@ -849,15 +849,18 @@ export const api = {
     }
   },
 
-  async requestPasswordReset(identifier: string, channel: "sms" | "email" = "email"): Promise<{ success: boolean; channel?: string; destination?: string; message: string }> {
+  async requestPasswordReset(
+    identifier: string,
+    channel: "sms" | "email" = "email",
+    opts?: { email?: string; phone?: string }
+  ): Promise<{ success: boolean; channel?: string; destination?: string; message: string }> {
     try {
-      const payload: any = { identifier, channel };
-      if (channel === "email" || identifier.includes("@")) {
-        payload.email = identifier;
-      }
-      if (channel === "sms" || !identifier.includes("@")) {
-        payload.phone = identifier;
-      }
+      const payload: any = {
+        identifier,
+        channel,
+        email: opts?.email || (identifier.includes("@") ? identifier : undefined),
+        phone: opts?.phone || (!identifier.includes("@") ? identifier : undefined),
+      };
       const res = await axios.post(`${API_URL}/auth/password-reset/request`, payload);
       return res.data;
     } catch (error) {
@@ -866,14 +869,20 @@ export const api = {
     }
   },
 
-  async confirmPasswordReset(identifier: string, token: string, newPassword: string): Promise<{ success: boolean }> {
+  async confirmPasswordReset(
+    identifier: string,
+    token: string,
+    newPassword: string,
+    opts?: { email?: string; phone?: string }
+  ): Promise<{ success: boolean }> {
     try {
-      const payload: any = { identifier, token, newPassword };
-      if (identifier.includes("@")) {
-        payload.email = identifier;
-      } else {
-        payload.phone = identifier;
-      }
+      const payload: any = {
+        identifier,
+        token,
+        newPassword,
+        email: opts?.email || (identifier.includes("@") ? identifier : undefined),
+        phone: opts?.phone || (!identifier.includes("@") ? identifier : undefined),
+      };
       const res = await axios.post(`${API_URL}/auth/password-reset/confirm`, payload);
       return res.data;
     } catch (error) {

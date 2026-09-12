@@ -579,6 +579,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                         final res = await ref.read(authProvider.notifier).requestPasswordReset(
                                           activeIdentifier,
                                           channel: 'sms',
+                                          email: emailCtrl.text.trim().isNotEmpty ? emailCtrl.text.trim() : null,
+                                          phone: phoneCtrl.text.trim().isNotEmpty ? phoneCtrl.text.trim() : null,
                                         );
                                         setDialogState(() {
                                           loading = false;
@@ -611,6 +613,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                         final res = await ref.read(authProvider.notifier).requestPasswordReset(
                                           activeIdentifier,
                                           channel: 'email',
+                                          email: emailCtrl.text.trim().isNotEmpty ? emailCtrl.text.trim() : null,
+                                          phone: phoneCtrl.text.trim().isNotEmpty ? phoneCtrl.text.trim() : null,
                                         );
                                         setDialogState(() {
                                           loading = false;
@@ -674,6 +678,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           final res = await ref.read(authProvider.notifier).requestPasswordReset(
                             identifier,
                             channel: selectedChannel,
+                            email: emailCtrl.text.trim().isNotEmpty ? emailCtrl.text.trim() : null,
+                            phone: phoneCtrl.text.trim().isNotEmpty ? phoneCtrl.text.trim() : null,
                           );
 
                           setDialogState(() {
@@ -728,6 +734,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 activeIdentifier,
                                 otp,
                                 newPass,
+                                email: emailCtrl.text.trim().isNotEmpty ? emailCtrl.text.trim() : null,
+                                phone: phoneCtrl.text.trim().isNotEmpty ? phoneCtrl.text.trim() : null,
                               );
 
                           setDialogState(() => loading = false);

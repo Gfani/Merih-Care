@@ -69,6 +69,68 @@ describe("Auth & User Security Checklist Tests", () => {
         authService.confirmPasswordReset("patient@merihcare.et", "000000", "NewSecurePass123!")
       ).rejects.toThrow("Invalid or expired password reset token");
     });
+
+    it("should reject password reset request when phone number does not match user account", async () => {
+      const mockUser = new UserEntity();
+      mockUser.id = "u-1";
+      mockUser.email = "patient@merihcare.et";
+      mockUser.phone = "+251911223344";
+      mockUserRepo.findOne.mockResolvedValue(mockUser);
+
+      await expect(
+        authService.requestPasswordReset("patient@merihcare.et", "sms", {
+          email: "patient@merihcare.et",
+          phone: "0999887766",
+        })
+      ).rejects.toThrow("The entered phone number is not associated with this user account");
+    });
+
+    it("should accept password reset request when phone number matches user account in different formats", async () => {
+      const mockUser = new UserEntity();
+      mockUser.id = "u-1";
+      mockUser.email = "patient@merihcare.et";
+      mockUser.phone = "+251911223344";
+      mockUserRepo.findOne.mockResolvedValue(mockUser);
+
+      const result = await authService.requestPasswordReset("patient@merihcare.et", "sms", {
+        email: "patient@merihcare.et",
+        phone: "0911223344",
+      });
+      expect(result.success).toBe(true);
+      expect(result.channel).toBe("sms");
+    });
+
+    it("should reject password reset request via SMS when user account has no phone registered", async () => {
+      const mockUser = new UserEntity();
+      mockUser.id = "u-1";
+      mockUser.email = "nophone@merihcare.et";
+      mockUser.phone = null;
+      mockUserRepo.findOne.mockResolvedValue(mockUser);
+
+      await expect(
+        authService.requestPasswordReset("nophone@merihcare.et", "sms", {
+          email: "nophone@merihcare.et",
+          phone: "0911223344",
+        })
+      ).rejects.toThrow("This account has no registered phone number on file");
+    });
+
+    it("should reject password reset confirmation if phone does not match user account", async () => {
+      const mockUser = new UserEntity();
+      mockUser.id = "u-1";
+      mockUser.email = "patient@merihcare.et";
+      mockUser.phone = "+251911223344";
+      mockUser.passwordResetToken = (authService as any).hashToken("849201");
+      mockUser.passwordResetExpires = new Date(Date.now() + 10000).toISOString();
+      mockUserRepo.findOne.mockResolvedValue(mockUser);
+
+      await expect(
+        authService.confirmPasswordReset("patient@merihcare.et", "849201", "NewSecurePass123!", {
+          email: "patient@merihcare.et",
+          phone: "0999887766",
+        })
+      ).rejects.toThrow("The entered phone number is not associated with this user account");
+    });
   });
 
   describe("Email Verification Flow", () => {

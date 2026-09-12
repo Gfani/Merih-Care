@@ -134,7 +134,12 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     setResetNewPassword("");
     setResetConfirmPassword("");
     try {
-      const res = await api.requestPasswordReset(val, resetChannel);
+      const currentEmail = (savedEmail || (email.includes("@") ? email : "")).trim();
+      const currentPhone = (resetChannel === "sms" ? val : (savedPhone || "")).trim();
+      const res = await api.requestPasswordReset(val, resetChannel, {
+        email: currentEmail || undefined,
+        phone: currentPhone || undefined,
+      });
       const dest = res.destination || val;
       setResetMaskedDest(dest);
       toast(
@@ -158,7 +163,12 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     if (targetChannel === "sms") setResendingSms(true);
     else setResendingEmail(true);
     try {
-      const res = await api.requestPasswordReset(resetIdentifier.trim(), targetChannel);
+      const currentEmail = (savedEmail || (email.includes("@") ? email : "")).trim();
+      const currentPhone = (targetChannel === "sms" ? resetIdentifier.trim() : (savedPhone || "")).trim();
+      const res = await api.requestPasswordReset(resetIdentifier.trim(), targetChannel, {
+        email: currentEmail || undefined,
+        phone: currentPhone || undefined,
+      });
       setResetChannel(targetChannel);
       const dest = res.destination || resetIdentifier.trim();
       setResetMaskedDest(dest);
@@ -187,7 +197,12 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     }
     setResetLoading(true);
     try {
-      await api.confirmPasswordReset(resetIdentifier.trim(), resetOtp.trim(), resetNewPassword);
+      const currentEmail = (savedEmail || (email.includes("@") ? email : "")).trim();
+      const currentPhone = (resetChannel === "sms" ? resetIdentifier.trim() : (savedPhone || "")).trim();
+      await api.confirmPasswordReset(resetIdentifier.trim(), resetOtp.trim(), resetNewPassword, {
+        email: currentEmail || undefined,
+        phone: currentPhone || undefined,
+      });
       toast("Password reset successfully! You can now sign in with your new password.", "success");
       if (resetIdentifier.includes("@")) {
         setEmail(resetIdentifier.trim());

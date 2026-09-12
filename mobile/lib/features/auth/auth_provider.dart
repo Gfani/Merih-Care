@@ -315,13 +315,18 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(user: user);
   }
 
-  Future<Map<String, dynamic>> requestPasswordReset(String identifier, {String channel = 'sms'}) async {
+  Future<Map<String, dynamic>> requestPasswordReset(
+    String identifier, {
+    String channel = 'sms',
+    String? email,
+    String? phone,
+  }) async {
     try {
       final client = _ref.read(apiClientProvider);
       final response = await client.dio.post('/auth/password-reset/request', data: {
         'identifier': identifier,
-        'email': identifier.contains('@') ? identifier : null,
-        'phone': !identifier.contains('@') ? identifier : null,
+        'email': email ?? (identifier.contains('@') ? identifier : null),
+        'phone': phone ?? (!identifier.contains('@') ? identifier : null),
         'channel': channel,
       });
       final dynamic raw = response.data;
@@ -347,13 +352,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<Map<String, dynamic>> confirmPasswordReset(String identifier, String token, String newPassword) async {
+  Future<Map<String, dynamic>> confirmPasswordReset(
+    String identifier,
+    String token,
+    String newPassword, {
+    String? email,
+    String? phone,
+  }) async {
     try {
       final client = _ref.read(apiClientProvider);
       final response = await client.dio.post('/auth/password-reset/confirm', data: {
         'identifier': identifier,
-        'email': identifier.contains('@') ? identifier : null,
-        'phone': !identifier.contains('@') ? identifier : null,
+        'email': email ?? (identifier.contains('@') ? identifier : null),
+        'phone': phone ?? (!identifier.contains('@') ? identifier : null),
         'token': token,
         'newPassword': newPassword,
       });

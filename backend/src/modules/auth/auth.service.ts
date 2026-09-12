@@ -633,18 +633,63 @@ export class AuthService {
     };
   }
 
+  isSamePhoneNumber(phoneA?: string, phoneB?: string): boolean {
+    if (!phoneA || !phoneB) return false;
+    const digitsA = phoneA.replace(/\D/g, "");
+    const digitsB = phoneB.replace(/\D/g, "");
+    if (!digitsA || !digitsB) return false;
+    if (digitsA === digitsB) return true;
+    if (digitsA.length >= 9 && digitsB.length >= 9) {
+      return digitsA.slice(-9) === digitsB.slice(-9);
+    }
+    return false;
+  }
+
   async requestPasswordReset(
     identifier: string,
-    requestedChannel?: "email" | "sms"
+    requestedChannel?: "email" | "sms",
+    opts?: { email?: string; phone?: string }
   ): Promise<{ success: boolean; message: string; channel: string; destination: string }> {
-    const user = await this.findUserByIdentifier(identifier);
-    if (!user) {
-      throw new NotFoundException(`No registered account found matching "${identifier}". Please check the phone/email or sign up.`);
+    const rawEmail = opts?.email?.trim();
+    const rawPhone = opts?.phone?.trim();
+    const isEmailIdentifier = identifier.includes("@");
+
+    const emailCandidate = rawEmail || (isEmailIdentifier ? identifier.trim() : undefined);
+    const phoneCandidate = rawPhone || (!isEmailIdentifier ? identifier.trim() : undefined);
+
+    let user: UserEntity | null = null;
+
+    if (emailCandidate) {
+      user = await this.userRepo.findOne({ where: { email: emailCandidate.toLowerCase() } });
+      if (!user) {
+        throw new NotFoundException(`No registered account found matching email "${emailCandidate}".`);
+      }
+      // If a phone number is also provided or channel is SMS, verify phone number is strictly related to this user account!
+      if (phoneCandidate) {
+        if (!user.phone) {
+          throw new BadRequestException("This account has no registered phone number on file. Please reset your password via Email.");
+        }
+        if (!this.isSamePhoneNumber(user.phone, phoneCandidate)) {
+          throw new BadRequestException(
+            "The entered phone number is not associated with this user account. Password reset code can only be sent to the registered phone number."
+          );
+        }
+      }
+    } else if (phoneCandidate) {
+      user = await this.findUserByIdentifier(phoneCandidate);
+      if (!user) {
+        throw new NotFoundException(`No registered account found matching phone number "${phoneCandidate}".`);
+      }
+    } else {
+      user = await this.findUserByIdentifier(identifier);
+      if (!user) {
+        throw new NotFoundException(`No registered account found matching "${identifier}". Please check the phone/email or sign up.`);
+      }
     }
 
-    let channel: "email" | "sms" = requestedChannel || (identifier.includes("@") ? "email" : "sms");
+    let channel: "email" | "sms" = requestedChannel || (isEmailIdentifier ? "email" : "sms");
     if (channel === "sms" && !user.phone) {
-      channel = "email";
+      throw new BadRequestException("This account has no registered phone number. Please reset your password via Email.");
     }
 
     // Cryptographically random 6-digit OTP
@@ -657,7 +702,7 @@ export class AuthService {
     if (this.notificationsService) {
       await this.notificationsService.sendNotification(user.id, {
         type: "general",
-        title: channel === "sms" ? "MerihCare Password Reset Code" : "MerihCare Password Reset Code",
+        title: "MerihCare Password Reset Code",
         body: `Your MerihCare password reset code is ${resetOtp}. This code expires in 5 minutes.`,
         priority: "critical",
         recipientEmail: user.email,
@@ -669,7 +714,7 @@ export class AuthService {
       });
     }
 
-    const dest = channel === "sms" ? (user.phone || identifier) : user.email;
+    const dest = channel === "sms" ? user.phone! : user.email;
     const masked = this.maskDestination(dest);
 
     return {
@@ -680,10 +725,40 @@ export class AuthService {
     };
   }
 
-  async confirmPasswordReset(identifier: string, token: string, newPass: string): Promise<{ success: boolean; message: string }> {
-    const user = await this.findUserByIdentifier(identifier);
+  async confirmPasswordReset(
+    identifier: string,
+    token: string,
+    newPass: string,
+    opts?: { email?: string; phone?: string }
+  ): Promise<{ success: boolean; message: string }> {
+    const rawEmail = opts?.email?.trim();
+    const rawPhone = opts?.phone?.trim();
+    const isEmailIdentifier = identifier.includes("@");
+
+    const emailCandidate = rawEmail || (isEmailIdentifier ? identifier.trim() : undefined);
+    const phoneCandidate = rawPhone || (!isEmailIdentifier ? identifier.trim() : undefined);
+
+    let user: UserEntity | null = null;
+    if (emailCandidate) {
+      user = await this.userRepo.findOne({ where: { email: emailCandidate.toLowerCase() } });
+    }
+    if (!user) {
+      user = await this.findUserByIdentifier(identifier);
+    }
+    if (!user) {
+      throw new BadRequestException("Account not found for password reset confirmation.");
+    }
+
+    if (phoneCandidate) {
+      if (!user.phone || !this.isSamePhoneNumber(user.phone, phoneCandidate)) {
+        throw new BadRequestException("The entered phone number is not associated with this user account.");
+      }
+    }
+    if (emailCandidate && user.email.toLowerCase() !== emailCandidate.toLowerCase()) {
+      throw new BadRequestException("The entered email is not associated with this user account.");
+    }
     const hashed = this.hashToken(token);
-    if (!user || user.passwordResetToken !== hashed) {
+    if (user.passwordResetToken !== hashed) {
       throw new BadRequestException("Invalid or expired password reset token");
     }
 

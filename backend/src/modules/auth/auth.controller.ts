@@ -366,14 +366,20 @@ export class AuthController {
   @UseGuards(RateLimiterGuard)
   async requestPasswordReset(@Body() body: PasswordResetRequestDto) {
     const id = body.identifier || body.email || body.phone || "";
-    return this.authService.requestPasswordReset(id, body.channel);
+    return this.authService.requestPasswordReset(id, body.channel, {
+      email: body.email,
+      phone: body.phone,
+    });
   }
 
   @Post("password-reset/confirm")
   @UseGuards(RateLimiterGuard)
   async confirmPasswordReset(@Body() body: PasswordResetConfirmDto) {
     const id = body.identifier || body.email || body.phone || "";
-    return this.authService.confirmPasswordReset(id, body.token, body.newPassword);
+    return this.authService.confirmPasswordReset(id, body.token, body.newPassword, {
+      email: body.email,
+      phone: body.phone,
+    });
   }
 
   @Post("email-verification/request")
