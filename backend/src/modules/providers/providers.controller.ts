@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Param, Body, UseGuards, Query, Req } from "@nestjs/common";
+import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards, Query, Req } from "@nestjs/common";
 import { ProvidersService } from "./providers.service";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 import { RolesGuard } from "../../shared/guards/roles.guard";
@@ -132,6 +132,13 @@ export class ProvidersController {
   @Roles("admin")
   async suspendProvider(@Param("id") id: string) {
     return this.providersService.toggleProviderSuspension(id);
+  }
+
+  @Delete(":id")
+  @UseGuards(RolesGuard)
+  @Roles("admin")
+  async deleteProvider(@Param("id") id: string) {
+    return this.providersService.deleteProvider(id);
   }
 
   @Post(":id/contact")

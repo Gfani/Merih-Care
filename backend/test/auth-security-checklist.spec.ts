@@ -15,6 +15,7 @@ describe("Auth & User Security Checklist Tests", () => {
     mockUserRepo = {
       findOne: jest.fn(),
       save: jest.fn().mockImplementation((user) => Promise.resolve(user)),
+      remove: jest.fn().mockImplementation((user) => Promise.resolve(user)),
       find: jest.fn().mockResolvedValue([]),
     };
 
@@ -22,6 +23,7 @@ describe("Auth & User Security Checklist Tests", () => {
       findOne: jest.fn(),
       find: jest.fn().mockResolvedValue([]),
       save: jest.fn().mockImplementation((s) => Promise.resolve(s)),
+      delete: jest.fn().mockResolvedValue({ affected: 1 }),
     };
 
     mockJwtService = {
@@ -236,6 +238,101 @@ describe("Auth & User Security Checklist Tests", () => {
       const updated = await usersService.reactivateUser("u-1");
       expect(updated.status).toBe("active");
       expect(updated.lockoutUntil).toBeNull();
+    });
+  });
+
+  describe("Suspension Notification & Multi-Role Verification", () => {
+    it("should throw explicit suspension message when suspended user attempts login", async () => {
+      const mockUser = new UserEntity();
+      mockUser.id = "u-suspended";
+      mockUser.email = "suspended@merihcare.et";
+      mockUser.status = "suspended";
+      mockUser.isApproved = true;
+      mockUserRepo.findOne.mockResolvedValue(mockUser);
+
+      await expect(
+        authService.validateUser("suspended@merihcare.et", "SomePassword123!")
+      ).rejects.toThrow("Your account has been suspended by administration. Please contact support");
+    });
+
+    it("should create multi-role session including patient, provider, and admin roles", async () => {
+      const mockUser = new UserEntity();
+      mockUser.id = "u-omni";
+      mockUser.name = "Omni User";
+      mockUser.email = "omni@merihcare.et";
+      mockUser.role = "admin";
+      mockUser.adminRole = "operations_admin";
+      mockUser.roles = "patient,provider,admin";
+      mockUserRepo.findOne.mockResolvedValue(mockUser);
+
+      const session = await authService.createSession("u-omni", "TestAgent", "127.0.0.1");
+      expect(session.user.roles).toContain("patient");
+      expect(session.user.roles).toContain("provider");
+      expect(session.user.roles).toContain("admin");
+      expect(session.user.hasAdminAccount).toBe(true);
+      expect(session.user.hasPatientAccount).toBe(true);
+    });
+  });
+
+  describe("Superior Administrator & Deletion Hierarchy", () => {
+    let adminService: any;
+    const { AdminService } = require("../src/modules/admin/admin.service");
+
+    beforeEach(() => {
+      adminService = new AdminService(mockUserRepo, mockSessionRepo);
+    });
+
+    it("should prevent anyone from deleting the superior administrator account", async () => {
+      const superiorUser = new UserEntity();
+      superiorUser.id = "u-superior";
+      superiorUser.email = "fanuelgoitom79@gmail.com";
+      mockUserRepo.findOne.mockResolvedValue(superiorUser);
+
+      await expect(
+        adminService.deleteAdministrator("u-other-super", "u-superior")
+      ).rejects.toThrow("The superior administrator account (fanuelgoitom79@gmail.com) cannot be deleted");
+    });
+
+    it("should prevent an ordinary superadmin from deleting another superadmin", async () => {
+      const actorSuper = new UserEntity();
+      actorSuper.id = "u-actor";
+      actorSuper.email = "ordinary.super@merihcare.et";
+      actorSuper.adminRole = "super_admin";
+
+      const targetSuper = new UserEntity();
+      targetSuper.id = "u-target";
+      targetSuper.email = "target.super@merihcare.et";
+      targetSuper.adminRole = "super_admin";
+
+      mockUserRepo.findOne
+        .mockResolvedValueOnce(targetSuper) // target lookup
+        .mockResolvedValueOnce(actorSuper); // actor lookup
+
+      await expect(
+        adminService.deleteAdministrator("u-actor", "u-target")
+      ).rejects.toThrow("Only the superior administrator (fanuelgoitom79@gmail.com) has permission to delete super administrators");
+    });
+
+    it("should allow the superior administrator to delete a superadmin", async () => {
+      const superiorActor = new UserEntity();
+      superiorActor.id = "u-superior";
+      superiorActor.email = "fanuelgoitom79@gmail.com";
+      superiorActor.adminRole = "super_admin";
+
+      const targetSuper = new UserEntity();
+      targetSuper.id = "u-target";
+      targetSuper.email = "target.super@merihcare.et";
+      targetSuper.adminRole = "super_admin";
+
+      mockUserRepo.findOne
+        .mockResolvedValueOnce(targetSuper)
+        .mockResolvedValueOnce(superiorActor);
+      mockUserRepo.remove.mockResolvedValue(targetSuper);
+
+      const result = await adminService.deleteAdministrator("u-superior", "u-target");
+      expect(result.success).toBe(true);
+      expect(mockSessionRepo.delete).toHaveBeenCalledWith({ userId: "u-target" });
+      expect(mockUserRepo.remove).toHaveBeenCalledWith(targetSuper);
     });
   });
 });

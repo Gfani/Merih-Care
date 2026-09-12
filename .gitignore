@@ -58,6 +58,7 @@ admin-web/.env
 # Diagnostic & Coverage reports
 coverage/
 .nyc_output/
+scratch/
 .eslintcache
 .stylelintcache
 

@@ -849,6 +849,26 @@ export const api = {
     }
   },
 
+  async deleteProvider(id: string): Promise<any> {
+    try {
+      const res = await axios.delete(`${API_URL}/providers/${id}`, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { success: true, message: "Provider deleted in demo mode" };
+      throw error;
+    }
+  },
+
+  async switchActiveRole(role: string): Promise<any> {
+    try {
+      const res = await axios.post(`${API_URL}/auth/switch-active-role`, { role }, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { success: true, activeRole: role };
+      throw error;
+    }
+  },
+
   async requestPasswordReset(
     identifier: string,
     channel: "sms" | "email" = "email",

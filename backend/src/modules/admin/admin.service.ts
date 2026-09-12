@@ -1,17 +1,27 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { UserEntity } from "../../database/entities/user.entity";
+import { SessionEntity } from "../../database/entities/session.entity";
 import * as fs from "fs";
 import * as path from "path";
 import * as bcrypt from "bcryptjs";
 import * as crypto from "crypto";
+
+export function isSuperiorAdmin(email?: string): boolean {
+  if (!email) return false;
+  const clean = email.toLowerCase().trim();
+  return clean === "fanuelgoitom79@gmail.com" || clean === "fanuelgoitom79@gmial.com";
+}
 
 @Injectable()
 export class AdminService {
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    @Optional()
+    @InjectRepository(SessionEntity)
+    private readonly sessionRepo?: Repository<SessionEntity>,
   ) {}
 
   private getSettingsPath() {
@@ -196,7 +206,7 @@ export class AdminService {
     return this.userRepo.save(admin);
   }
 
-  async deleteAdministrator(actorId: string, targetId: string): Promise<{ success: boolean }> {
+  async deleteAdministrator(actorId: string, targetId: string): Promise<{ success: boolean; message?: string }> {
     if (actorId && actorId === targetId) {
       throw new Error("Super administrators cannot delete their own account");
     }
@@ -205,11 +215,39 @@ export class AdminService {
       throw new Error("Administrator account not found");
     }
     const targetEmail = (targetUser.email || "").toLowerCase().trim();
-    if (targetEmail === "fanuelgoitom79@gmail.com" || targetEmail === "goitomfanuel@gmail.com" || targetEmail === "fani@g.com") {
-      throw new Error("The primary super administrator account cannot be deleted");
+    if (isSuperiorAdmin(targetEmail)) {
+      throw new Error("The superior administrator account (fanuelgoitom79@gmail.com) cannot be deleted under any circumstances");
     }
+
+    // Resolve actor details
+    let actorEmail = "";
+    if (actorId) {
+      const actorUser = await this.userRepo.findOne({ where: { id: actorId } });
+      actorEmail = (actorUser?.email || "").toLowerCase().trim();
+    }
+
+    // Check if target is a super administrator
+    const isTargetSuper =
+      targetUser.adminRole === "super_admin" ||
+      targetUser.role === "super_admin" ||
+      targetEmail === "goitomfanuel@gmail.com" ||
+      targetEmail === "fani@g.com";
+
+    if (isTargetSuper && !isSuperiorAdmin(actorEmail)) {
+      throw new Error("Only the superior administrator (fanuelgoitom79@gmail.com) has permission to delete super administrators");
+    }
+
+    // Revoke and purge all active sessions immediately so tokens are killed instantly
+    if (this.sessionRepo) {
+      try {
+        await this.sessionRepo.delete({ userId: targetUser.id });
+      } catch (err) {
+        console.error("Failed to revoke sessions on admin deletion:", err);
+      }
+    }
+
     await this.userRepo.remove(targetUser);
-    return { success: true };
+    return { success: true, message: `Administrator ${targetUser.name || targetUser.email} has been immediately removed.` };
   }
 
   async updateAdminPasswordForUser(userId: string, newPass: string): Promise<UserEntity> {

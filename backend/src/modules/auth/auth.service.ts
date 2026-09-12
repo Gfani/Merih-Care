@@ -1,4 +1,4 @@
-import { Injectable, Optional, Inject, forwardRef, NotFoundException, BadRequestException } from "@nestjs/common";
+import { Injectable, Optional, Inject, forwardRef, NotFoundException, BadRequestException, UnauthorizedException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { UserEntity } from "../../database/entities/user.entity";
@@ -292,8 +292,13 @@ export class AuthService {
       throw new Error("Account is pending administrator approval");
     }
 
+    if (user.status === "suspended") {
+      throw new UnauthorizedException(
+        "Account is suspended: Your account has been suspended by administration. Please contact support at support@merihcare.com or +251 911 000 000."
+      );
+    }
     if (user.status !== "active") {
-      throw new Error("Account is suspended");
+      throw new UnauthorizedException("Account is inactive");
     }
 
     const matched = await bcrypt.compare(pass, user.password || "");
@@ -468,12 +473,50 @@ export class AuthService {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new Error("User not found");
 
+    let providerData = null;
+    if (this.providerRepo && typeof this.providerRepo.findOne === "function") {
+      try {
+        providerData = await this.providerRepo.findOne({ where: { userId: user.id } });
+      } catch {
+        providerData = null;
+      }
+    }
+
+    // Build complete multi-role set: patient, provider, and admin
+    const rolesSet = new Set<string>();
+    if (user.role) rolesSet.add(user.role);
+    if (user.roles) {
+      user.roles.split(",").map((r) => r.trim()).filter(Boolean).forEach((r) => rolesSet.add(r));
+    }
+    rolesSet.add("patient"); // Every registered account has patient access
+    if (providerData) {
+      rolesSet.add("provider");
+    }
+    const emailLower = (user.email || "").toLowerCase().trim();
+    if (
+      user.adminRole ||
+      user.role === "admin" ||
+      user.role === "super_admin" ||
+      emailLower === "fanuelgoitom79@gmail.com" ||
+      emailLower === "fanuelgoitom79@gmial.com" ||
+      emailLower === "fani@g.com"
+    ) {
+      rolesSet.add("admin");
+      if (user.adminRole) rolesSet.add(user.adminRole);
+    }
+
+    const allRoles = Array.from(rolesSet);
+
     const payload = { 
       sub: user.id, 
       email: user.email, 
       role: user.role, 
+      roles: allRoles,
       adminRole: user.adminRole,
-      permissions: user.permissions
+      permissions: user.permissions,
+      hasProviderAccount: !!providerData,
+      hasAdminAccount: rolesSet.has("admin"),
+      hasPatientAccount: true,
     };
 
     const accessToken = await this.jwtService.signAsync(payload, { expiresIn: "7d" });
@@ -489,11 +532,6 @@ export class AuthService {
     session.lastActive = new Date().toISOString();
     await this.sessionRepo.save(session);
 
-    let providerData = null;
-    if (user.role === "provider" && this.providerRepo) {
-      providerData = await this.providerRepo.findOne({ where: { userId: user.id } }).catch(() => null);
-    }
-
     return {
       access_token: accessToken,
       refresh_token: refreshToken,
@@ -502,11 +540,35 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: user.role,
+        roles: allRoles,
         adminRole: user.adminRole,
         mfaEnabled: user.mfaEnabled,
+        hasProviderAccount: !!providerData,
+        hasAdminAccount: rolesSet.has("admin"),
+        hasPatientAccount: true,
         provider: providerData,
       }
     };
+  }
+
+  async switchActiveRole(userId: string, newRole: string): Promise<any> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException("User not found");
+
+    const validRoles = ["patient", "provider", "admin"];
+    if (!validRoles.includes(newRole)) {
+      throw new BadRequestException(`Invalid role: ${newRole}. Must be patient, provider, or admin.`);
+    }
+
+    user.role = newRole;
+    const currentRoles = (user.roles || "").split(",").map((r) => r.trim()).filter(Boolean);
+    if (!currentRoles.includes(newRole)) {
+      currentRoles.push(newRole);
+      user.roles = currentRoles.join(",");
+    }
+
+    await this.userRepo.save(user);
+    return { success: true, activeRole: newRole, roles: currentRoles };
   }
 
   async rotateSession(oldRefreshToken: string, userAgent: string, ipAddress: string): Promise<any> {

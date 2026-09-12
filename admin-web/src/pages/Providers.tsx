@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { SearchBar, Button, Card, DataTable, Avatar, StatusBadge, Rating, ConfirmDialog, Modal, toast, SkeletonCard, Input } from "../components/ui";
 import { api } from "../services/api";
-import { AlertTriangle, MessageSquare, Phone, Mail, Send } from "lucide-react";
+import { AlertTriangle, MessageSquare, Phone, Mail, Send, Trash2 } from "lucide-react";
 import { useRealtimeSocket } from "../hooks/useRealtimeSocket";
 
 interface ProvidersSectionProps {
@@ -26,6 +26,8 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
   // Modals state
   const [suspendModal, setSuspendModal] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<any>(null);
+  const [deleteModal, setDeleteModal] = useState(false);
+  const [providerToDelete, setProviderToDelete] = useState<any>(null);
   const [detailsModal, setDetailsModal] = useState(false);
   const [selectedDetails, setSelectedDetails] = useState<any>(null);
 
@@ -115,6 +117,27 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
     } finally {
       setSuspendModal(false);
       setSelectedProvider(null);
+    }
+  };
+
+  const confirmDeleteProvider = async () => {
+    if (!providerToDelete) return;
+    const targetId = providerToDelete.id;
+    try {
+      await api.deleteProvider(targetId);
+      toast(`Provider ${providerToDelete.name} removed immediately.`, "success");
+      setProviders((prev) => prev.filter((p) => p.id !== targetId && p.userId !== targetId));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(targetId);
+        return next;
+      });
+    } catch (err: any) {
+      toast(err.response?.data?.message || err.message || "Failed to remove provider.", "error");
+      loadProviders();
+    } finally {
+      setDeleteModal(false);
+      setProviderToDelete(null);
     }
   };
 
@@ -379,6 +402,17 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
                     >
                       {row.status === "suspended" ? "Restore" : "Suspend"}
                     </Button>
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      disabled={!canModifyProviders}
+                      className="text-xs !py-1 !px-2 text-red-600 hover:!bg-red-50 dark:hover:!bg-red-950/30 disabled:opacity-50 cursor-pointer flex items-center gap-1" 
+                      onClick={() => { setProviderToDelete(row); setDeleteModal(true); }}
+                      title="Permanently remove provider immediately"
+                    >
+                      <Trash2 size={12} />
+                      <span>Delete</span>
+                    </Button>
                   </div>
                 )},
               ]}
@@ -405,6 +439,16 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
         message={`Are you sure you want to ${selectedProvider?.status === "suspended" ? "restore" : "suspend"} ${selectedProvider?.name}?`}
         confirmLabel={selectedProvider?.status === "suspended" ? "Restore" : "Suspend"}
         confirmVariant={selectedProvider?.status === "suspended" ? "success" : "danger"}
+      />
+
+      <ConfirmDialog
+        open={deleteModal}
+        onClose={() => { setDeleteModal(false); setProviderToDelete(null); }}
+        onConfirm={confirmDeleteProvider}
+        title="Remove Healthcare Provider"
+        message={`Are you sure you want to permanently remove provider "${providerToDelete?.name}"? Their provider account access and active sessions will be revoked immediately.`}
+        confirmLabel="Remove Immediately"
+        confirmVariant="danger"
       />
 
       <Modal open={detailsModal} onClose={() => setDetailsModal(false)} title="Provider Details">

@@ -155,6 +155,36 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               } else {
                                 context.go('/dashboard');
                               }
+                            } else if (mounted) {
+                              final err = ref.read(authProvider).errorMessage ?? 'Login failed. Please check your credentials.';
+                              final isSuspended = err.toLowerCase().contains('suspended');
+                              if (isSuspended) {
+                                showDialog(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                    title: const Row(
+                                      children: [
+                                        Icon(Icons.block, color: Colors.red),
+                                        SizedBox(width: 8),
+                                        Text('Account Suspended'),
+                                      ],
+                                    ),
+                                    content: Text(err),
+                                    actions: [
+                                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+                                    ],
+                                  ),
+                                );
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(err),
+                                    backgroundColor: Colors.red.shade700,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
                             }
                           }
                         },
@@ -227,6 +257,36 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 } else {
                                   context.go('/dashboard');
                                 }
+                              }
+                            } else {
+                              final err = result.message ?? 'Google Sign-in failed.';
+                              final isSuspended = err.toLowerCase().contains('suspended');
+                              if (isSuspended) {
+                                showDialog(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                    title: const Row(
+                                      children: [
+                                        Icon(Icons.block, color: Colors.red),
+                                        SizedBox(width: 8),
+                                        Text('Account Suspended'),
+                                      ],
+                                    ),
+                                    content: Text(err),
+                                    actions: [
+                                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+                                    ],
+                                  ),
+                                );
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(err),
+                                    backgroundColor: Colors.red.shade700,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
                               }
                             }
                           },

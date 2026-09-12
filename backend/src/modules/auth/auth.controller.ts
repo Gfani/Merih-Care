@@ -362,6 +362,13 @@ export class AuthController {
     return { success: true };
   }
 
+  @Post("switch-active-role")
+  @UseGuards(JwtAuthGuard)
+  async switchActiveRole(@Body() body: { role: string }, @Req() req: any) {
+    const userId = req.user?.id || req.user?.sub;
+    return this.authService.switchActiveRole(userId, body.role);
+  }
+
   @Post("password-reset/request")
   @UseGuards(RateLimiterGuard)
   async requestPasswordReset(@Body() body: PasswordResetRequestDto) {

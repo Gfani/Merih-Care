@@ -243,6 +243,7 @@ export class AdminController {
       req.user?.adminRole === "super_admin" ||
       req.user?.role === "super_admin" ||
       userEmail === "fanuelgoitom79@gmail.com" ||
+      userEmail === "fanuelgoitom79@gmial.com" ||
       userEmail === "goitomfanuel@gmail.com" ||
       userEmail === "fani@g.com" ||
       userEmail === "admin@merihcare.et";

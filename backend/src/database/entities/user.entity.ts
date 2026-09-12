@@ -20,7 +20,10 @@ export class UserEntity {
   phone: string;
 
   @Column()
-  role: string; // admin, provider, patient
+  role: string; // primary role: admin, provider, patient
+
+  @Column({ nullable: true })
+  roles: string; // comma-separated roles: patient,provider,admin
 
   @Column({ default: "active" })
   @Index()

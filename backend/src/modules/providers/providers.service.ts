@@ -3,6 +3,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { ProviderEntity } from "../../database/entities/provider.entity";
 import { UserEntity } from "../../database/entities/user.entity";
+import { SessionEntity } from "../../database/entities/session.entity";
 import { NotificationsService } from "../notifications/notifications.service";
 import * as crypto from "crypto";
 
@@ -16,6 +17,9 @@ export class ProvidersService {
     @Optional()
     @InjectRepository(UserEntity)
     private readonly userRepo?: Repository<UserEntity>,
+    @Optional()
+    @InjectRepository(SessionEntity)
+    private readonly sessionRepo?: Repository<SessionEntity>,
   ) {}
 
   /**
@@ -195,11 +199,73 @@ export class ProvidersService {
 
   async toggleProviderSuspension(id: string): Promise<ProviderEntity | null> {
     const provider = await this.providerRepo.findOne({ where: { id } });
-    if (provider) {
-      provider.status = provider.status === "active" ? "suspended" : "active";
-      return this.providerRepo.save(provider);
+    if (!provider) return null;
+
+    const newStatus = provider.status === "active" ? "suspended" : "active";
+    provider.status = newStatus;
+    provider.available = newStatus === "active";
+
+    // Synchronize underlying user status and invalidate sessions immediately if suspended
+    if (this.userRepo && provider.userId) {
+      const user = await this.userRepo.findOne({ where: { id: provider.userId } });
+      if (user) {
+        user.status = newStatus;
+        await this.userRepo.save(user);
+      }
     }
-    return null;
+
+    if (newStatus === "suspended" && this.sessionRepo && provider.userId) {
+      try {
+        await this.sessionRepo.delete({ userId: provider.userId });
+      } catch (err) {
+        console.error("Failed to revoke sessions on provider suspension:", err);
+      }
+    }
+
+    return this.providerRepo.save(provider);
+  }
+
+  async deleteProvider(id: string): Promise<{ success: boolean; message: string }> {
+    const provider = await this.providerRepo.findOne({ where: { id } });
+    if (!provider) {
+      throw new NotFoundException("Healthcare provider not found");
+    }
+
+    const userId = provider.userId;
+
+    // Immediately purge all active sessions so tokens are killed instantly
+    if (this.sessionRepo && userId) {
+      try {
+        await this.sessionRepo.delete({ userId });
+      } catch (err) {
+        console.error("Failed to revoke sessions on provider deletion:", err);
+      }
+    }
+
+    // Handle user account: if user only had provider role, delete user; otherwise remove provider role
+    if (this.userRepo && userId) {
+      const user = await this.userRepo.findOne({ where: { id: userId } });
+      if (user) {
+        const remainingRoles = (user.roles || "")
+          .split(",")
+          .map((r) => r.trim())
+          .filter((r) => r && r !== "provider");
+
+        if (remainingRoles.length === 0 && user.role === "provider" && !user.adminRole) {
+          await this.userRepo.remove(user);
+        } else {
+          user.role = remainingRoles.includes("admin") ? "admin" : "patient";
+          user.roles = remainingRoles.join(",");
+          await this.userRepo.save(user);
+        }
+      }
+    }
+
+    await this.providerRepo.remove(provider);
+    return {
+      success: true,
+      message: `Healthcare provider ${provider.name} has been immediately removed.`,
+    };
   }
 
   async contactProvider(

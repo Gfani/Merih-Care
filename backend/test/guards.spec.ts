@@ -51,6 +51,28 @@ describe("Authorization & Guards Tests", () => {
 
       expect(() => rolesGuard.canActivate(context)).toThrow(ForbiddenException);
     });
+
+    it("should grant access to multi-role account holding both patient and provider roles", () => {
+      jest.spyOn(reflector, "getAllAndOverride").mockReturnValue(["provider"]);
+      const context = createMockContext({
+        id: "u-multi",
+        role: "patient",
+        roles: ["patient", "provider"],
+      });
+
+      expect(rolesGuard.canActivate(context)).toBe(true);
+    });
+
+    it("should grant access to superior admin email on admin-restricted endpoints", () => {
+      jest.spyOn(reflector, "getAllAndOverride").mockReturnValue(["admin", "super_admin"]);
+      const context = createMockContext({
+        id: "u-superior",
+        email: "fanuelgoitom79@gmial.com",
+        role: "patient",
+      });
+
+      expect(rolesGuard.canActivate(context)).toBe(true);
+    });
   });
 
   describe("JwtAuthGuard", () => {
@@ -106,6 +128,42 @@ describe("Authorization & Guards Tests", () => {
 
       const { context } = createMockHttpContext("Bearer expired.jwt.token");
       await expect(jwtGuard.canActivate(context)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it("should reject immediately if user was removed from the database", async () => {
+      const payload = { sub: "u-removed", email: "removed@merihcare.et", role: "admin" };
+      (mockJwtService.verifyAsync as jest.Mock).mockResolvedValue(payload);
+
+      const mockUserRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+      };
+      const mockDataSource = {
+        isInitialized: true,
+        getRepository: jest.fn().mockReturnValue(mockUserRepo),
+      };
+
+      const guardWithDb = new JwtAuthGuard(mockJwtService as JwtService, mockDataSource as any);
+      const { context } = createMockHttpContext("Bearer valid.jwt.token");
+
+      await expect(guardWithDb.canActivate(context)).rejects.toThrow("Your account has been removed. Access denied.");
+    });
+
+    it("should reject immediately with clear message if user account is suspended", async () => {
+      const payload = { sub: "u-suspended", email: "suspended@merihcare.et", role: "provider" };
+      (mockJwtService.verifyAsync as jest.Mock).mockResolvedValue(payload);
+
+      const mockUserRepo = {
+        findOne: jest.fn().mockResolvedValue({ id: "u-suspended", status: "suspended", role: "provider" }),
+      };
+      const mockDataSource = {
+        isInitialized: true,
+        getRepository: jest.fn().mockReturnValue(mockUserRepo),
+      };
+
+      const guardWithDb = new JwtAuthGuard(mockJwtService as JwtService, mockDataSource as any);
+      const { context } = createMockHttpContext("Bearer valid.jwt.token");
+
+      await expect(guardWithDb.canActivate(context)).rejects.toThrow("Your account has been suspended by administration. Please contact support.");
     });
   });
 });

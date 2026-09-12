@@ -19,14 +19,22 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException("Insufficient platform role permissions");
     }
 
+    const emailLower = (user.email || "").toLowerCase().trim();
     const isSuperAdminEmail =
-      user.email === "fanuelgoitom79@gmail.com" ||
-      user.email === "goitomfanuel@gmail.com" ||
-      user.email === "fani@g.com" ||
-      user.email === "admin@merihcare.et";
+      emailLower === "fanuelgoitom79@gmail.com" ||
+      emailLower === "fanuelgoitom79@gmial.com" ||
+      emailLower === "goitomfanuel@gmail.com" ||
+      emailLower === "fani@g.com" ||
+      emailLower === "admin@merihcare.et";
+
+    const userRoles: string[] = Array.isArray(user.roles)
+      ? user.roles
+      : [user.role, user.adminRole].filter(Boolean);
 
     const isAnyAdmin =
       isSuperAdminEmail ||
+      userRoles.includes("admin") ||
+      userRoles.includes("super_admin") ||
       user.role === "admin" ||
       user.role === "super_admin" ||
       !!user.adminRole ||
@@ -38,7 +46,11 @@ export class RolesGuard implements CanActivate {
       return true;
     }
 
-    if (requiredRoles.includes(user.role) || (user.adminRole && requiredRoles.includes(user.adminRole))) {
+    if (
+      requiredRoles.includes(user.role) ||
+      (user.adminRole && requiredRoles.includes(user.adminRole)) ||
+      requiredRoles.some((r) => userRoles.includes(r))
+    ) {
       return true;
     }
 

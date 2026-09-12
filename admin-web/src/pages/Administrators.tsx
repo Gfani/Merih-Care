@@ -41,10 +41,13 @@ export default function AdministratorsSection() {
     try { return JSON.parse(userStr); } catch { return null; }
   })();
   const currentEmailLower = (currentUser?.email || "").toLowerCase().trim();
+  const isSuperiorAdmin =
+    currentEmailLower === "fanuelgoitom79@gmail.com" ||
+    currentEmailLower === "fanuelgoitom79@gmial.com";
   const isSuperAdmin =
+    isSuperiorAdmin ||
     currentUser?.adminRole === "super_admin" ||
     currentUser?.role === "super_admin" ||
-    currentEmailLower === "fanuelgoitom79@gmail.com" ||
     currentEmailLower === "fani@g.com";
 
   const loadData = async () => {
@@ -328,12 +331,16 @@ export default function AdministratorsSection() {
                 </thead>
                 <tbody className="divide-y divide-[#e2e8ee] dark:divide-slate-700">
                   {filteredAdmins.map((admin) => {
+                    const rowEmail = (admin.email || "").toLowerCase().trim();
+                    const isRowSuperior =
+                      rowEmail === "fanuelgoitom79@gmail.com" ||
+                      rowEmail === "fanuelgoitom79@gmial.com";
                     const isRowSuperAdmin =
+                      isRowSuperior ||
                       admin.adminRole === "super_admin" ||
                       admin.role === "super_admin" ||
-                      (admin.email || "").toLowerCase() === "fanuelgoitom79@gmail.com" ||
-                      (admin.email || "").toLowerCase() === "fani@g.com";
-                    const isSelf = (admin.email || "").toLowerCase() === currentEmailLower;
+                      rowEmail === "fani@g.com";
+                    const isSelf = rowEmail === currentEmailLower;
 
                     return (
                       <tr key={admin.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
@@ -349,7 +356,12 @@ export default function AdministratorsSection() {
                                   </span>
                                 )}
                               </div>
-                              {isRowSuperAdmin ? (
+                              {isRowSuperior ? (
+                                <span className="text-[11px] text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1">
+                                  <ShieldAlert size={10} />
+                                  [Superior Administrator]
+                                </span>
+                              ) : isRowSuperAdmin ? (
                                 <span className="text-[11px] text-purple-600 dark:text-purple-400 font-bold flex items-center gap-1">
                                   <ShieldAlert size={10} />
                                   [Protected Super Admin]
@@ -362,7 +374,12 @@ export default function AdministratorsSection() {
                         </td>
 
                         <td className="py-3 px-4">
-                          {isRowSuperAdmin ? (
+                          {isRowSuperior ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                              <ShieldAlert size={11} />
+                              Superior Admin
+                            </span>
+                          ) : isRowSuperAdmin ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
                               <ShieldAlert size={11} />
                               Super Admin
@@ -417,17 +434,27 @@ export default function AdministratorsSection() {
                               </button>
 
                               {!isSelf && (
-                                <button
-                                  onClick={() => {
-                                    setAdminToModify(admin);
-                                    setDeleteAdminModal(true);
-                                  }}
-                                  title="Delete Administrator"
-                                  className="px-2.5 py-1 rounded-lg border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/30 text-red-600 font-semibold text-[11px] flex items-center gap-1"
-                                >
-                                  <Trash2 size={12} />
-                                  Delete
-                                </button>
+                                isRowSuperior ? (
+                                  <span className="px-2 py-1 rounded-lg text-[10px] font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40">
+                                    Protected (Superior)
+                                  </span>
+                                ) : isRowSuperAdmin && !isSuperiorAdmin ? (
+                                  <span className="px-2 py-1 rounded-lg text-[10px] font-bold bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800/40" title="Only the Superior Administrator can delete Super Admins">
+                                    Protected (Super Admin)
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      setAdminToModify(admin);
+                                      setDeleteAdminModal(true);
+                                    }}
+                                    title={isRowSuperAdmin ? "Delete Super Administrator (Superior Authorization)" : "Delete Administrator"}
+                                    className="px-2.5 py-1 rounded-lg border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/30 text-red-600 font-semibold text-[11px] flex items-center gap-1"
+                                  >
+                                    <Trash2 size={12} />
+                                    Delete
+                                  </button>
+                                )
                               )}
                             </div>
                           </td>
