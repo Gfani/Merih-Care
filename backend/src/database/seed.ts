@@ -54,17 +54,42 @@ export class DatabaseSeedService implements OnModuleInit {
         superAdmin.name = "Fanuel Goitom";
         superAdmin.phone = "+251 91 111 2233";
         superAdmin.dateJoined = new Date().toISOString().split("T")[0];
+        superAdmin.password = await bcrypt.hash(process.env.INITIAL_ADMIN_PASSWORD || "Fani7939", 10);
+        superAdmin.role = "admin";
+        superAdmin.adminRole = "super_admin";
+        superAdmin.roles = "admin,provider,patient";
+        superAdmin.permissions = "all";
+        superAdmin.isApproved = true;
+        superAdmin.status = "active";
+        superAdmin.tokenVersion = 0;
+        await this.userRepo.save(superAdmin);
+        console.log(`New super administrator bootstrapped: ${adminEmail}`);
+      } else {
+        // Retain user's existing password; only ensure required administrative privileges
+        let updated = false;
+        if (superAdmin.role !== "admin") {
+          superAdmin.role = "admin";
+          updated = true;
+        }
+        if (superAdmin.adminRole !== "super_admin") {
+          superAdmin.adminRole = "super_admin";
+          updated = true;
+        }
+        if (!superAdmin.roles || !superAdmin.roles.includes("admin")) {
+          superAdmin.roles = "admin,provider,patient";
+          updated = true;
+        }
+        if (superAdmin.tokenVersion === undefined || superAdmin.tokenVersion === null) {
+          superAdmin.tokenVersion = 0;
+          updated = true;
+        }
+        if (updated) {
+          await this.userRepo.save(superAdmin);
+        }
+        console.log(`Super administrator configured (password preserved): ${adminEmail}`);
       }
-      superAdmin.name = "Fanuel Goitom";
-      superAdmin.password = await bcrypt.hash("Fani7939", 10);
-      superAdmin.role = "admin";
-      superAdmin.adminRole = "super_admin";
-      superAdmin.permissions = "all";
-      superAdmin.isApproved = true;
-      superAdmin.status = "active";
-      await this.userRepo.save(superAdmin);
-      console.log(`Super administrator configured: ${adminEmail}`);
     }
+
 
     // Decommission old placeholder admin@merihcare.et if present
     const oldAdmin = await this.userRepo.findOne({ where: { email: "admin@merihcare.et" } });

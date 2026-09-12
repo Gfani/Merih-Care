@@ -10,10 +10,13 @@ import {
 } from "@nestjs/websockets";
 import { Server, Socket } from "socket.io";
 import { JwtService } from "@nestjs/jwt";
+import { Optional } from "@nestjs/common";
+import { DataSource } from "typeorm";
 import { ChatService } from "./chat.service";
+import { UserEntity } from "../../database/entities/user.entity";
 
 const allowedOrigins = process.env.NODE_ENV === "production"
-  ? (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : ["https://admin.merihcare.et", "https://app.merihcare.et"])
+  ? (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : ["https://admin.merihcare.et", "https://app.merihcare.et", "https://admin.merihcare.live"])
   : true;
 
 @WebSocketGateway({
@@ -30,10 +33,12 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   constructor(
     private readonly chatService: ChatService,
     private readonly jwtService: JwtService,
+    @Optional()
+    private readonly dataSource?: DataSource,
   ) {}
 
   afterInit(server: Server) {
-    // JWT auth middleware — rejects unauthenticated connections
+    // JWT auth middleware — rejects unauthenticated connections & verifies user status
     server.use(async (socket: Socket, next) => {
       try {
         const token =
@@ -41,13 +46,34 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
           socket.handshake.headers?.authorization?.replace("Bearer ", "");
         if (!token) return next(new Error("Unauthorized: no token"));
         const payload = await this.jwtService.verifyAsync(token);
-        (socket as any).userId = payload.sub || payload.id;
+        const userId = payload.sub || payload.id;
+
+        if (this.dataSource && this.dataSource.isInitialized && userId) {
+          const userRepo = this.dataSource.getRepository(UserEntity);
+          const user = await userRepo.findOne({ where: { id: userId } });
+          if (!user) {
+            return next(new Error("Unauthorized: account has been removed"));
+          }
+          if (user.status === "suspended") {
+            return next(new Error("Unauthorized: account has been suspended"));
+          }
+          if (
+            payload.tokenVersion !== undefined &&
+            user.tokenVersion !== undefined &&
+            payload.tokenVersion !== user.tokenVersion
+          ) {
+            return next(new Error("Unauthorized: session revoked"));
+          }
+        }
+
+        (socket as any).userId = userId;
         next();
       } catch {
         next(new Error("Unauthorized: invalid token"));
       }
     });
   }
+
 
   handleConnection(socket: Socket) {
     const userId = (socket as any).userId;

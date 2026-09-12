@@ -1,4 +1,4 @@
-import { Injectable, Optional, Inject, forwardRef, NotFoundException, BadRequestException, UnauthorizedException } from "@nestjs/common";
+import { Injectable, Optional, Inject, forwardRef, NotFoundException, BadRequestException, UnauthorizedException, ForbiddenException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { UserEntity } from "../../database/entities/user.entity";
@@ -469,7 +469,12 @@ export class AuthService {
     return savedUser;
   }
 
-  async createSession(userId: string, userAgent: string, ipAddress: string): Promise<any> {
+  async createSession(
+    userId: string,
+    userAgent = "Unknown",
+    ipAddress = "127.0.0.1",
+    activeRole?: string
+  ): Promise<any> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new Error("User not found");
 
@@ -510,8 +515,9 @@ export class AuthService {
     const payload = { 
       sub: user.id, 
       email: user.email, 
-      role: user.role, 
+      role: activeRole || user.role, 
       roles: allRoles,
+      tokenVersion: user.tokenVersion || 0,
       adminRole: user.adminRole,
       permissions: user.permissions,
       hasProviderAccount: !!providerData,
@@ -519,14 +525,14 @@ export class AuthService {
       hasPatientAccount: true,
     };
 
-    const accessToken = await this.jwtService.signAsync(payload, { expiresIn: "7d" });
-    const refreshToken = await this.jwtService.signAsync({ sub: user.id }, { expiresIn: "30d" });
+    const accessToken = await this.jwtService.signAsync(payload, { expiresIn: process.env.JWT_EXPIRATION_TIME || "15m" });
+    const refreshToken = await this.jwtService.signAsync({ sub: user.id, tokenVersion: user.tokenVersion || 0 }, { expiresIn: "30d" });
 
     const session = new SessionEntity();
     session.id = "s-" + crypto.randomUUID();
     session.userId = userId;
     session.refreshToken = await bcrypt.hash(refreshToken, 10);
-    session.tokenExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    session.tokenExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     session.userAgent = userAgent || "Unknown";
     session.ipAddress = ipAddress || "127.0.0.1";
     session.lastActive = new Date().toISOString();
@@ -539,7 +545,7 @@ export class AuthService {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role,
+        role: activeRole || user.role,
         roles: allRoles,
         adminRole: user.adminRole,
         mfaEnabled: user.mfaEnabled,
@@ -560,21 +566,52 @@ export class AuthService {
       throw new BadRequestException(`Invalid role: ${newRole}. Must be patient, provider, or admin.`);
     }
 
-    user.role = newRole;
     const currentRoles = (user.roles || "").split(",").map((r) => r.trim()).filter(Boolean);
-    if (!currentRoles.includes(newRole)) {
-      currentRoles.push(newRole);
-      user.roles = currentRoles.join(",");
+    if (!currentRoles.includes("patient")) {
+      currentRoles.push("patient");
     }
 
+    // STRICT RBAC CHECK: Users can ONLY switch among roles already granted to their account!
+    if (!currentRoles.includes(newRole)) {
+      throw new ForbiddenException(
+        `Cannot switch to role '${newRole}': your account has not been granted this role.`
+      );
+    }
+
+    if (newRole === "provider" && user.isApproved === false) {
+      throw new ForbiddenException(
+        "Cannot switch to provider role: your provider profile is pending verification or suspended."
+      );
+    }
+
+    user.role = newRole;
     await this.userRepo.save(user);
-    return { success: true, activeRole: newRole, roles: currentRoles };
+
+    const freshSession = await this.createSession(userId, "Active-Role-Switch", "127.0.0.1", newRole);
+    return {
+      success: true,
+      activeRole: newRole,
+      roles: currentRoles,
+      access_token: freshSession.access_token,
+      user: freshSession.user,
+    };
   }
 
   async rotateSession(oldRefreshToken: string, userAgent: string, ipAddress: string): Promise<any> {
     try {
       const payload = await this.jwtService.verifyAsync(oldRefreshToken);
       const userId = payload.sub;
+
+      const user = await this.userRepo.findOne({ where: { id: userId } });
+      if (!user) throw new Error("User not found");
+
+      if (
+        payload.tokenVersion !== undefined &&
+        user.tokenVersion !== undefined &&
+        payload.tokenVersion !== user.tokenVersion
+      ) {
+        throw new Error("Refresh token session version is obsolete");
+      }
 
       const sessions = await this.sessionRepo.find({ where: { userId, isRevoked: false } });
       let matchedSession: SessionEntity = null;
@@ -599,32 +636,58 @@ export class AuthService {
     }
   }
 
-  async revokeSession(refreshToken: string): Promise<void> {
+  async revokeSession(refreshToken: string, userId?: string): Promise<void> {
     try {
-      const payload = await this.jwtService.verifyAsync(refreshToken);
-      const userId = payload.sub;
-      const sessions = await this.sessionRepo.find({ where: { userId, isRevoked: false } });
+      let resolvedUserId = userId;
+      if (refreshToken) {
+        try {
+          const payload = await this.jwtService.verifyAsync(refreshToken);
+          resolvedUserId = payload.sub || resolvedUserId;
+        } catch {}
+      }
 
-      for (const s of sessions) {
-        if (await bcrypt.compare(refreshToken, s.refreshToken)) {
-          s.isRevoked = true;
-          await this.sessionRepo.save(s);
-          break;
+      if (resolvedUserId) {
+        const user = await this.userRepo.findOne({ where: { id: resolvedUserId } });
+        if (user) {
+          user.tokenVersion = (user.tokenVersion || 0) + 1;
+          await this.userRepo.save(user);
+        }
+      }
+
+      if (refreshToken) {
+        const sessions = await this.sessionRepo.find({
+          where: resolvedUserId ? { userId: resolvedUserId, isRevoked: false } : { isRevoked: false },
+        });
+
+        for (const s of sessions) {
+          if (await bcrypt.compare(refreshToken, s.refreshToken)) {
+            s.isRevoked = true;
+            await this.sessionRepo.save(s);
+            break;
+          }
         }
       }
     } catch {}
   }
 
-  async getActiveSessions(userId: string): Promise<SessionEntity[]> {
-    return this.sessionRepo.find({ where: { userId, isRevoked: false } });
+  async getActiveSessions(userId: string): Promise<any[]> {
+    const sessions = await this.sessionRepo.find({ where: { userId, isRevoked: false } });
+    return sessions.map((s) => ({
+      id: s.id,
+      userAgent: s.userAgent,
+      ipAddress: s.ipAddress,
+      lastActive: s.lastActive,
+      tokenExpires: s.tokenExpires,
+    }));
   }
 
-  async revokeSessionById(sessionId: string): Promise<void> {
-    const session = await this.sessionRepo.findOne({ where: { id: sessionId } });
-    if (session) {
-      session.isRevoked = true;
-      await this.sessionRepo.save(session);
+  async revokeSessionById(userId: string, sessionId: string): Promise<void> {
+    const session = await this.sessionRepo.findOne({ where: { id: sessionId, userId } });
+    if (!session) {
+      throw new NotFoundException("Session not found or does not belong to your account");
     }
+    session.isRevoked = true;
+    await this.sessionRepo.save(session);
   }
 
   async revokeAllUserSessions(userId: string): Promise<void> {
@@ -633,7 +696,13 @@ export class AuthService {
       s.isRevoked = true;
       await this.sessionRepo.save(s);
     }
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (user) {
+      user.tokenVersion = (user.tokenVersion || 0) + 1;
+      await this.userRepo.save(user);
+    }
   }
+
 
   private async findUserByIdentifier(identifier: string): Promise<UserEntity | null> {
     const raw = (identifier || "").trim();
@@ -723,41 +792,40 @@ export class AuthService {
 
     if (emailCandidate) {
       user = await this.userRepo.findOne({ where: { email: emailCandidate.toLowerCase() } });
-      if (!user) {
-        throw new NotFoundException(`No registered account found matching email "${emailCandidate}".`);
-      }
-      // If a phone number is also provided or channel is SMS, verify phone number is strictly related to this user account!
-      if (phoneCandidate) {
-        if (!user.phone) {
-          throw new BadRequestException("This account has no registered phone number on file. Please reset your password via Email.");
-        }
-        if (!this.isSamePhoneNumber(user.phone, phoneCandidate)) {
-          throw new BadRequestException(
-            "The entered phone number is not associated with this user account. Password reset code can only be sent to the registered phone number."
-          );
+      if (user && phoneCandidate) {
+        if (!user.phone || !this.isSamePhoneNumber(user.phone, phoneCandidate)) {
+          // If mismatch with existing account, do not leak or proceed
+          user = null;
         }
       }
     } else if (phoneCandidate) {
       user = await this.findUserByIdentifier(phoneCandidate);
-      if (!user) {
-        throw new NotFoundException(`No registered account found matching phone number "${phoneCandidate}".`);
-      }
     } else {
       user = await this.findUserByIdentifier(identifier);
-      if (!user) {
-        throw new NotFoundException(`No registered account found matching "${identifier}". Please check the phone/email or sign up.`);
-      }
     }
 
     let channel: "email" | "sms" = requestedChannel || (isEmailIdentifier ? "email" : "sms");
+
+    // UNIFORM TIMING / RESPONSE: Prevent account enumeration
+    if (!user) {
+      const masked = this.maskDestination(identifier);
+      return {
+        success: true,
+        channel,
+        destination: masked || "registered contact",
+        message: "If an account matches the provided identifier, a password reset code has been sent.",
+      };
+    }
+
     if (channel === "sms" && !user.phone) {
-      throw new BadRequestException("This account has no registered phone number. Please reset your password via Email.");
+      channel = "email";
     }
 
     // Cryptographically random 6-digit OTP
     const resetOtp = crypto.randomInt(100000, 999999).toString();
     user.passwordResetToken = this.hashToken(resetOtp);
     user.passwordResetExpires = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    user.failedResetAttempts = 0;
     await this.userRepo.save(user);
 
     // Dispatch password reset code via notification service to chosen channel
@@ -783,7 +851,7 @@ export class AuthService {
       success: true,
       channel,
       destination: masked,
-      message: `A 6-digit password reset code has been dispatched via ${channel.toUpperCase()} to ${masked}. Valid for 5 minutes.`,
+      message: "If an account matches the provided identifier, a password reset code has been sent.",
     };
   }
 
@@ -808,19 +876,40 @@ export class AuthService {
       user = await this.findUserByIdentifier(identifier);
     }
     if (!user) {
-      throw new BadRequestException("Account not found for password reset confirmation.");
+      throw new BadRequestException("Invalid or expired password reset token");
     }
 
     if (phoneCandidate) {
       if (!user.phone || !this.isSamePhoneNumber(user.phone, phoneCandidate)) {
-        throw new BadRequestException("The entered phone number is not associated with this user account.");
+        throw new BadRequestException("Invalid or expired password reset token");
       }
     }
     if (emailCandidate && user.email.toLowerCase() !== emailCandidate.toLowerCase()) {
-      throw new BadRequestException("The entered email is not associated with this user account.");
+      throw new BadRequestException("Invalid or expired password reset token");
     }
+
+    // Check brute-force OTP attempts lockout
+    if ((user.failedResetAttempts || 0) >= 5) {
+      user.passwordResetToken = null;
+      user.passwordResetExpires = null;
+      await this.userRepo.save(user);
+      throw new BadRequestException(
+        "Too many incorrect attempts. This password reset code has been invalidated. Please request a new code."
+      );
+    }
+
     const hashed = this.hashToken(token);
     if (user.passwordResetToken !== hashed) {
+      user.failedResetAttempts = (user.failedResetAttempts || 0) + 1;
+      await this.userRepo.save(user);
+      if (user.failedResetAttempts >= 5) {
+        user.passwordResetToken = null;
+        user.passwordResetExpires = null;
+        await this.userRepo.save(user);
+        throw new BadRequestException(
+          "Too many incorrect attempts. This password reset code has been invalidated. Please request a new code."
+        );
+      }
       throw new BadRequestException("Invalid or expired password reset token");
     }
 
@@ -833,14 +922,17 @@ export class AuthService {
     user.password = await this.hashPassword(newPass);
     user.passwordResetToken = null;
     user.passwordResetExpires = null;
+    user.failedResetAttempts = 0;
     user.loginAttempts = 0;
     user.lockoutUntil = null;
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
     await this.userRepo.save(user);
 
     // Invalidate all active sessions for security
     await this.revokeAllUserSessions(user.id);
     return { success: true, message: "Password has been updated successfully. You can now log in." };
   }
+
 
   async requestEmailVerification(
     identifier: string,
@@ -964,11 +1056,17 @@ export class AuthService {
       name?: string;
       picture?: string;
       sub?: string;
+      aud?: string;
+      iss?: string;
     } | null = null;
 
     // 1. Verify Google Token
-    // Support test and mock tokens for testing / CI
-    if (idToken.startsWith("test-google-") || idToken.startsWith("mock-google-")) {
+    // In production, strictly prohibit test/mock tokens
+    const isMock = idToken.startsWith("test-google-") || idToken.startsWith("mock-google-");
+    if (isMock) {
+      if (process.env.NODE_ENV === "production") {
+        throw new UnauthorizedException("Mock tokens are strictly prohibited in production environment");
+      }
       const parts = idToken.split(":");
       const mockEmail = parts[1] || "test.user@gmail.com";
       const mockName = parts[2] || "Google Verified User";
@@ -988,27 +1086,29 @@ export class AuthService {
           googleUser = await response.json();
         }
       } catch (err) {
-        // Fallback for offline or JWT payload verification
-      }
-
-      if (!googleUser) {
-        try {
-          const parts = idToken.split(".");
-          if (parts.length === 3) {
-            const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf-8"));
-            if (payload.email) {
-              googleUser = payload;
-            }
-          }
-        } catch {
-          // Ignore
-        }
+        // Network failure
       }
     }
 
     if (!googleUser || !googleUser.email) {
-      throw new Error("Invalid or unverified Google token");
+      throw new UnauthorizedException("Invalid or unverified Google token");
     }
+
+    // Validate Google Audience & Issuer
+    const allowedAudiences = [
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_ANDROID_CLIENT_ID,
+      process.env.GOOGLE_IOS_CLIENT_ID,
+    ].filter(Boolean);
+
+    if (allowedAudiences.length > 0 && googleUser.aud && !allowedAudiences.includes(googleUser.aud)) {
+      throw new UnauthorizedException("Google token audience mismatch");
+    }
+
+    if (googleUser.iss && !googleUser.iss.includes("accounts.google.com")) {
+      throw new UnauthorizedException("Google token issuer is invalid");
+    }
+
 
     const emailVerified =
       googleUser.email_verified === true ||
@@ -1178,8 +1278,12 @@ export class AuthService {
       sub?: string;
     } | null = null;
 
-    // 1. Verify Apple Token (Support mock/test tokens for testing & CI)
-    if (identityToken.startsWith("test-apple-") || identityToken.startsWith("mock-apple-")) {
+    // 1. Verify Apple Token
+    const isMock = identityToken.startsWith("test-apple-") || identityToken.startsWith("mock-apple-");
+    if (isMock) {
+      if (process.env.NODE_ENV === "production") {
+        throw new UnauthorizedException("Mock tokens are strictly prohibited in production environment");
+      }
       const parts = identityToken.split(":");
       const mockEmail = parts[1] && parts[1].trim().length > 0 ? parts[1].trim() : (parts.length > 2 ? undefined : "apple.user@icloud.com");
       const mockName = parts[2] || userName || "Apple Verified User";
@@ -1191,28 +1295,16 @@ export class AuthService {
         sub: mockSub,
       };
     } else {
-      // Decode JWT payload
-      try {
-        const parts = identityToken.split(".");
-        if (parts.length === 3) {
-          const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf-8"));
-          if (payload.sub) {
-            appleUser = {
-              sub: payload.sub,
-              email: payload.email,
-              email_verified: payload.email_verified,
-              name: userName || (payload.email ? payload.email.split("@")[0] : "Apple User"),
-            };
-          }
-        }
-      } catch {
-        // Fallback
+      appleUser = await this.verifyAppleToken(identityToken);
+      if (userName && !appleUser.name) {
+        appleUser.name = userName;
       }
     }
 
     if (!appleUser || !appleUser.sub) {
-      throw new Error("Invalid or unverified Apple identity token");
+      throw new UnauthorizedException("Invalid or unverified Apple identity token");
     }
+
 
     // Determine normalized email
     let normalizedEmail = appleUser.email ? appleUser.email.trim().toLowerCase() : "";
@@ -1350,6 +1442,70 @@ export class AuthService {
     return this.createSession(user.id, userAgent, ipAddress);
   }
 
+  async verifyAppleToken(identityToken: string): Promise<{ sub: string; email?: string; email_verified?: boolean; name?: string }> {
+    const parts = identityToken.split(".");
+    if (parts.length !== 3) {
+      throw new UnauthorizedException("Malformed Apple identity token");
+    }
+
+    let header: any;
+    let payload: any;
+    try {
+      header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf-8"));
+      payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf-8"));
+    } catch {
+      throw new UnauthorizedException("Invalid Apple identity token format");
+    }
+
+    if (!payload.exp || payload.exp < Date.now() / 1000) {
+      throw new UnauthorizedException("Apple identity token has expired");
+    }
+
+    if (payload.iss !== "https://appleid.apple.com") {
+      throw new UnauthorizedException("Apple identity token issuer is invalid");
+    }
+
+    const expectedAudiences = [
+      process.env.APPLE_CLIENT_ID,
+      process.env.APPLE_BUNDLE_ID,
+      "com.merihcare.app",
+    ].filter(Boolean);
+
+    if (expectedAudiences.length > 0 && !expectedAudiences.includes(payload.aud)) {
+      throw new UnauthorizedException(`Apple identity token audience mismatch: ${payload.aud}`);
+    }
+
+    // Cryptographic signature check via Apple JWKS
+    try {
+      const res = await fetch("https://appleid.apple.com/auth/keys");
+      if (res.ok) {
+        const { keys } = await res.json();
+        const matchingKey = keys.find((k: any) => k.kid === header.kid);
+        if (!matchingKey) {
+          throw new UnauthorizedException("Apple signing key not found in JWKS");
+        }
+        const keyObject = crypto.createPublicKey({ key: matchingKey, format: "jwk" });
+        const verify = crypto.createVerify("RSA-SHA256");
+        verify.update(`${parts[0]}.${parts[1]}`);
+        const valid = verify.verify(keyObject, Buffer.from(parts[2], "base64url"));
+        if (!valid) {
+          throw new UnauthorizedException("Apple identity token signature verification failed");
+        }
+      } else {
+        throw new Error("Could not reach Apple JWKS service");
+      }
+    } catch (err: any) {
+      if (err instanceof UnauthorizedException) throw err;
+      throw new UnauthorizedException("Apple cryptographic token verification failed: " + err.message);
+    }
+
+    return {
+      sub: payload.sub,
+      email: payload.email,
+      email_verified: payload.email_verified,
+    };
+  }
+
   async deleteAccount(userId: string): Promise<void> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) {
@@ -1362,3 +1518,4 @@ export class AuthService {
     await this.userRepo.delete({ id: userId });
   }
 }
+

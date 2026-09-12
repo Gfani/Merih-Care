@@ -444,10 +444,12 @@ export class AuthController {
   }
 
   @Post("logout")
-  async logout(@Body() body: LogoutDto) {
-    await this.authService.revokeSession(body.refresh_token);
+  async logout(@Body() body: LogoutDto, @Req() req: any) {
+    const userId = req?.user?.id || req?.user?.sub;
+    await this.authService.revokeSession(body.refresh_token, userId);
     return { success: true };
   }
+
 
   @Post("switch-active-role")
   @UseGuards(JwtAuthGuard)
@@ -505,10 +507,12 @@ export class AuthController {
 
   @Delete("sessions/:id")
   @UseGuards(JwtAuthGuard)
-  async revokeSessionById(@Param("id") sessionId: string) {
-    await this.authService.revokeSessionById(sessionId);
+  async revokeSessionById(@Param("id") sessionId: string, @Req() req: any) {
+    const userId = req.user.id || req.user.sub;
+    await this.authService.revokeSessionById(userId, sessionId);
     return { success: true };
   }
+
 
   @Delete("sessions/all")
   @UseGuards(JwtAuthGuard)

@@ -45,6 +45,17 @@ async function bootstrap() {
     ? process.env.CORS_ORIGIN.split(",").map((s) => s.trim())
     : [];
 
+  if (process.env.NODE_ENV === "production") {
+    const weakSecrets = [
+      "super_secret_jwt_key_change_me_in_production",
+      "secret",
+      "change_me",
+    ];
+    if (!process.env.JWT_SECRET || weakSecrets.includes(process.env.JWT_SECRET)) {
+      console.warn("WARNING: JWT_SECRET is set to an insecure default placeholder. Set a strong random secret before public launch.");
+    }
+  }
+
   app.enableCors({
     origin: (origin, callback) => {
       // Allow requests with no origin (like mobile apps, curl, Postman)
@@ -63,12 +74,13 @@ async function bootstrap() {
       if (isAllowed) {
         callback(null, true);
       } else {
-        callback(null, true); // Fallback to allow connection with warning in dev/staging
+        callback(new Error(`CORS policy violation: Origin '${origin}' is not permitted by Merihcare Access Control.`), false);
       }
     },
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
     credentials: true,
   });
+
 
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,

@@ -118,25 +118,29 @@ export class AdminController {
   }
 
   @Get("admin/profile")
-  async getAdminProfile() {
-    return this.adminService.getAdminProfile();
+  async getAdminProfile(@Req() req: any) {
+    const actorId = req.user?.id || req.user?.sub;
+    return this.adminService.getAdminProfile(actorId);
   }
 
   @Put("admin/profile")
-  async updateAdminProfile(@Body() body: UpdateProfileDto) {
-    return this.adminService.updateAdminProfile(body.name, body.email);
+  async updateAdminProfile(@Body() body: UpdateProfileDto, @Req() req: any) {
+    const actorId = req.user?.id || req.user?.sub;
+    return this.adminService.updateAdminProfile(actorId, body.name, body.email);
   }
 
   @Put("admin/password")
   async updateAdminPassword(@Body() body: UpdatePasswordDto, @Req() req: any) {
+    const actorId = req.user?.id || req.user?.sub;
     // Validate current password using bcrypt via the validateUser lookup
     const admin = await this.authService.validateUser(req.user.email, body.currentPassword);
     if (!admin) {
       throw new BadRequestException("Incorrect current password");
     }
     const hashedNew = await this.authService.hashPassword(body.newPassword);
-    return this.adminService.updateAdminPassword(body.currentPassword, hashedNew);
+    return this.adminService.updateAdminPassword(actorId, body.currentPassword, hashedNew);
   }
+
 
   @Post("admin/mfa/enable")
   async enableMfa() {
@@ -251,6 +255,17 @@ export class AdminController {
       throw new BadRequestException("Only super administrators can delete administrator accounts");
     }
     const actorId = req.user?.id || req.user?.sub;
+    // Step-up MFA check if enabled
+    if (req.user?.mfaEnabled) {
+      const mfaToken = (req.headers["x-mfa-token"] || "").toString();
+      if (!mfaToken) {
+        throw new BadRequestException("Step-up authentication required: x-mfa-token header missing");
+      }
+      const actor = await this.authService.getUserById(actorId);
+      if (actor?.mfaSecret && !verifyTOTP(mfaToken, actor.mfaSecret)) {
+        throw new BadRequestException("Invalid MFA step-up verification code");
+      }
+    }
     try {
       return await this.adminService.deleteAdministrator(actorId, id);
     } catch (e: any) {
@@ -265,19 +280,34 @@ export class AdminController {
       req.user?.adminRole === "super_admin" ||
       req.user?.role === "super_admin" ||
       userEmail === "fanuelgoitom79@gmail.com" ||
+      userEmail === "fanuelgoitom79@gmial.com" ||
       userEmail === "goitomfanuel@gmail.com" ||
       userEmail === "fani@g.com" ||
       userEmail === "admin@merihcare.et";
     if (!isSuper) {
       throw new BadRequestException("Only super administrators can reset administrator passwords");
     }
+
+    const actorId = req.user?.id || req.user?.sub;
+    if (req.user?.mfaEnabled) {
+      const mfaToken = (req.headers["x-mfa-token"] || (body as any).mfaToken || "").toString();
+      if (!mfaToken) {
+        throw new BadRequestException("Step-up authentication required: x-mfa-token header missing");
+      }
+      const actor = await this.authService.getUserById(actorId);
+      if (actor?.mfaSecret && !verifyTOTP(mfaToken, actor.mfaSecret)) {
+        throw new BadRequestException("Invalid MFA step-up verification code");
+      }
+    }
+
     try {
-      await this.adminService.updateAdminPasswordForUser(id, body.newPassword);
+      await this.adminService.updateAdminPasswordForUser(userEmail, id, body.newPassword);
       return { success: true, message: "Password updated successfully" };
     } catch (e: any) {
       throw new BadRequestException(e.message);
     }
   }
+
 
   @Post("admin/tasks/reminders/trigger")
   async triggerReminders() {

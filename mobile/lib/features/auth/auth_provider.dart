@@ -547,10 +547,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
-    await SecureStorage.instance.deleteToken();
-    state = AuthState(status: AuthStatus.unauthenticated);
+    try {
+      final token = await SecureStorage.instance.readToken();
+      if (token != null && token.isNotEmpty) {
+        final client = _ref.read(apiClientProvider);
+        await client.dio.post('/auth/logout', data: {'refresh_token': token});
+      }
+    } catch (_) {
+      // Best-effort network session revocation
+    } finally {
+      await SecureStorage.instance.deleteToken();
+      state = AuthState(status: AuthStatus.unauthenticated);
+    }
   }
 }
+
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   return AuthNotifier(ref);

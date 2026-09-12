@@ -62,14 +62,16 @@ export class AdminService {
     return settings;
   }
 
-  async getAdminProfile(): Promise<any> {
-    const admin = await this.userRepo.findOne({ where: { role: "admin" } });
+  async getAdminProfile(actorId?: string): Promise<any> {
+    const admin = actorId
+      ? await this.userRepo.findOne({ where: { id: actorId } })
+      : await this.userRepo.findOne({ where: { role: "admin" } });
     if (!admin) return { name: "Admin Kebede", email: "admin@merihcare.et" };
-    return { name: admin.name, email: admin.email };
+    return { name: admin.name, email: admin.email, role: admin.role, adminRole: admin.adminRole };
   }
 
-  async updateAdminProfile(name: string, email: string): Promise<any> {
-    const admin = await this.userRepo.findOne({ where: { role: "admin" } });
+  async updateAdminProfile(actorId: string, name: string, email: string): Promise<any> {
+    const admin = await this.userRepo.findOne({ where: { id: actorId } });
     if (admin) {
       admin.name = name;
       admin.email = email;
@@ -79,15 +81,17 @@ export class AdminService {
     throw new Error("Admin user not found");
   }
 
-  async updateAdminPassword(currentPass: string, newPass: string): Promise<any> {
-    const admin = await this.userRepo.findOne({ where: { role: "admin" } });
+  async updateAdminPassword(actorId: string, currentPass: string, newPass: string): Promise<any> {
+    const admin = await this.userRepo.findOne({ where: { id: actorId } });
     if (admin) {
       admin.password = newPass; // Hashed at controller/service level
+      admin.tokenVersion = (admin.tokenVersion || 0) + 1;
       await this.userRepo.save(admin);
       return { success: true };
     }
     throw new Error("Admin user not found");
   }
+
 
   // Generate a random Base32 TOTP secret key
   generateMfaSecret(): string {
@@ -250,15 +254,43 @@ export class AdminService {
     return { success: true, message: `Administrator ${targetUser.name || targetUser.email} has been immediately removed.` };
   }
 
-  async updateAdminPasswordForUser(userId: string, newPass: string): Promise<UserEntity> {
+  async updateAdminPasswordForUser(actorEmail: string, userId: string, newPass: string): Promise<UserEntity> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) {
       throw new Error("Administrator account not found");
     }
+
+    const isTargetAdmin =
+      user.role === "admin" ||
+      user.role === "super_admin" ||
+      !!user.adminRole ||
+      (user.roles && user.roles.includes("admin"));
+
+    if (!isTargetAdmin) {
+      throw new Error("Target user is not an administrator account. Operation rejected.");
+    }
+
+    const targetEmail = (user.email || "").toLowerCase().trim();
+    if (
+      (targetEmail === "fanuelgoitom79@gmail.com" || targetEmail === "fanuelgoitom79@gmial.com") &&
+      !isSuperiorAdmin(actorEmail)
+    ) {
+      throw new Error("Only the superior administrator can reset their own password.");
+    }
+
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(newPass, salt);
     user.loginAttempts = 0;
     user.lockoutUntil = null;
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+
+    if (this.sessionRepo) {
+      try {
+        await this.sessionRepo.delete({ userId: user.id });
+      } catch {}
+    }
+
     return this.userRepo.save(user);
   }
+
 }

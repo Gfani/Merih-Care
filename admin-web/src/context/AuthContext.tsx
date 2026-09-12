@@ -62,33 +62,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!tokenToUse && typeof window !== "undefined" && (window as any).google?.accounts?.id) {
       const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || "256475797217-o481d29fdaufp2fp6mmkide2u52ohpp7.apps.googleusercontent.com";
       try {
-        tokenToUse = await new Promise<string>((resolve) => {
+        tokenToUse = await new Promise<string>((resolve, reject) => {
           try {
             (window as any).google.accounts.id.initialize({
               client_id: googleClientId,
               callback: (response: { credential?: string }) => {
                 if (response.credential) {
                   resolve(response.credential);
-                } else {
+                } else if (!import.meta.env.PROD) {
                   resolve("test-google-token:fanuelgoitom79@gmail.com:Fanuel Goitom");
+                } else {
+                  reject(new Error("No Google credential returned."));
                 }
               },
             });
             (window as any).google.accounts.id.prompt((notification: any) => {
               if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-                resolve("test-google-token:fanuelgoitom79@gmail.com:Fanuel Goitom");
+                if (!import.meta.env.PROD) {
+                  resolve("test-google-token:fanuelgoitom79@gmail.com:Fanuel Goitom");
+                }
               }
             });
-          } catch {
-            resolve("test-google-token:fanuelgoitom79@gmail.com:Fanuel Goitom");
+          } catch (err) {
+            if (!import.meta.env.PROD) {
+              resolve("test-google-token:fanuelgoitom79@gmail.com:Fanuel Goitom");
+            } else {
+              reject(err);
+            }
           }
         });
-      } catch {
+      } catch (err) {
+        if (import.meta.env.PROD) throw err;
         tokenToUse = "test-google-token:fanuelgoitom79@gmail.com:Fanuel Goitom";
       }
     }
 
     if (!tokenToUse) {
+      if (import.meta.env.PROD) {
+        throw new Error("Google Sign-In credential is required in production.");
+      }
       tokenToUse = "test-google-token:fanuelgoitom79@gmail.com:Fanuel Goitom";
     }
 
@@ -105,10 +117,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-
   const appleLogin = async (identityToken?: string, givenName?: string, familyName?: string) => {
-    const tokenToUse = identityToken || "test-apple-token:admin.apple@icloud.com:Apple Administrator:apple-sub-admin";
+    let tokenToUse = identityToken;
+    if (!tokenToUse) {
+      if (import.meta.env.PROD) {
+        throw new Error("Apple Sign-In identity token is required in production.");
+      }
+      tokenToUse = "test-apple-token:admin.apple@icloud.com:Apple Administrator:apple-sub-admin";
+    }
     const res = await api.appleAuth(tokenToUse, "admin", givenName, familyName);
+
     if (res.access_token) {
       const emailLower = (res.user?.email || "").toLowerCase().trim();
       if (res.user && (emailLower === "fanuelgoitom79@gmail.com" || emailLower === "fani@g.com" || emailLower === "admin@merihcare.et")) {

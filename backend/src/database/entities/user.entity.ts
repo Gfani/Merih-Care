@@ -74,6 +74,13 @@ export class UserEntity {
   @Column({ nullable: true })
   lockoutUntil: string;
 
+  // Invalidation & Reset Security
+  @Column({ default: 0 })
+  tokenVersion: number;
+
+  @Column({ default: 0 })
+  failedResetAttempts: number;
+
   // Audits
   @CreateDateColumn()
   createdAt: Date;

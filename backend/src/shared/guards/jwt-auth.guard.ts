@@ -43,6 +43,15 @@ export class JwtAuthGuard implements CanActivate {
         throw new UnauthorizedException("Your account has been suspended by administration. Please contact support.");
       }
 
+      // Check tokenVersion revocation (tokens issued prior to logout or password reset are rejected)
+      if (
+        payload.tokenVersion !== undefined &&
+        user.tokenVersion !== undefined &&
+        payload.tokenVersion !== user.tokenVersion
+      ) {
+        throw new UnauthorizedException("Session has been revoked or expired. Please log in again.");
+      }
+
       // Multi-role aggregation: user can have patient, provider, and admin accounts simultaneously
       const rolesSet = new Set<string>();
       if (user.role) rolesSet.add(user.role);

@@ -11,12 +11,14 @@ import {
 import { Server, Socket } from "socket.io";
 import { JwtService } from "@nestjs/jwt";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { Repository, DataSource } from "typeorm";
 import { Optional } from "@nestjs/common";
 import { RealtimeService } from "./realtime.service";
 import { PresenceService } from "./presence.service";
 import { LocationEntity } from "../../database/entities/location.entity";
 import { AppointmentEntity } from "../../database/entities/appointment.entity";
+import { UserEntity } from "../../database/entities/user.entity";
+
 
 // In-memory socket tracking
 const socketUserMap = new Map<string, { userId: string; role: string; rooms: Set<string>; lastPong: number; lastLocationAt: Map<string, number> }>();
@@ -54,6 +56,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     @InjectRepository(AppointmentEntity)
     private readonly appointmentRepo: Repository<AppointmentEntity>,
     @Optional()
+    private readonly dataSource?: DataSource,
+    @Optional()
     presenceService?: PresenceService,
   ) {
     this.presence = presenceService || new PresenceService();
@@ -63,7 +67,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     // Hand the server reference to the injectable service
     this.realtimeService.setServer(server);
 
-    // JWT auth middleware — rejects unauthenticated connections
+    // JWT auth middleware — rejects unauthenticated connections & checks active state
     server.use(async (socket: Socket, next) => {
       try {
         const token =
@@ -75,6 +79,25 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         const userId = payload.sub || payload.id;
         const role = payload.role || "patient";
 
+        // Check real-time database state for immediate suspension / removal / revocation enforcement
+        if (this.dataSource && this.dataSource.isInitialized && userId) {
+          const userRepo = this.dataSource.getRepository(UserEntity);
+          const user = await userRepo.findOne({ where: { id: userId } });
+          if (!user) {
+            return next(new Error("Unauthorized: account has been removed"));
+          }
+          if (user.status === "suspended") {
+            return next(new Error("Unauthorized: account has been suspended by administration"));
+          }
+          if (
+            payload.tokenVersion !== undefined &&
+            user.tokenVersion !== undefined &&
+            payload.tokenVersion !== user.tokenVersion
+          ) {
+            return next(new Error("Unauthorized: session has been revoked"));
+          }
+        }
+
         (socket as any).userId = userId;
         (socket as any).role = role;
         next();
@@ -82,6 +105,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         next(new Error("Unauthorized: invalid token"));
       }
     });
+
 
     // Redis adapter (only if REDIS_URL is configured)
     if (process.env.REDIS_URL) {
