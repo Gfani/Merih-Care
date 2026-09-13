@@ -37,6 +37,7 @@
     "bcryptjs": "^3.0.3",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",
+    "helmet": "^8.3.0",
     "ioredis": "^6.0.0",
     "nodemailer": "^10.0.3",
     "passport": "^0.7.0",

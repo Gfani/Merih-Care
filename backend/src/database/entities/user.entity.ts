@@ -64,6 +64,9 @@ export class UserEntity {
   @Column({ nullable: true })
   mfaSecret: string;
 
+  @Column({ nullable: true })
+  mfaSecretPending: string;
+
   @Column({ default: false })
   mfaEnabled: boolean;
 

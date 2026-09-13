@@ -97,20 +97,20 @@ describe("Realtime Socket Gateway Tests", () => {
   });
 
   describe("handleJoinEmergency", () => {
-    it("should allow provider and admin to join emergency room", () => {
+    it("should allow provider and admin to join emergency room", async () => {
       const socket = createMockSocket("prov-1", "provider");
-      const response = gateway.handleJoinEmergency(socket, { emergencyId: "emg-999" });
+      const response = await gateway.handleJoinEmergency(socket, { emergencyId: "emg-999" });
 
       expect(response.ok).toBe(true);
       expect(socket.join).toHaveBeenCalledWith("emergency:emg-999");
     });
 
-    it("should reject patient from joining provider emergency dispatch room", () => {
+    it("should reject patient from joining provider emergency dispatch room", async () => {
       const socket = createMockSocket("patient-1", "patient");
-      const response = gateway.handleJoinEmergency(socket, { emergencyId: "emg-999" });
+      const response = await gateway.handleJoinEmergency(socket, { emergencyId: "emg-999" });
 
       expect(response.ok).toBe(false);
-      expect(socket.emit).toHaveBeenCalledWith("error", expect.objectContaining({ message: expect.stringContaining("Only providers and admins") }));
+      expect(socket.emit).toHaveBeenCalledWith("error", expect.objectContaining({ message: expect.stringContaining("Not authorized") }));
     });
   });
 

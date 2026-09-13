@@ -3354,6 +3354,66 @@
         }
       }
     },
+    "/api/v1/admin/administrators/{id}/role": {
+      "put": {
+        "operationId": "AdminController_promoteAdministrator",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromoteAdminDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/admin/users/{id}/promote": {
+      "put": {
+        "operationId": "AdminController_promoteAdministrator",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromoteAdminDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/admin/tasks/reminders/trigger": {
       "post": {
         "operationId": "AdminController_triggerReminders",
@@ -4603,6 +4663,10 @@
         "properties": {}
       },
       "ResetAdminPasswordDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "PromoteAdminDto": {
         "type": "object",
         "properties": {}
       }

@@ -298,4 +298,52 @@ export class AdminService {
     return this.userRepo.save(user);
   }
 
+  async promoteAdministrator(actorId: string, targetUserId: string, targetAdminRole: string): Promise<UserEntity> {
+    const actorUser = await this.userRepo.findOne({ where: { id: actorId } });
+    const isSuper =
+      actorUser?.adminRole === "super_admin" ||
+      actorUser?.role === "super_admin" ||
+      (actorUser?.email && isSuperiorAdmin(actorUser.email));
+    if (!isSuper) {
+      throw new Error("Only super administrators have permission to promote administrators or reassign administrative roles");
+    }
+
+    const validRoles = ["super_admin", "operations_admin", "finance_admin", "verification_admin", "support_admin"];
+    if (!validRoles.includes(targetAdminRole)) {
+      throw new Error(`Invalid administrative role. Must be one of: ${validRoles.join(", ")}`);
+    }
+
+    const targetUser = await this.userRepo.findOne({ where: { id: targetUserId } });
+    if (!targetUser) {
+      throw new Error("Target user account not found");
+    }
+
+    const targetEmail = (targetUser.email || "").toLowerCase().trim();
+    if (isSuperiorAdmin(targetEmail) && targetAdminRole !== "super_admin") {
+      throw new Error("The superior administrator cannot be demoted");
+    }
+
+    targetUser.role = "admin";
+    targetUser.adminRole = targetAdminRole;
+    targetUser.isApproved = true;
+    targetUser.status = "active";
+    targetUser.permissions =
+      targetAdminRole === "super_admin"
+        ? "all"
+        : (ROLE_PERMISSIONS[targetAdminRole] || []).join(",");
+    targetUser.tokenVersion = (targetUser.tokenVersion || 0) + 1;
+
+    // Invalidate sessions so the target must re-authenticate with newly assigned privileges
+    if (this.sessionRepo) {
+      try {
+        await this.sessionRepo.delete({ userId: targetUser.id });
+      } catch (err) {
+        console.error("Failed to invalidate sessions on role promotion:", err);
+      }
+    }
+
+    return this.userRepo.save(targetUser);
+  }
+
 }
+

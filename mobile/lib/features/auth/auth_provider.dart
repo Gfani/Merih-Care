@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/storage/secure_storage.dart';
 import '../../core/network/network_providers.dart';
@@ -253,6 +254,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       state = state.copyWith(errorMessage: null);
 
+      if (kReleaseMode && (testIdToken != null || testIdToken?.startsWith('test-') == true || testIdToken?.startsWith('mock-') == true)) {
+        state = state.copyWith(errorMessage: 'Test OAuth tokens are strictly prohibited in production builds');
+        return const SignupResult(success: false, message: 'Test OAuth tokens are strictly prohibited in production builds');
+      }
+
+      if (kReleaseMode && testIdToken == null) {
+        state = state.copyWith(errorMessage: 'Google Sign-In canceled or unavailable');
+        return const SignupResult(success: false, message: 'Google Sign-In canceled or unavailable');
+      }
+
       final String token = testIdToken ??
           'test-google-token:user.${DateTime.now().millisecondsSinceEpoch}@gmail.com:MerihCare User';
 
@@ -332,6 +343,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }) async {
     try {
       state = state.copyWith(errorMessage: null);
+
+      if (kReleaseMode && (testIdentityToken != null || testIdentityToken?.startsWith('test-') == true || testIdentityToken?.startsWith('mock-') == true)) {
+        state = state.copyWith(errorMessage: 'Test OAuth tokens are strictly prohibited in production builds');
+        return const SignupResult(success: false, message: 'Test OAuth tokens are strictly prohibited in production builds');
+      }
+
+      if (kReleaseMode && testIdentityToken == null) {
+        state = state.copyWith(errorMessage: 'Apple Sign-In canceled or unavailable');
+        return const SignupResult(success: false, message: 'Apple Sign-In canceled or unavailable');
+      }
 
       final String token = testIdentityToken ??
           'test-apple-token:user.${DateTime.now().millisecondsSinceEpoch}@icloud.com:Apple User:apple-sub-${DateTime.now().millisecondsSinceEpoch}';

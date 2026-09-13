@@ -66,8 +66,48 @@ export const resolveApiUrl = (): string => {
 
 export const API_URL = resolveApiUrl();
 
+const getStoredToken = (): string | null => {
+  if (typeof window === "undefined") return null;
+  return sessionStorage.getItem("admin_token") || localStorage.getItem("admin_token");
+};
+
+const getStoredRefreshToken = (): string | null => {
+  if (typeof window === "undefined") return null;
+  return sessionStorage.getItem("admin_refresh_token") || localStorage.getItem("admin_refresh_token");
+};
+
+const getStoredUser = (): string | null => {
+  if (typeof window === "undefined") return null;
+  return sessionStorage.getItem("admin_user") || localStorage.getItem("admin_user");
+};
+
+const setSessionTokens = (token: string, user: any, refreshToken?: string) => {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem("admin_token", token);
+  sessionStorage.setItem("admin_user", JSON.stringify(user));
+  if (refreshToken) {
+    sessionStorage.setItem("admin_refresh_token", refreshToken);
+  }
+  // Sync to localStorage for component/hook compatibility
+  localStorage.setItem("admin_token", token);
+  localStorage.setItem("admin_user", JSON.stringify(user));
+  if (refreshToken) {
+    localStorage.setItem("admin_refresh_token", refreshToken);
+  }
+};
+
+const clearSessionTokens = () => {
+  if (typeof window === "undefined") return;
+  sessionStorage.removeItem("admin_token");
+  sessionStorage.removeItem("admin_refresh_token");
+  sessionStorage.removeItem("admin_user");
+  localStorage.removeItem("admin_token");
+  localStorage.removeItem("admin_refresh_token");
+  localStorage.removeItem("admin_user");
+};
+
 const getHeaders = () => {
-  const token = localStorage.getItem("admin_token");
+  const token = getStoredToken();
   return {
     "Content-Type": "application/json",
     Authorization: token ? `Bearer ${token}` : "",
@@ -99,8 +139,7 @@ axios.interceptors.response.use(
     if (error?.response?.status === 401 && typeof window !== "undefined") {
       const isLoginRequest = error.config?.url?.includes("/auth/login");
       if (!isLoginRequest) {
-        localStorage.removeItem("admin_token");
-        localStorage.removeItem("admin_user");
+        clearSessionTokens();
         if (window.location.pathname !== "/login") {
           window.location.href = "/login";
         }
@@ -129,28 +168,24 @@ export const api = {
       const res = await axios.post(`${API_URL}/auth/login`, { email, password: pass });
       const payload = res.data;
       const formattedName = email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-      const isSuperAdminEmail =
-        email.toLowerCase().trim() === "fanuelgoitom79@gmail.com" ||
-        email.toLowerCase().trim() === "fani@g.com" ||
-        email.toLowerCase().trim() === "admin@merihcare.et";
 
       const user = payload.user || {
         id: payload.id || "admin-user",
         email: email,
         name: payload.name || formattedName,
         role: payload.role || payload.adminRole || "admin",
+        adminRole: payload.adminRole,
       };
 
-      if (isSuperAdminEmail) {
-        user.role = "admin";
-        user.adminRole = "super_admin";
-      } else if (user.role && user.role !== "admin" && user.role !== "super_admin" && !user.adminRole) {
+      if (user.role && user.role !== "admin" && user.role !== "super_admin" && !user.adminRole) {
         throw new Error("Access restricted: This portal is reserved for administrative accounts. Please log in with an administrator account.");
       }
 
       const token = payload.access_token || payload.token;
-      localStorage.setItem("admin_token", token);
-      localStorage.setItem("admin_user", JSON.stringify(user));
+      const refreshToken = payload.refresh_token;
+      if (token) {
+        setSessionTokens(token, user, refreshToken);
+      }
       return { access_token: token, user };
     } catch (error) {
       throw error;
@@ -183,11 +218,12 @@ export const api = {
         email: payload.email,
         name: payload.name || "Administrator",
         role: payload.role || payload.adminRole || role,
+        adminRole: payload.adminRole,
       };
       const token = payload.access_token || payload.token;
+      const refreshToken = payload.refresh_token;
       if (token) {
-        localStorage.setItem("admin_token", token);
-        localStorage.setItem("admin_user", JSON.stringify(user));
+        setSessionTokens(token, user, refreshToken);
       }
       return { access_token: token, user };
     } catch (error) {
@@ -209,11 +245,12 @@ export const api = {
         email: payload.email,
         name: payload.name || "Administrator",
         role: payload.role || payload.adminRole || role,
+        adminRole: payload.adminRole,
       };
       const token = payload.access_token || payload.token;
+      const refreshToken = payload.refresh_token;
       if (token) {
-        localStorage.setItem("admin_token", token);
-        localStorage.setItem("admin_user", JSON.stringify(user));
+        setSessionTokens(token, user, refreshToken);
       }
       return { access_token: token, user };
     } catch (error) {
@@ -221,13 +258,24 @@ export const api = {
     }
   },
 
-  logout() {
-    localStorage.removeItem("admin_token");
-    localStorage.removeItem("admin_user");
+  logout(): void {
+    const refreshToken = getStoredRefreshToken();
+    const token = getStoredToken();
+    clearSessionTokens();
+    if (refreshToken || token) {
+      const p = refreshToken
+        ? axios.post(`${API_URL}/auth/logout`, { refresh_token: refreshToken }, {
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          })
+        : axios.delete(`${API_URL}/auth/sessions/all`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+      p.catch((e) => console.warn("Backend session revocation completed or offline:", e));
+    }
   },
 
   async getAdminProfile(): Promise<{ name: string; email: string }> {
-    const raw = localStorage.getItem("admin_user");
+    const raw = getStoredUser();
     if (raw && raw !== "undefined" && raw !== "null") {
       try {
         const user = JSON.parse(raw);

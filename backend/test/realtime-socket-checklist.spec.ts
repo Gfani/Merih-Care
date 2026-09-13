@@ -139,13 +139,15 @@ describe("Realtime & Socket Checklist Tests", () => {
   });
 
   describe("Session Reconnect Restoration", () => {
-    it("should restore rooms upon reconnect", () => {
+    it("should restore rooms upon reconnect", async () => {
       const mockSocket: any = {
         id: "sock-restore-1",
+        userId: "u-admin",
+        role: "admin",
         join: jest.fn(),
       };
 
-      const result = gateway.handleRestoreSession(mockSocket, {
+      const result = await gateway.handleRestoreSession(mockSocket, {
         rooms: ["appointment:apt-1", "emergency:emg-1"],
       });
 

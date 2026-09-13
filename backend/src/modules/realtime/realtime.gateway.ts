@@ -18,6 +18,8 @@ import { PresenceService } from "./presence.service";
 import { LocationEntity } from "../../database/entities/location.entity";
 import { AppointmentEntity } from "../../database/entities/appointment.entity";
 import { UserEntity } from "../../database/entities/user.entity";
+import { EmergencyEntity } from "../../database/entities/emergency.entity";
+import { ProviderEntity } from "../../database/entities/provider.entity";
 
 
 // In-memory socket tracking
@@ -205,6 +207,36 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   // ─── Room Join Events ────────────────────────────────────────────
 
+  private async canAccessAppointment(userId: string, role: string, appointmentId: string): Promise<boolean> {
+    if (role === "admin" || role === "super_admin") return true;
+    try {
+      const apt = await this.appointmentRepo.findOne({ where: { id: appointmentId } });
+      if (!apt) return false;
+      return apt.patientId === userId || apt.providerId === userId;
+    } catch {
+      return false;
+    }
+  }
+
+  private async canAccessEmergency(userId: string, role: string, emergencyId: string): Promise<boolean> {
+    if (role === "admin" || role === "super_admin") return true;
+    try {
+      if (this.dataSource && this.dataSource.isInitialized) {
+        const emergencyRepo = this.dataSource.getRepository(EmergencyEntity);
+        const em = await emergencyRepo.findOne({ where: { id: emergencyId } });
+        if (!em) return false;
+        if (em.patientId === userId || em.responderId === userId) return true;
+        const providerRepo = this.dataSource.getRepository(ProviderEntity);
+        const prov = await providerRepo.findOne({ where: { userId } });
+        if (prov && em.responderId === prov.id) return true;
+        return false;
+      }
+      return role === "provider";
+    } catch {
+      return false;
+    }
+  }
+
   @SubscribeMessage("join_appointment")
   async handleJoinAppointment(
     @ConnectedSocket() socket: Socket,
@@ -213,13 +245,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     const { userId, role } = (socket as any);
     const room = `appointment:${data.appointmentId}`;
 
-    // Verify user is patient or provider of this appointment (or admin)
-    if (role !== "admin") {
-      const apt = await this.appointmentRepo.findOne({ where: { id: data.appointmentId } });
-      if (!apt || (apt.patientId !== userId && apt.providerId !== userId)) {
-        socket.emit("error", { message: "Not authorized for this appointment" });
-        return { ok: false, error: "Not authorized" };
-      }
+    const allowed = await this.canAccessAppointment(userId, role, data.appointmentId);
+    if (!allowed) {
+      socket.emit("error", { message: "Not authorized for this appointment" });
+      return { ok: false, error: "Not authorized" };
     }
 
     socket.join(room);
@@ -228,13 +257,14 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   @SubscribeMessage("join_emergency")
-  handleJoinEmergency(
+  async handleJoinEmergency(
     @ConnectedSocket() socket: Socket,
     @MessageBody() data: { emergencyId: string },
   ) {
-    const role = (socket as any).role;
-    if (role !== "provider" && role !== "admin") {
-      socket.emit("error", { message: "Only providers and admins may join emergency rooms" });
+    const { userId, role } = (socket as any);
+    const allowed = await this.canAccessEmergency(userId, role, data.emergencyId);
+    if (!allowed) {
+      socket.emit("error", { message: "Not authorized for this emergency room" });
       return { ok: false, error: "Forbidden" };
     }
     const room = `emergency:${data.emergencyId}`;
@@ -329,23 +359,50 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   // ─── Session Restore (Reconnect) ─────────────────────────────────
 
   @SubscribeMessage("restore_session")
-  handleRestoreSession(
+  async handleRestoreSession(
     @ConnectedSocket() socket: Socket,
     @MessageBody() data: { rooms?: string[] },
   ) {
+    const { userId, role } = (socket as any);
     const info = socketUserMap.get(socket.id);
     const requestedRooms = data?.rooms ?? [];
+    const authorizedRooms: string[] = [];
 
-    // Re-join previously known rooms
+    // Verify ownership before re-joining rooms
     for (const room of requestedRooms) {
-      // Security: only allow appointment/emergency rooms they own (simplified here)
-      if (room.startsWith("appointment:") || room.startsWith("emergency:") || room === "admin") {
-        socket.join(room);
-        info?.rooms.add(room);
+      if (typeof room !== "string") continue;
+      if (room === "admin") {
+        if (role === "admin" || role === "super_admin") {
+          socket.join(room);
+          info?.rooms.add(room);
+          authorizedRooms.push(room);
+        }
+      } else if (room === "providers") {
+        if (role === "provider") {
+          socket.join(room);
+          info?.rooms.add(room);
+          authorizedRooms.push(room);
+        }
+      } else if (room.startsWith("appointment:")) {
+        const appointmentId = room.replace("appointment:", "");
+        const allowed = await this.canAccessAppointment(userId, role, appointmentId);
+        if (allowed) {
+          socket.join(room);
+          info?.rooms.add(room);
+          authorizedRooms.push(room);
+        }
+      } else if (room.startsWith("emergency:")) {
+        const emergencyId = room.replace("emergency:", "");
+        const allowed = await this.canAccessEmergency(userId, role, emergencyId);
+        if (allowed) {
+          socket.join(room);
+          info?.rooms.add(room);
+          authorizedRooms.push(room);
+        }
       }
     }
 
-    return { ok: true, rejoined: requestedRooms, ts: new Date().toISOString() };
+    return { ok: true, rejoined: authorizedRooms, ts: new Date().toISOString() };
   }
 
   // ─── Admin Metrics Broadcast ─────────────────────────────────────

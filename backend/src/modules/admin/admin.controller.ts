@@ -6,7 +6,7 @@ import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 import { RolesGuard } from "../../shared/guards/roles.guard";
 import { Roles } from "../../shared/decorators/roles.decorator";
 import { verifyTOTP } from "../../shared/utils/totp";
-import { IsNotEmpty, IsEmail, IsOptional, IsBoolean, IsNumberString, MaxLength, MinLength, Matches, Length } from "class-validator";
+import { IsNotEmpty, IsEmail, IsOptional, IsBoolean, IsNumberString, MaxLength, MinLength, Matches, Length, IsIn } from "class-validator";
 
 export class CreateAdminDto {
   @IsNotEmpty()
@@ -86,14 +86,20 @@ export class UpdatePasswordDto {
 }
 
 export class VerifyMfaDto {
-  @IsNotEmpty()
+  @IsOptional()
   @Length(32, 32)
-  secret: string;
+  secret?: string;
 
   @IsNotEmpty()
   @Length(6, 6)
   @IsNumberString()
   otpToken: string;
+}
+
+export class PromoteAdminDto {
+  @IsNotEmpty()
+  @IsIn(["super_admin", "operations_admin", "finance_admin", "verification_admin", "support_admin"])
+  adminRole: string;
 }
 
 @Controller()
@@ -143,18 +149,28 @@ export class AdminController {
 
 
   @Post("admin/mfa/enable")
-  async enableMfa() {
+  async enableMfa(@Req() req: any) {
+    const actorId = req.user?.id || req.user?.sub;
     const secret = this.adminService.generateMfaSecret();
+    if (actorId) {
+      await this.authService.savePendingMfaSecret(actorId, secret);
+    }
     return { secret };
   }
 
   @Post("admin/mfa/verify")
   async verifyMfa(@Body() body: VerifyMfaDto, @Req() req: any) {
-    const verified = verifyTOTP(body.otpToken, body.secret);
+    const actorId = req.user?.id || req.user?.sub;
+    const user = actorId ? await this.authService.getUserById(actorId) : null;
+    const secretToVerify = user?.mfaSecretPending || body.secret;
+    if (!secretToVerify) {
+      throw new BadRequestException("No pending MFA setup found. Please initiate MFA setup first.");
+    }
+    const verified = verifyTOTP(body.otpToken, secretToVerify);
     if (!verified) {
       throw new BadRequestException("Verification failed. Invalid authenticator token.");
     }
-    await this.authService.completeMfaSetup(req.user.id, body.secret);
+    await this.authService.completeMfaSetup(actorId, secretToVerify);
     return { success: true };
   }
 
@@ -267,6 +283,26 @@ export class AdminController {
     try {
       await this.adminService.updateAdminPasswordForUser(userEmail, id, body.newPassword);
       return { success: true, message: "Password updated successfully" };
+    } catch (e: any) {
+      throw new BadRequestException(e.message);
+    }
+  }
+
+  @Put(["admin/administrators/:id/role", "admin/users/:id/promote"])
+  @Roles("super_admin")
+  async promoteAdministrator(
+    @Param("id") targetId: string,
+    @Body() body: PromoteAdminDto,
+    @Req() req: any
+  ) {
+    const isSuper = req.user?.adminRole === "super_admin" || req.user?.role === "super_admin";
+    if (!isSuper) {
+      throw new BadRequestException("Only super administrators can promote administrators or reassign administrative roles");
+    }
+    const actorId = req.user?.id || req.user?.sub;
+    try {
+      const updated = await this.adminService.promoteAdministrator(actorId, targetId, body.adminRole);
+      return { success: true, user: updated };
     } catch (e: any) {
       throw new BadRequestException(e.message);
     }

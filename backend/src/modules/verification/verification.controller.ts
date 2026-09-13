@@ -3,6 +3,9 @@ import { VerificationService } from "./verification.service";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 import { RolesGuard } from "../../shared/guards/roles.guard";
 import { Roles } from "../../shared/decorators/roles.decorator";
+import { PermissionsGuard } from "../../shared/guards/permissions.guard";
+import { Permissions } from "../../shared/decorators/permissions.decorator";
+import { Permission } from "../../shared/constants/permissions";
 import { IsNotEmpty, IsString, MaxLength, IsOptional } from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
 
@@ -43,22 +46,25 @@ export class SanctionProviderDto {
 }
 
 @Controller("verification")
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles("admin")
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+@Roles("admin", "super_admin", "verification_admin", "verifier")
 export class VerificationController {
   constructor(private readonly verificationService: VerificationService) {}
 
   @Get(["", "pending"])
+  @Permissions(Permission.CREDENTIALS_REVIEW)
   async getVerifications() {
     return this.verificationService.getVerificationQueue();
   }
 
   @Get("expiring-licenses")
+  @Permissions(Permission.CREDENTIALS_REVIEW)
   async getExpiringLicenses() {
     return this.verificationService.getExpiringLicenses();
   }
 
   @Post(":id/assign-reviewer")
+  @Permissions(Permission.CREDENTIALS_APPROVE)
   async assignReviewer(
     @Param("id") id: string,
     @Body() body: AssignReviewerDto,
@@ -69,6 +75,7 @@ export class VerificationController {
   }
 
   @Put(":id")
+  @Permissions(Permission.CREDENTIALS_APPROVE)
   async updateVerificationDecision(
     @Param("id") id: string,
     @Body() body: any,
@@ -84,12 +91,14 @@ export class VerificationController {
   }
 
   @Post(":id/approve")
+  @Permissions(Permission.CREDENTIALS_APPROVE)
   async approve(@Param("id") id: string, @Req() req: any) {
     const actorId = req.user?.id || "u-admin";
     return this.verificationService.approveProvider(id, actorId);
   }
 
   @Post(":id/reject")
+  @Permissions(Permission.CREDENTIALS_APPROVE)
   async reject(
     @Param("id") id: string,
     @Body() body: RejectProviderDto,
@@ -100,6 +109,7 @@ export class VerificationController {
   }
 
   @Post(":id/request-corrections")
+  @Permissions(Permission.CREDENTIALS_APPROVE)
   async requestCorrections(
     @Param("id") id: string,
     @Body() body: RequestCorrectionsDto,
@@ -110,6 +120,7 @@ export class VerificationController {
   }
 
   @Post(":id/sanction")
+  @Permissions(Permission.CREDENTIALS_APPROVE)
   async sanction(
     @Param("id") id: string,
     @Body() body: SanctionProviderDto,
@@ -119,3 +130,4 @@ export class VerificationController {
     return this.verificationService.sanctionProvider(id, body.reason, body.sanctionType || "suspended", actorId);
   }
 }
+

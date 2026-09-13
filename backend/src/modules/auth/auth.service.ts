@@ -252,18 +252,6 @@ export class AuthService {
       return null;
     }
 
-    // Guarantee super_admin role for administrative owners
-    if (normalizedEmail === "fanuelgoitom79@gmail.com" || normalizedEmail === "goitomfanuel@gmail.com" || normalizedEmail === "fani@g.com") {
-      if (user.role !== "admin" || user.adminRole !== "super_admin" || !user.isApproved || user.status !== "active") {
-        user.role = "admin";
-        user.adminRole = "super_admin";
-        user.permissions = "all";
-        user.isApproved = true;
-        user.status = "active";
-        await this.userRepo.save(user);
-      }
-    }
-
     // Check account lockout
     if (user.lockoutUntil) {
       const lockTime = new Date(user.lockoutUntil).getTime();
@@ -1034,10 +1022,23 @@ export class AuthService {
     return result;
   }
 
-  async completeMfaSetup(userId: string, secret: string): Promise<void> {
+  async savePendingMfaSecret(userId: string, secret: string): Promise<void> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (user) {
-      user.mfaSecret = secret;
+      user.mfaSecretPending = secret;
+      await this.userRepo.save(user);
+    }
+  }
+
+  async completeMfaSetup(userId: string, secret?: string): Promise<void> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (user) {
+      const activeSecret = secret || user.mfaSecretPending;
+      if (!activeSecret) {
+        throw new Error("No pending MFA setup found");
+      }
+      user.mfaSecret = activeSecret;
+      user.mfaSecretPending = null as any;
       user.mfaEnabled = true;
       await this.userRepo.save(user);
     }
@@ -1092,8 +1093,7 @@ export class AuthService {
 
     const emailVerified =
       googleUser.email_verified === true ||
-      googleUser.email_verified === "true" ||
-      googleUser.email.endsWith("@gmail.com");
+      googleUser.email_verified === "true";
 
     if (!emailVerified) {
       throw new Error("Google account email is not verified");

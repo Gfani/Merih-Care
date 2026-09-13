@@ -9,6 +9,7 @@ import { Permission, ROLE_PERMISSIONS, getEffectivePermissions } from "../src/sh
 import { UploadsController } from "../src/modules/uploads/uploads.controller";
 import { UploadsService } from "../src/modules/uploads/uploads.service";
 import { DocumentEntity } from "../src/database/entities/document.entity";
+import { AdminService } from "../src/modules/admin/admin.service";
 
 describe("Security Boundary & Guard Integration Tests", () => {
   describe("RolesGuard Boundary Checks", () => {
@@ -352,6 +353,120 @@ describe("Security Boundary & Guard Integration Tests", () => {
       expect(isDomainAllowed("https://fake-merihcare.live.evil.com", allowlist)).toBe(false);
       expect(isDomainAllowed("https://merihcare.live.attacker.com", allowlist)).toBe(false);
       expect(isDomainAllowed("https://notmerihcare.et", allowlist)).toBe(false);
+    });
+
+    it("should reject rogue Azure container apps subdomains not explicitly allowlisted", () => {
+      expect(isDomainAllowed("https://malicious-tenant.azurecontainerapps.io", allowlist)).toBe(false);
+      expect(isDomainAllowed("https://fake-app.azurestaticapps.net", allowlist)).toBe(false);
+    });
+  });
+
+  describe("Verification Controller Permission Boundaries", () => {
+    let permissionsGuard: PermissionsGuard;
+    let reflector: Reflector;
+
+    beforeEach(() => {
+      reflector = new Reflector();
+      permissionsGuard = new PermissionsGuard(reflector);
+    });
+
+    const createMockContext = (requiredPermissions: string[], user: any) => {
+      jest.spyOn(reflector, "getAllAndOverride").mockReturnValue(requiredPermissions);
+      return {
+        getHandler: () => ({}),
+        getClass: () => ({}),
+        switchToHttp: () => ({
+          getRequest: () => ({ user }),
+        }),
+      } as any;
+    };
+
+    it("should reject ordinary operations_admin from CREDENTIALS_REVIEW endpoints", () => {
+      const operationsAdmin = {
+        id: "ops-1",
+        role: "admin",
+        adminRole: "operations_admin",
+      };
+      const ctx = createMockContext([Permission.CREDENTIALS_REVIEW], operationsAdmin);
+      expect(() => permissionsGuard.canActivate(ctx)).toThrow(ForbiddenException);
+    });
+
+    it("should reject finance_admin and support_admin from CREDENTIALS_APPROVE endpoints", () => {
+      const financeAdmin = {
+        id: "fin-1",
+        role: "admin",
+        adminRole: "finance_admin",
+      };
+      const supportAdmin = {
+        id: "sup-1",
+        role: "admin",
+        adminRole: "support_admin",
+      };
+      const ctx1 = createMockContext([Permission.CREDENTIALS_APPROVE], financeAdmin);
+      expect(() => permissionsGuard.canActivate(ctx1)).toThrow(ForbiddenException);
+
+      const ctx2 = createMockContext([Permission.CREDENTIALS_APPROVE], supportAdmin);
+      expect(() => permissionsGuard.canActivate(ctx2)).toThrow(ForbiddenException);
+    });
+
+    it("should permit verification_admin and super_admin to verification endpoints", () => {
+      const verificationAdmin = {
+        id: "ver-1",
+        role: "admin",
+        adminRole: "verification_admin",
+      };
+      const superAdmin = {
+        id: "super-1",
+        role: "admin",
+        adminRole: "super_admin",
+      };
+      const ctxReview = createMockContext([Permission.CREDENTIALS_REVIEW], verificationAdmin);
+      expect(permissionsGuard.canActivate(ctxReview)).toBe(true);
+
+      const ctxApprove = createMockContext([Permission.CREDENTIALS_APPROVE], superAdmin);
+      expect(permissionsGuard.canActivate(ctxApprove)).toBe(true);
+    });
+  });
+
+  describe("Superior Admin Role Promotion", () => {
+    let adminService: AdminService;
+    let mockUserRepo: any;
+
+    beforeEach(() => {
+      mockUserRepo = {
+        findOne: jest.fn(),
+        save: jest.fn().mockImplementation((u) => Promise.resolve(u)),
+      };
+      adminService = new AdminService(mockUserRepo as any);
+    });
+
+    it("should allow super_admin to promote a user to verification_admin", async () => {
+      mockUserRepo.findOne
+        .mockResolvedValueOnce({ id: "actor-super", role: "admin", adminRole: "super_admin" })
+        .mockResolvedValueOnce({ id: "target-user", role: "patient", tokenVersion: 1 });
+
+      const result = await adminService.promoteAdministrator("actor-super", "target-user", "verification_admin");
+      expect(result.role).toBe("admin");
+      expect(result.adminRole).toBe("verification_admin");
+      expect(result.permissions).toContain(Permission.CREDENTIALS_REVIEW);
+      expect(result.tokenVersion).toBe(2);
+      expect(result.isApproved).toBe(true);
+    });
+
+    it("should reject promotion by non-super administrator", async () => {
+      mockUserRepo.findOne.mockResolvedValueOnce({ id: "actor-finance", role: "admin", adminRole: "finance_admin" });
+
+      await expect(
+        adminService.promoteAdministrator("actor-finance", "target-user", "operations_admin")
+      ).rejects.toThrow("Only super administrators have permission to promote administrators");
+    });
+
+    it("should reject promotion with invalid role", async () => {
+      mockUserRepo.findOne.mockResolvedValueOnce({ id: "actor-super", role: "admin", adminRole: "super_admin" });
+
+      await expect(
+        adminService.promoteAdministrator("actor-super", "target-user", "invalid_role")
+      ).rejects.toThrow("Invalid administrative role");
     });
   });
 });

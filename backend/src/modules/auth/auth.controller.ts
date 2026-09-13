@@ -293,6 +293,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post("login")
+  @UseGuards(RateLimiterGuard)
   async login(@Body() body: LoginDto, @Req() req: Request) {
     try {
       const user = await this.authService.validateUser(body.email, body.password);

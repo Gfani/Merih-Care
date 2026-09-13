@@ -7,9 +7,23 @@ import * as fs from "fs";
 import * as path from "path";
 import { IdempotencyInterceptor } from "./shared/interceptors/idempotency.interceptor";
 import { TransformInterceptor } from "./shared/interceptors/transform.interceptor";
+import helmet from "helmet";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'", "https:", "wss:"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+  }));
 
   app.setGlobalPrefix("api/v1");
 
@@ -86,9 +100,7 @@ async function bootstrap() {
             hostname === "merihcare.live" ||
             hostname.endsWith(".merihcare.live") ||
             hostname === "merihcare.et" ||
-            hostname.endsWith(".merihcare.et") ||
-            hostname.endsWith(".azurecontainerapps.io") ||
-            hostname.endsWith(".azurestaticapps.net")
+            hostname.endsWith(".merihcare.et")
           ) {
             isAllowed = true;
           }
