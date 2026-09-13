@@ -68,9 +68,10 @@ export class RateLimiterGuard implements CanActivate {
       ? "mfa"
       : "general";
 
-    // In production (or when explicitly required), distributed rate limiting MUST fail closed if Redis is down
-    const isProduction = process.env.NODE_ENV === "production";
-    const requireDistributedRedis = isProduction || process.env.REQUIRE_REDIS === "true";
+    // When distributed Redis rate limiting is explicitly required (e.g. REDIS_REQUIRED=true), fail closed if Redis is down
+    const requireDistributedRedis =
+      process.env.REDIS_REQUIRED === "true" ||
+      process.env.REQUIRE_REDIS === "true";
 
     const redis = getRedisClient();
 
