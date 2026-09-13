@@ -8,14 +8,16 @@ interface ProtectedRouteProps {
   allowedRoles?: UserRole[];
 }
 
-export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated } = useAuth();
+export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
+  const { isAuthenticated, token, hasPermission } = useAuth();
   const location = useLocation();
 
-  const isAuthed = isAuthenticated || !!localStorage.getItem("admin_token");
-
-  if (!isAuthed) {
+  if (!isAuthenticated || !token) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (allowedRoles && allowedRoles.length > 0 && !hasPermission(allowedRoles)) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return children;

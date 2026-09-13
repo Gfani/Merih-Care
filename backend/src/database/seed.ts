@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import * as bcrypt from "bcryptjs";
+import * as crypto from "crypto";
 import { 
   UserEntity, 
   ProviderEntity, 
@@ -37,6 +38,15 @@ export class DatabaseSeedService implements OnModuleInit {
   async seed() {
     console.log("Checking and ensuring essential initial records (admin, services)...");
 
+    const isProd = process.env.NODE_ENV === "production";
+    const initialAdminPassword = process.env.INITIAL_ADMIN_PASSWORD;
+
+    if (isProd && (!initialAdminPassword || initialAdminPassword.length < 8)) {
+      throw new Error(
+        "[SECURITY FATAL] INITIAL_ADMIN_PASSWORD environment variable must be set with at least 8 characters in production."
+      );
+    }
+
     // 1. Seed & Ensure Super Administrator Accounts
     const targetSuperAdmins = [
       "fanuelgoitom79@gmail.com",
@@ -48,13 +58,18 @@ export class DatabaseSeedService implements OnModuleInit {
     for (const adminEmail of targetSuperAdmins) {
       let superAdmin = await this.userRepo.findOne({ where: { email: adminEmail } });
       if (!superAdmin) {
+        const bootstrapPassword =
+          initialAdminPassword ||
+          process.env.TEST_ADMIN_PASSWORD ||
+          crypto.randomBytes(16).toString("hex") + "!Aa1";
+
         superAdmin = new UserEntity();
         superAdmin.id = adminEmail === "fanuelgoitom79@gmail.com" ? "u-superadmin" : "u-superadmin-" + adminEmail.split("@")[0];
         superAdmin.email = adminEmail;
         superAdmin.name = "Fanuel Goitom";
         superAdmin.phone = "+251 91 111 2233";
         superAdmin.dateJoined = new Date().toISOString().split("T")[0];
-        superAdmin.password = await bcrypt.hash(process.env.INITIAL_ADMIN_PASSWORD || "Fani7939", 10);
+        superAdmin.password = await bcrypt.hash(bootstrapPassword, 10);
         superAdmin.role = "admin";
         superAdmin.adminRole = "super_admin";
         superAdmin.roles = "admin,provider,patient";
@@ -62,6 +77,7 @@ export class DatabaseSeedService implements OnModuleInit {
         superAdmin.isApproved = true;
         superAdmin.status = "active";
         superAdmin.tokenVersion = 0;
+        superAdmin.mustChangePassword = true;
         await this.userRepo.save(superAdmin);
         console.log(`New super administrator bootstrapped: ${adminEmail}`);
       } else {

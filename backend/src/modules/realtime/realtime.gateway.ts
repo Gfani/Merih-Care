@@ -89,10 +89,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
           if (user.status === "suspended") {
             return next(new Error("Unauthorized: account has been suspended by administration"));
           }
+          const userVersion = user.tokenVersion ?? 0;
           if (
-            payload.tokenVersion !== undefined &&
-            user.tokenVersion !== undefined &&
-            payload.tokenVersion !== user.tokenVersion
+            payload.tokenVersion === undefined ||
+            payload.tokenVersion !== userVersion
           ) {
             return next(new Error("Unauthorized: session has been revoked"));
           }

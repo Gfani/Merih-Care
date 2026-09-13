@@ -43,11 +43,11 @@ export class JwtAuthGuard implements CanActivate {
         throw new UnauthorizedException("Your account has been suspended by administration. Please contact support.");
       }
 
-      // Check tokenVersion revocation (tokens issued prior to logout or password reset are rejected)
+      // Fail-closed tokenVersion check: tokens without a tokenVersion or with mismatched version are rejected
+      const userVersion = user.tokenVersion ?? 0;
       if (
-        payload.tokenVersion !== undefined &&
-        user.tokenVersion !== undefined &&
-        payload.tokenVersion !== user.tokenVersion
+        payload.tokenVersion === undefined ||
+        payload.tokenVersion !== userVersion
       ) {
         throw new UnauthorizedException("Session has been revoked or expired. Please log in again.");
       }
@@ -83,6 +83,7 @@ export class JwtAuthGuard implements CanActivate {
         adminRole: user.adminRole,
         permissions: user.permissions,
         status: user.status,
+        mfaEnabled: !!user.mfaEnabled,
         provider: providerData,
       };
     } else {

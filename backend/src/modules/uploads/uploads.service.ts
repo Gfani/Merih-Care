@@ -1,4 +1,7 @@
-import { Injectable, BadRequestException, Logger } from "@nestjs/common";
+import { Injectable, BadRequestException, Logger, Optional } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { DocumentEntity } from "../../database/entities/document.entity";
 import * as crypto from "crypto";
 import * as path from "path";
 import * as fs from "fs";
@@ -6,6 +9,12 @@ import * as fs from "fs";
 @Injectable()
 export class UploadsService {
   private readonly logger = new Logger(UploadsService.name);
+
+  constructor(
+    @Optional()
+    @InjectRepository(DocumentEntity)
+    private readonly docRepo?: Repository<DocumentEntity>,
+  ) {}
 
   /**
    * Scans binary buffers for executable signatures (MZ header, ELF, shebang scripts)
@@ -46,9 +55,9 @@ export class UploadsService {
   }
 
   /**
-   * Generates time-limited cryptographically signed access URL
+   * Generates time-limited cryptographically signed access URL (default 15 minutes)
    */
-  generatePresignedUrl(fileKey: string, expiresInSeconds = 86400): { url: string; expiresAt: string } {
+  generatePresignedUrl(fileKey: string, expiresInSeconds = 900): { url: string; expiresAt: string } {
     const expiresAt = Math.floor(Date.now() / 1000) + expiresInSeconds;
     const secret = process.env.JWT_SECRET || "merihcare-secure-storage-secret";
     const cleanKey = fileKey.replace(/^\/+/, "");
@@ -289,11 +298,12 @@ ${370 + streamLen}
       }
     } catch (_) {}
 
-    // Only allow synthetic fallback for known demo mock names (e.g. cv.pdf, kassahun_cv.pdf)
+    // Only allow synthetic fallback for known demo mock names in non-production environments
     const isMockOrDemo =
-      cleanKey.includes("kassahun_") ||
-      cleanKey === "credentials/cv.pdf" ||
-      cleanKey === "cv.pdf";
+      process.env.NODE_ENV !== "production" &&
+      (cleanKey.includes("kassahun_") ||
+        cleanKey === "credentials/cv.pdf" ||
+        cleanKey === "cv.pdf");
 
     if (isMockOrDemo) {
       const fallbackTitle = baseName.replace(/[_-]/g, " ").replace(/\.[a-zA-Z0-9]+$/, "").toUpperCase() || "CREDENTIAL DOCUMENT";
@@ -312,11 +322,20 @@ ${370 + streamLen}
     };
   }
 
+  async getDocumentByFileKey(fileKey: string): Promise<DocumentEntity | null> {
+    if (!this.docRepo) return null;
+    const cleanKey = decodeURIComponent(fileKey || "").replace(/\\/g, "/").trim().replace(/^\/+/, "");
+    return this.docRepo.findOne({
+      where: [{ fileKey: cleanKey }, { fileKey }]
+    });
+  }
+
   async handleUpload(
     fileName: string,
     fileBuffer: Buffer,
     mimeType = "application/octet-stream",
-    userId = "system"
+    userId = "system",
+    documentType = "credential"
   ): Promise<any> {
     // Maximum file size limit: 15MB
     const MAX_FILE_SIZE = 15 * 1024 * 1024;
@@ -344,6 +363,23 @@ ${370 + streamLen}
       this.logger.log(`Uploaded & persisted file: ${sanitized} -> ${targetFilePath} (${fileBuffer.length} bytes)`);
     } catch (err: any) {
       this.logger.error(`Failed to persist file ${targetFilePath}: ${err.message}`);
+    }
+
+    // Record document metadata in database
+    if (this.docRepo) {
+      try {
+        const doc = new DocumentEntity();
+        doc.id = fileId;
+        doc.fileKey = storageKey;
+        doc.ownerId = userId;
+        doc.documentType = documentType;
+        doc.fileName = sanitized;
+        doc.fileSize = fileBuffer.length;
+        doc.mimeType = mimeType;
+        await this.docRepo.save(doc);
+      } catch (err: any) {
+        this.logger.warn(`Could not save document record to DB: ${err.message}`);
+      }
     }
 
     const presigned = this.generatePresignedUrl(storageKey);

@@ -749,18 +749,25 @@ export class AuthService {
     return clean;
   }
 
-  async lookupContact(identifier: string): Promise<{ found: boolean; email?: string; phone?: string }> {
+  async lookupContact(identifier: string): Promise<{ found: boolean; email?: string; phone?: string; message?: string }> {
     if (!identifier || !identifier.trim()) {
-      return { found: false };
+      return {
+        found: false,
+        message: "If an account matches the provided identifier, instructions have been prepared."
+      };
     }
     const user = await this.findUserByIdentifier(identifier.trim());
     if (!user) {
-      return { found: false };
+      return {
+        found: false,
+        message: "If an account matches the provided identifier, instructions have been prepared."
+      };
     }
     return {
       found: true,
-      email: user.email || undefined,
-      phone: user.phone || undefined,
+      email: user.email ? this.maskDestination(user.email) : undefined,
+      phone: user.phone ? this.maskDestination(user.phone) : undefined,
+      message: "If an account matches the provided identifier, instructions have been prepared."
     };
   }
 
@@ -792,13 +799,8 @@ export class AuthService {
 
     if (emailCandidate) {
       user = await this.userRepo.findOne({ where: { email: emailCandidate.toLowerCase() } });
-      if (user && phoneCandidate) {
-        if (!user.phone) {
-          throw new BadRequestException("This account has no registered phone number on file. Please reset your password via Email.");
-        }
-        if (!this.isSamePhoneNumber(user.phone, phoneCandidate)) {
-          throw new BadRequestException("The entered phone number is not associated with this user account. Password reset code can only be sent to the registered phone number.");
-        }
+      if (user && phoneCandidate && user.phone && !this.isSamePhoneNumber(user.phone, phoneCandidate)) {
+        user = null; // Mismatched secondary contact candidate fails silently with uniform response
       }
     } else if (phoneCandidate) {
       user = await this.findUserByIdentifier(phoneCandidate);
@@ -807,6 +809,9 @@ export class AuthService {
     }
 
     let channel: "email" | "sms" = requestedChannel || (isEmailIdentifier ? "email" : "sms");
+    if (user && channel === "sms" && !user.phone) {
+      channel = "email";
+    }
 
     // UNIFORM TIMING / RESPONSE: Prevent account enumeration when user does not exist
     if (!user) {
@@ -817,10 +822,6 @@ export class AuthService {
         destination: masked || "registered contact",
         message: "If an account matches the provided identifier, a password reset code has been sent.",
       };
-    }
-
-    if (channel === "sms" && !user.phone) {
-      throw new BadRequestException("This account has no registered phone number on file. Please reset your password via Email.");
     }
 
     // Cryptographically random 6-digit OTP
@@ -975,14 +976,15 @@ export class AuthService {
         success: true,
         channel,
         destination: masked,
-        message: `A 6-digit verification code has been dispatched via ${channel.toUpperCase()} to ${masked}. Valid for 5 minutes.`,
+        message: "If an account matches the provided identifier, a 6-digit verification code has been dispatched. Valid for 5 minutes.",
       };
     }
+    const masked = this.maskDestination(identifier);
     return {
       success: true,
       channel: requestedChannel || "email",
-      destination: identifier,
-      message: "Verification code dispatched if account exists.",
+      destination: masked || "registered contact",
+      message: "If an account matches the provided identifier, a 6-digit verification code has been dispatched. Valid for 5 minutes.",
     };
   }
 
@@ -1063,11 +1065,11 @@ export class AuthService {
     } | null = null;
 
     // 1. Verify Google Token
-    // In production, strictly prohibit test/mock tokens
+    // Strictly prohibit test/mock tokens outside isolated test environments
     const isMock = idToken.startsWith("test-google-") || idToken.startsWith("mock-google-");
     if (isMock) {
-      if (process.env.NODE_ENV === "production") {
-        throw new UnauthorizedException("Mock tokens are strictly prohibited in production environment");
+      if (process.env.NODE_ENV !== "test") {
+        throw new UnauthorizedException("Mock tokens are prohibited outside isolated test environments");
       }
       const parts = idToken.split(":");
       const mockEmail = parts[1] || "test.user@gmail.com";
@@ -1080,36 +1082,11 @@ export class AuthService {
         sub: "google-mock-" + crypto.randomUUID(),
       };
     } else {
-      try {
-        const response = await fetch(
-          `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`,
-          { signal: AbortSignal.timeout(3000) }
-        );
-        if (response.ok) {
-          googleUser = await response.json();
-        }
-      } catch (err) {
-        // Network failure or timeout
-      }
+      googleUser = await this.verifyGoogleToken(idToken);
     }
 
     if (!googleUser || !googleUser.email) {
       throw new UnauthorizedException("Invalid or unverified Google token");
-    }
-
-    // Validate Google Audience & Issuer
-    const allowedAudiences = [
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_ANDROID_CLIENT_ID,
-      process.env.GOOGLE_IOS_CLIENT_ID,
-    ].filter(Boolean);
-
-    if (allowedAudiences.length > 0 && googleUser.aud && !allowedAudiences.includes(googleUser.aud)) {
-      throw new UnauthorizedException("Google token audience mismatch");
-    }
-
-    if (googleUser.iss && !googleUser.iss.includes("accounts.google.com")) {
-      throw new UnauthorizedException("Google token issuer is invalid");
     }
 
 
@@ -1284,8 +1261,8 @@ export class AuthService {
     // 1. Verify Apple Token
     const isMock = identityToken.startsWith("test-apple-") || identityToken.startsWith("mock-apple-");
     if (isMock) {
-      if (process.env.NODE_ENV === "production") {
-        throw new UnauthorizedException("Mock tokens are strictly prohibited in production environment");
+      if (process.env.NODE_ENV !== "test") {
+        throw new UnauthorizedException("Mock tokens are prohibited outside isolated test environments");
       }
       const parts = identityToken.split(":");
       const mockEmail = parts[1] && parts[1].trim().length > 0 ? parts[1].trim() : (parts.length > 2 ? undefined : "apple.user@icloud.com");
@@ -1443,6 +1420,83 @@ export class AuthService {
 
     // 4. Issue authenticated session
     return this.createSession(user.id, userAgent, ipAddress);
+  }
+
+  async verifyGoogleToken(idToken: string): Promise<{
+    sub: string;
+    email: string;
+    email_verified: boolean;
+    name?: string;
+    picture?: string;
+  }> {
+    const parts = idToken.split(".");
+    if (parts.length !== 3) {
+      throw new UnauthorizedException("Malformed Google identity token");
+    }
+
+    let header: any;
+    let payload: any;
+    try {
+      header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf-8"));
+      payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf-8"));
+    } catch {
+      throw new UnauthorizedException("Invalid Google identity token format");
+    }
+
+    if (!payload.exp || payload.exp < Date.now() / 1000) {
+      throw new UnauthorizedException("Google identity token has expired");
+    }
+
+    if (payload.iss !== "https://accounts.google.com" && payload.iss !== "accounts.google.com") {
+      throw new UnauthorizedException("Google identity token issuer is invalid");
+    }
+
+    const allowedAudiences = [
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_ANDROID_CLIENT_ID,
+      process.env.GOOGLE_IOS_CLIENT_ID,
+      "256475797217-o481d29fdaufp2fp6mmkide2u52ohpp7.apps.googleusercontent.com",
+      "256475797217-9h81ffre15hi7kdd4iu47rbdg6v50reo.apps.googleusercontent.com",
+      "256475797217-78541v66iduupfrod43jlc4gh5cf7iun.apps.googleusercontent.com",
+    ].filter(Boolean);
+
+    if (allowedAudiences.length > 0 && !allowedAudiences.includes(payload.aud)) {
+      throw new UnauthorizedException(`Google token audience mismatch: ${payload.aud}`);
+    }
+
+    // Cryptographic signature check via Google JWKS (https://www.googleapis.com/oauth2/v3/certs)
+    try {
+      const res = await fetch("https://www.googleapis.com/oauth2/v3/certs", {
+        signal: AbortSignal.timeout(3000),
+      });
+      if (res.ok) {
+        const { keys } = await res.json();
+        const matchingKey = keys.find((k: any) => k.kid === header.kid);
+        if (!matchingKey) {
+          throw new UnauthorizedException("Google signing key not found in JWKS");
+        }
+        const keyObject = crypto.createPublicKey({ key: matchingKey, format: "jwk" });
+        const verify = crypto.createVerify("RSA-SHA256");
+        verify.update(`${parts[0]}.${parts[1]}`);
+        const valid = verify.verify(keyObject, Buffer.from(parts[2], "base64url"));
+        if (!valid) {
+          throw new UnauthorizedException("Google identity token signature verification failed");
+        }
+      } else {
+        throw new UnauthorizedException("Could not reach Google JWKS service for token verification");
+      }
+    } catch (err: any) {
+      if (err instanceof UnauthorizedException) throw err;
+      throw new UnauthorizedException("Google cryptographic token verification failed: " + err.message);
+    }
+
+    return {
+      sub: payload.sub,
+      email: payload.email,
+      email_verified: payload.email_verified === true || payload.email_verified === "true",
+      name: payload.name,
+      picture: payload.picture,
+    };
   }
 
   async verifyAppleToken(identityToken: string): Promise<{ sub: string; email?: string; email_verified?: boolean; name?: string }> {

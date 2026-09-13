@@ -9,8 +9,10 @@ class SecureStorage {
 
   final _storage = const FlutterSecureStorage();
   static const _tokenKey = 'auth_token';
+  static const _refreshTokenKey = 'refresh_token';
 
   String? _tokenFallback;
+  String? _refreshTokenFallback;
 
   Future<void> writeToken(String token) async {
     _tokenFallback = token;
@@ -32,12 +34,32 @@ class SecureStorage {
     return _tokenFallback;
   }
 
+  Future<void> writeRefreshToken(String refreshToken) async {
+    _refreshTokenFallback = refreshToken;
+    try {
+      await _storage.write(key: _refreshTokenKey, value: refreshToken);
+    } catch (_) {}
+  }
+
+  Future<String?> readRefreshToken() async {
+    try {
+      final rToken = await _storage.read(key: _refreshTokenKey);
+      if (rToken != null && rToken.isNotEmpty) {
+        _refreshTokenFallback = rToken;
+        return rToken;
+      }
+    } catch (_) {}
+    return _refreshTokenFallback;
+  }
+
   Future<void> deleteToken() async {
     // Unregister device push token before deleting credentials
     await NotificationService.instance.unregisterToken();
     _tokenFallback = null;
+    _refreshTokenFallback = null;
     try {
       await _storage.delete(key: _tokenKey);
+      await _storage.delete(key: _refreshTokenKey);
     } catch (_) {}
   }
 

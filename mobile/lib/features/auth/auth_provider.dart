@@ -105,12 +105,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
           : (rawData is Map<String, dynamic> ? rawData : <String, dynamic>{});
 
       final token = (data['access_token'] ?? data['token'] ?? '').toString();
+      final refreshToken = (data['refresh_token'] ?? '').toString();
       final user = (data['user'] is Map<String, dynamic>)
           ? (data['user'] as Map<String, dynamic>)
           : <String, dynamic>{'name': email.split('@')[0], 'email': email, 'role': 'patient'};
 
       if (token.isNotEmpty) {
         await SecureStorage.instance.writeToken(token);
+      }
+      if (refreshToken.isNotEmpty) {
+        await SecureStorage.instance.writeRefreshToken(refreshToken);
       }
       print('[AUTH] login: token written. Authenticated: $email, role=${user['role']}');
       state = AuthState(
@@ -190,6 +194,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
           : (rawData is Map<String, dynamic> ? rawData : <String, dynamic>{});
 
       final token = (data['access_token'] ?? data['token'] ?? '').toString();
+      final refreshToken = (data['refresh_token'] ?? '').toString();
       final user = (data['user'] is Map<String, dynamic>)
           ? (data['user'] as Map<String, dynamic>)
           : <String, dynamic>{'name': name, 'email': email, 'phone': phone, 'role': role};
@@ -212,6 +217,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       }
 
       await SecureStorage.instance.writeToken(token);
+      if (refreshToken.isNotEmpty) {
+        await SecureStorage.instance.writeRefreshToken(refreshToken);
+      }
       print('[AUTH] signup: token written. Authenticated: $email, role=${user['role']}');
       state = AuthState(
         status: AuthStatus.authenticated,
@@ -264,6 +272,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
           : (rawData is Map<String, dynamic> ? rawData : <String, dynamic>{});
 
       final accessToken = (data['access_token'] ?? data['token'] ?? '').toString();
+      final refreshToken = (data['refresh_token'] ?? '').toString();
       final user = (data['user'] is Map<String, dynamic>)
           ? (data['user'] as Map<String, dynamic>)
           : <String, dynamic>{'role': role};
@@ -286,6 +295,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
       if (accessToken.isNotEmpty) {
         await SecureStorage.instance.writeToken(accessToken);
+        if (refreshToken.isNotEmpty) {
+          await SecureStorage.instance.writeRefreshToken(refreshToken);
+        }
         state = AuthState(
           status: AuthStatus.authenticated,
           token: accessToken,
@@ -342,6 +354,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
           : (rawData is Map<String, dynamic> ? rawData : <String, dynamic>{});
 
       final accessToken = (data['access_token'] ?? data['token'] ?? '').toString();
+      final refreshToken = (data['refresh_token'] ?? '').toString();
       final user = (data['user'] is Map<String, dynamic>)
           ? (data['user'] as Map<String, dynamic>)
           : <String, dynamic>{'role': role};
@@ -364,6 +377,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
       if (accessToken.isNotEmpty) {
         await SecureStorage.instance.writeToken(accessToken);
+        if (refreshToken.isNotEmpty) {
+          await SecureStorage.instance.writeRefreshToken(refreshToken);
+        }
         state = AuthState(
           status: AuthStatus.authenticated,
           token: accessToken,
@@ -548,11 +564,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> logout() async {
     try {
-      final token = await SecureStorage.instance.readToken();
-      if (token != null && token.isNotEmpty) {
+      final refreshToken = await SecureStorage.instance.readRefreshToken();
+      if (refreshToken != null && refreshToken.isNotEmpty) {
         final client = _ref.read(apiClientProvider);
         await client.dio
-            .post('/auth/logout', data: {'refresh_token': token})
+            .post('/auth/logout', data: {'refresh_token': refreshToken})
             .timeout(const Duration(milliseconds: 1500));
       }
     } catch (_) {

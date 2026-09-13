@@ -159,15 +159,9 @@ export class AdminController {
   }
 
   @Get(["admin/users/pending", "admin/pending-approvals"])
+  @Roles("super_admin")
   async getPendingAdmins(@Req() req: any) {
-    const userEmail = (req.user?.email || "").toLowerCase().trim();
-    const isSuper =
-      req.user?.adminRole === "super_admin" ||
-      req.user?.role === "super_admin" ||
-      userEmail === "fanuelgoitom79@gmail.com" ||
-      userEmail === "goitomfanuel@gmail.com" ||
-      userEmail === "fani@g.com" ||
-      userEmail === "admin@merihcare.et";
+    const isSuper = req.user?.adminRole === "super_admin" || req.user?.role === "super_admin";
     if (!isSuper) {
       throw new BadRequestException("Only super administrators can view pending administrators");
     }
@@ -175,20 +169,15 @@ export class AdminController {
   }
 
   @Put(["admin/users/:id/approve", "admin/approvals/:id"])
+  @Roles("super_admin")
   async approveAdminPut(@Param("id") targetId: string, @Body() body: any, @Req() req: any) {
     return this.approveAdmin(targetId, body, req);
   }
 
   @Post(["admin/users/:id/approve", "admin/approvals/:id"])
+  @Roles("super_admin")
   async approveAdmin(@Param("id") targetId: string, @Body() body: any, @Req() req: any) {
-    const userEmail = (req.user?.email || "").toLowerCase().trim();
-    const isSuper =
-      req.user?.adminRole === "super_admin" ||
-      req.user?.role === "super_admin" ||
-      userEmail === "fanuelgoitom79@gmail.com" ||
-      userEmail === "goitomfanuel@gmail.com" ||
-      userEmail === "fani@g.com" ||
-      userEmail === "admin@merihcare.et";
+    const isSuper = req.user?.adminRole === "super_admin" || req.user?.role === "super_admin";
     if (!isSuper) {
       throw new BadRequestException("Only super administrators can approve or reject accounts");
     }
@@ -205,15 +194,9 @@ export class AdminController {
   }
 
   @Get("admin/administrators")
+  @Roles("super_admin")
   async getAdministrators(@Req() req: any) {
-    const userEmail = (req.user?.email || "").toLowerCase().trim();
-    const isSuper =
-      req.user?.adminRole === "super_admin" ||
-      req.user?.role === "super_admin" ||
-      userEmail === "fanuelgoitom79@gmail.com" ||
-      userEmail === "goitomfanuel@gmail.com" ||
-      userEmail === "fani@g.com" ||
-      userEmail === "admin@merihcare.et";
+    const isSuper = req.user?.adminRole === "super_admin" || req.user?.role === "super_admin";
     if (!isSuper) {
       throw new BadRequestException("Only super administrators can view full administrator directory");
     }
@@ -221,15 +204,9 @@ export class AdminController {
   }
 
   @Post("admin/administrators")
+  @Roles("super_admin")
   async createAdministrator(@Body() body: CreateAdminDto, @Req() req: any) {
-    const userEmail = (req.user?.email || "").toLowerCase().trim();
-    const isSuper =
-      req.user?.adminRole === "super_admin" ||
-      req.user?.role === "super_admin" ||
-      userEmail === "fanuelgoitom79@gmail.com" ||
-      userEmail === "goitomfanuel@gmail.com" ||
-      userEmail === "fani@g.com" ||
-      userEmail === "admin@merihcare.et";
+    const isSuper = req.user?.adminRole === "super_admin" || req.user?.role === "super_admin";
     if (!isSuper) {
       throw new BadRequestException("Only super administrators can create administrator accounts");
     }
@@ -241,16 +218,9 @@ export class AdminController {
   }
 
   @Delete("admin/administrators/:id")
+  @Roles("super_admin")
   async deleteAdministrator(@Param("id") id: string, @Req() req: any) {
-    const userEmail = (req.user?.email || "").toLowerCase().trim();
-    const isSuper =
-      req.user?.adminRole === "super_admin" ||
-      req.user?.role === "super_admin" ||
-      userEmail === "fanuelgoitom79@gmail.com" ||
-      userEmail === "fanuelgoitom79@gmial.com" ||
-      userEmail === "goitomfanuel@gmail.com" ||
-      userEmail === "fani@g.com" ||
-      userEmail === "admin@merihcare.et";
+    const isSuper = req.user?.adminRole === "super_admin" || req.user?.role === "super_admin";
     if (!isSuper) {
       throw new BadRequestException("Only super administrators can delete administrator accounts");
     }
@@ -274,16 +244,9 @@ export class AdminController {
   }
 
   @Post("admin/administrators/:id/reset-password")
+  @Roles("super_admin")
   async resetAdminPassword(@Param("id") id: string, @Body() body: ResetAdminPasswordDto, @Req() req: any) {
-    const userEmail = (req.user?.email || "").toLowerCase().trim();
-    const isSuper =
-      req.user?.adminRole === "super_admin" ||
-      req.user?.role === "super_admin" ||
-      userEmail === "fanuelgoitom79@gmail.com" ||
-      userEmail === "fanuelgoitom79@gmial.com" ||
-      userEmail === "goitomfanuel@gmail.com" ||
-      userEmail === "fani@g.com" ||
-      userEmail === "admin@merihcare.et";
+    const isSuper = req.user?.adminRole === "super_admin" || req.user?.role === "super_admin";
     if (!isSuper) {
       throw new BadRequestException("Only super administrators can reset administrator passwords");
     }
@@ -300,6 +263,7 @@ export class AdminController {
       }
     }
 
+    const userEmail = (req.user?.email || "").toLowerCase().trim();
     try {
       await this.adminService.updateAdminPasswordForUser(userEmail, id, body.newPassword);
       return { success: true, message: "Password updated successfully" };

@@ -7,6 +7,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as bcrypt from "bcryptjs";
 import * as crypto from "crypto";
+import { ROLE_PERMISSIONS } from "../../shared/constants/permissions";
 
 export function isSuperiorAdmin(email?: string): boolean {
   if (!email) return false;
@@ -85,6 +86,7 @@ export class AdminService {
     const admin = await this.userRepo.findOne({ where: { id: actorId } });
     if (admin) {
       admin.password = newPass; // Hashed at controller/service level
+      admin.mustChangePassword = false;
       admin.tokenVersion = (admin.tokenVersion || 0) + 1;
       await this.userRepo.save(admin);
       return { success: true };
@@ -204,7 +206,9 @@ export class AdminService {
     admin.adminRole = data.adminRole || (data.department ? `${data.department.toLowerCase()}_admin` : "operations_admin");
     admin.isApproved = true;
     admin.status = "active";
-    admin.permissions = "all";
+    admin.permissions = admin.adminRole === "super_admin" 
+      ? "all" 
+      : (ROLE_PERMISSIONS[admin.adminRole] || []).join(",");
     admin.dateJoined = new Date().toISOString().split("T")[0];
 
     return this.userRepo.save(admin);
@@ -282,6 +286,7 @@ export class AdminService {
     user.password = await bcrypt.hash(newPass, salt);
     user.loginAttempts = 0;
     user.lockoutUntil = null;
+    user.mustChangePassword = false;
     user.tokenVersion = (user.tokenVersion || 0) + 1;
 
     if (this.sessionRepo) {

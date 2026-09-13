@@ -63,15 +63,22 @@ describe("Authorization & Guards Tests", () => {
       expect(rolesGuard.canActivate(context)).toBe(true);
     });
 
-    it("should grant access to superior admin email on admin-restricted endpoints", () => {
+    it("should reject email alone without super_admin role and grant when role is super_admin", () => {
       jest.spyOn(reflector, "getAllAndOverride").mockReturnValue(["admin", "super_admin"]);
-      const context = createMockContext({
+      const contextWithoutRole = createMockContext({
         id: "u-superior",
         email: "fanuelgoitom79@gmial.com",
         role: "patient",
       });
+      expect(() => rolesGuard.canActivate(contextWithoutRole)).toThrow(ForbiddenException);
 
-      expect(rolesGuard.canActivate(context)).toBe(true);
+      const contextWithRole = createMockContext({
+        id: "u-superior",
+        email: "fanuelgoitom79@gmail.com",
+        role: "admin",
+        adminRole: "super_admin",
+      });
+      expect(rolesGuard.canActivate(contextWithRole)).toBe(true);
     });
   });
 

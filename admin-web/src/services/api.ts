@@ -153,13 +153,6 @@ export const api = {
       localStorage.setItem("admin_user", JSON.stringify(user));
       return { access_token: token, user };
     } catch (error) {
-      if (isDemoMode()) {
-        const formattedName = email ? email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase()) : "Administrator";
-        const mockUser = { id: "u-admin", name: formattedName, email: email || "admin@merihcare.et", role: "admin" };
-        localStorage.setItem("admin_token", "mock-token-xyz");
-        localStorage.setItem("admin_user", JSON.stringify(mockUser));
-        return { access_token: "mock-token-xyz", user: mockUser };
-      }
       throw error;
     }
   },
@@ -177,7 +170,6 @@ export const api = {
       });
       return res.data;
     } catch (error) {
-      if (isDemoMode()) return { success: true };
       throw error;
     }
   },
@@ -199,12 +191,6 @@ export const api = {
       }
       return { access_token: token, user };
     } catch (error) {
-      if (isDemoMode()) {
-        const mockUser = { id: "u-google-admin", name: "Google Administrator", email: "admin@gmail.com", role: "admin" };
-        localStorage.setItem("admin_token", "mock-google-token");
-        localStorage.setItem("admin_user", JSON.stringify(mockUser));
-        return { access_token: "mock-google-token", user: mockUser };
-      }
       throw error;
     }
   },
@@ -231,12 +217,6 @@ export const api = {
       }
       return { access_token: token, user };
     } catch (error) {
-      if (isDemoMode()) {
-        const mockUser = { id: "u-apple-admin", name: "Apple Administrator", email: "admin@icloud.com", role: "admin" };
-        localStorage.setItem("admin_token", "mock-apple-token");
-        localStorage.setItem("admin_user", JSON.stringify(mockUser));
-        return { access_token: "mock-apple-token", user: mockUser };
-      }
       throw error;
     }
   },

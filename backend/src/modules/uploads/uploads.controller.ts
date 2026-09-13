@@ -103,12 +103,21 @@ export class UploadsController {
       throw new BadRequestException("fileKey query parameter is required");
     }
     const cleanKey = fileKey.replace(/^\/+/, "");
-    const isUserOwner = cleanKey.startsWith(req.user.id + "/");
-    const isAdmin = req.user.role === "admin" || (req.user.roles && req.user.roles.includes("admin"));
-    if (!isUserOwner && !isAdmin && !cleanKey.startsWith("credentials/")) {
+    const doc = await this.uploadsService.getDocumentByFileKey(cleanKey);
+    const userId = req.user?.id;
+    const isOwner = doc ? doc.ownerId === userId : cleanKey.startsWith(userId + "/");
+    const isVerifier = doc && doc.verifierId === userId;
+    const hasReviewPerm =
+      req.user?.role === "super_admin" ||
+      req.user?.adminRole === "super_admin" ||
+      req.user?.adminRole === "verification_admin" ||
+      req.user?.adminRole === "verifier" ||
+      (Array.isArray(req.user?.permissions) && req.user.permissions.includes("credentials:review"));
+
+    if (!isOwner && !isVerifier && !hasReviewPerm) {
       throw new ForbiddenException("Cannot generate signed URL for another user's document");
     }
-    return this.uploadsService.generatePresignedUrl(fileKey);
+    return this.uploadsService.generatePresignedUrl(cleanKey);
   }
 
   @Get("view/:fileKey(*)")
@@ -119,7 +128,7 @@ export class UploadsController {
     @Req() req: any,
     @Res() res: Response
   ) {
-    this.assertAuthorizedFileAccess(fileKey, expires, signature, req);
+    await this.assertAuthorizedFileAccess(fileKey, expires, signature, req);
     return this.serveFile(fileKey, false, res);
   }
 
@@ -133,7 +142,7 @@ export class UploadsController {
     @Res() res: Response
   ) {
     const key = fileKey || url || "";
-    this.assertAuthorizedFileAccess(key, expires, signature, req);
+    await this.assertAuthorizedFileAccess(key, expires, signature, req);
     return this.serveFile(key, false, res);
   }
 
@@ -145,7 +154,7 @@ export class UploadsController {
     @Req() req: any,
     @Res() res: Response
   ) {
-    this.assertAuthorizedFileAccess(fileKey, expires, signature, req);
+    await this.assertAuthorizedFileAccess(fileKey, expires, signature, req);
     return this.serveFile(fileKey, true, res);
   }
 
@@ -159,16 +168,16 @@ export class UploadsController {
     @Res() res: Response
   ) {
     const key = fileKey || url || "";
-    this.assertAuthorizedFileAccess(key, expires, signature, req);
+    await this.assertAuthorizedFileAccess(key, expires, signature, req);
     return this.serveFile(key, true, res);
   }
 
-  private assertAuthorizedFileAccess(
+  private async assertAuthorizedFileAccess(
     fileKey: string,
     expires?: string,
     signature?: string,
     req?: any
-  ): void {
+  ): Promise<void> {
     if (!fileKey) {
       throw new BadRequestException("File key or URL is required");
     }
@@ -181,17 +190,27 @@ export class UploadsController {
       throw new ForbiddenException("Invalid or expired presigned document URL");
     }
 
-    // 2. Fallback: Authenticated user authorization
+    // 2. Database-backed authorization for authenticated callers
     const user = req?.user;
     if (user) {
-      const isAdmin = user.role === "admin" || (user.roles && user.roles.includes("admin"));
-      const isOwner = fileKey.includes(user.id);
-      if (isAdmin || isOwner) return;
+      const cleanKey = fileKey.replace(/^\/+/, "");
+      const doc = await this.uploadsService.getDocumentByFileKey(cleanKey);
+      const isOwner = doc ? doc.ownerId === user.id : cleanKey.startsWith(user.id + "/");
+      const isVerifier = doc && doc.verifierId === user.id;
+      const isAuthorizedAdmin =
+        user.role === "super_admin" ||
+        user.adminRole === "super_admin" ||
+        user.adminRole === "verification_admin" ||
+        user.adminRole === "verifier" ||
+        (Array.isArray(user.permissions) && user.permissions.includes("credentials:review"));
+
+      if (isOwner || isVerifier || isAuthorizedAdmin) return;
     }
 
-    // 3. Demo credentials in development/testing
+    // 3. Demo credentials in development/testing only
     if (process.env.NODE_ENV !== "production") {
-      if (fileKey === "cv.pdf" || fileKey === "credentials/cv.pdf" || fileKey.includes("kassahun_")) {
+      const cleanKey = fileKey.replace(/^\/+/, "");
+      if (cleanKey === "cv.pdf" || cleanKey === "credentials/cv.pdf" || cleanKey.includes("kassahun_")) {
         return;
       }
     }

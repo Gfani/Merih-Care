@@ -19,3 +19,4 @@ export * from "./logs-delivery.entity";
 export * from "./emergency-relation.entity";
 export * from "./medical.entity";
 export * from "./webhook-log.entity";
+export * from "./document.entity";

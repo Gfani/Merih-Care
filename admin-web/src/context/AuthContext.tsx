@@ -16,23 +16,67 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function isTokenValid(token: string | null): boolean {
+  if (!token) return false;
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return false;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    if (payload.exp && payload.exp < Date.now() / 1000) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem("admin_token"));
+  const [token, setToken] = useState<string | null>(() => {
+    const stored = localStorage.getItem("admin_token");
+    if (!isTokenValid(stored)) {
+      localStorage.removeItem("admin_token");
+      localStorage.removeItem("admin_user");
+      return null;
+    }
+    return stored;
+  });
   const [user, setUser] = useState<User | null>(() => {
+    const storedToken = localStorage.getItem("admin_token");
+    if (!isTokenValid(storedToken)) return null;
     const raw = localStorage.getItem("admin_user");
     if (!raw || raw === "undefined" || raw === "null") return null;
     try {
-      const parsed = JSON.parse(raw);
-      const emailLower = (parsed?.email || "").toLowerCase().trim();
-      if (parsed && (emailLower === "fanuelgoitom79@gmail.com" || emailLower === "fani@g.com" || emailLower === "admin@merihcare.et")) {
-        parsed.role = "admin";
-        parsed.adminRole = "super_admin";
-      }
-      return parsed;
+      return JSON.parse(raw);
     } catch {
       return null;
     }
   });
+
+  useEffect(() => {
+    const validateActiveSession = async () => {
+      const stored = localStorage.getItem("admin_token");
+      if (!isTokenValid(stored)) {
+        setToken(null);
+        setUser(null);
+        return;
+      }
+      try {
+        const profile = await api.getAdminProfile();
+        if (!profile) {
+          throw new Error("Invalid session");
+        }
+      } catch {
+        localStorage.removeItem("admin_token");
+        localStorage.removeItem("admin_user");
+        setToken(null);
+        setUser(null);
+      }
+    };
+    if (token) {
+      validateActiveSession();
+    }
+  }, []);
 
   useEffect(() => {
     const handleSessionExpired = () => {
@@ -46,12 +90,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, pass: string) => {
     const res = await api.login(email, pass);
-    const emailLower = (res.user?.email || "").toLowerCase().trim();
-    if (res.user && (emailLower === "fanuelgoitom79@gmail.com" || emailLower === "fani@g.com" || emailLower === "admin@merihcare.et")) {
-      res.user.role = "admin";
-      res.user.adminRole = "super_admin";
-      localStorage.setItem("admin_user", JSON.stringify(res.user));
-    }
     setToken(res.access_token);
     setUser(res.user);
   };
@@ -61,79 +99,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!tokenToUse && typeof window !== "undefined" && (window as any).google?.accounts?.id) {
       const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || "256475797217-o481d29fdaufp2fp6mmkide2u52ohpp7.apps.googleusercontent.com";
-      try {
-        tokenToUse = await new Promise<string>((resolve, reject) => {
-          try {
-            (window as any).google.accounts.id.initialize({
-              client_id: googleClientId,
-              callback: (response: { credential?: string }) => {
-                if (response.credential) {
-                  resolve(response.credential);
-                } else if (!import.meta.env.PROD) {
-                  resolve("test-google-token:fanuelgoitom79@gmail.com:Fanuel Goitom");
-                } else {
-                  reject(new Error("No Google credential returned."));
-                }
-              },
-            });
-            (window as any).google.accounts.id.prompt((notification: any) => {
-              if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-                if (!import.meta.env.PROD) {
-                  resolve("test-google-token:fanuelgoitom79@gmail.com:Fanuel Goitom");
-                }
+      tokenToUse = await new Promise<string>((resolve, reject) => {
+        try {
+          (window as any).google.accounts.id.initialize({
+            client_id: googleClientId,
+            callback: (response: { credential?: string }) => {
+              if (response.credential) {
+                resolve(response.credential);
+              } else {
+                reject(new Error("No Google credential returned."));
               }
-            });
-          } catch (err) {
-            if (!import.meta.env.PROD) {
-              resolve("test-google-token:fanuelgoitom79@gmail.com:Fanuel Goitom");
-            } else {
-              reject(err);
+            },
+          });
+          (window as any).google.accounts.id.prompt((notification: any) => {
+            if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+              reject(new Error("Google One Tap prompt was skipped or not displayed. Please use manual sign in."));
             }
-          }
-        });
-      } catch (err) {
-        if (import.meta.env.PROD) throw err;
-        tokenToUse = "test-google-token:fanuelgoitom79@gmail.com:Fanuel Goitom";
-      }
+          });
+        } catch (err) {
+          reject(err);
+        }
+      });
     }
 
     if (!tokenToUse) {
-      if (import.meta.env.PROD) {
-        throw new Error("Google Sign-In credential is required in production.");
-      }
-      tokenToUse = "test-google-token:fanuelgoitom79@gmail.com:Fanuel Goitom";
+      throw new Error("Google Sign-In credential is required.");
     }
 
     const res = await api.googleAuth(tokenToUse, "admin");
     if (res.access_token) {
-      const emailLower = (res.user?.email || "").toLowerCase().trim();
-      if (res.user && (emailLower === "fanuelgoitom79@gmail.com" || emailLower === "fani@g.com" || emailLower === "admin@merihcare.et")) {
-        res.user.role = "admin";
-        res.user.adminRole = "super_admin";
-        localStorage.setItem("admin_user", JSON.stringify(res.user));
-      }
       setToken(res.access_token);
       setUser(res.user);
     }
   };
 
   const appleLogin = async (identityToken?: string, givenName?: string, familyName?: string) => {
-    let tokenToUse = identityToken;
-    if (!tokenToUse) {
-      if (import.meta.env.PROD) {
-        throw new Error("Apple Sign-In identity token is required in production.");
-      }
-      tokenToUse = "test-apple-token:admin.apple@icloud.com:Apple Administrator:apple-sub-admin";
+    if (!identityToken) {
+      throw new Error("Apple Sign-In identity token is required.");
     }
-    const res = await api.appleAuth(tokenToUse, "admin", givenName, familyName);
+    const res = await api.appleAuth(identityToken, "admin", givenName, familyName);
 
     if (res.access_token) {
-      const emailLower = (res.user?.email || "").toLowerCase().trim();
-      if (res.user && (emailLower === "fanuelgoitom79@gmail.com" || emailLower === "fani@g.com" || emailLower === "admin@merihcare.et")) {
-        res.user.role = "admin";
-        res.user.adminRole = "super_admin";
-        localStorage.setItem("admin_user", JSON.stringify(res.user));
-      }
       setToken(res.access_token);
       setUser(res.user);
     }
@@ -145,29 +151,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
-  const currentEmailLower = (user?.email || "").toLowerCase().trim();
-  const isSuperAdminEmail =
-    currentEmailLower === "fanuelgoitom79@gmail.com" ||
-    currentEmailLower === "fani@g.com" ||
-    currentEmailLower === "admin@merihcare.et";
-
-  const isAnyAdmin =
-    isSuperAdminEmail ||
-    user?.role === "admin" ||
-    user?.role === "super_admin" ||
-    !!(user as any)?.adminRole ||
-    String(user?.role).includes("admin");
-
-  const role: UserRole = isSuperAdminEmail
-    ? "super_admin"
-    : isAnyAdmin
-    ? "admin"
-    : (user?.role as UserRole) || "admin";
+  const role: UserRole = (user?.adminRole as UserRole) || (user?.role as UserRole) || "admin";
 
   const hasPermission = (allowedRoles: UserRole[]): boolean => {
     if (!allowedRoles || allowedRoles.length === 0) return true;
-    // All administrators and super administrators are allowed to access every section
-    if (isAnyAdmin || role === "super_admin" || role === "admin") return true;
+    if (role === "super_admin") return true;
     const currentRole = role || (user?.role as UserRole);
     return allowedRoles.includes(currentRole);
   };

@@ -81,6 +81,9 @@ export class UserEntity {
   @Column({ default: 0 })
   failedResetAttempts: number;
 
+  @Column({ default: false })
+  mustChangePassword: boolean;
+
   // Audits
   @CreateDateColumn()
   createdAt: Date;

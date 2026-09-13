@@ -1,5 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable, ForbiddenException } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
+import { getEffectivePermissions } from "../constants/permissions";
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -19,17 +20,17 @@ export class PermissionsGuard implements CanActivate {
       throw new ForbiddenException("Missing authentication context");
     }
 
-    if (user.role === "admin" || user.role === "super_admin" || user.adminRole) {
+    // Super administrator has all privileges
+    if (user.role === "super_admin" || user.adminRole === "super_admin") {
       return true;
     }
 
-    const userPerms: string[] = typeof user.permissions === "string" 
-      ? user.permissions.split(",").map(p => p.trim())
-      : (Array.isArray(user.permissions) ? user.permissions : []);
-
+    const userPerms = getEffectivePermissions(user);
     const hasPermission = requiredPermissions.every(perm => userPerms.includes(perm));
     if (!hasPermission) {
-      throw new ForbiddenException("Insufficient permissions for this administrative endpoint");
+      throw new ForbiddenException(
+        `Insufficient permissions: operation requires [${requiredPermissions.join(", ")}], but account has [${userPerms.join(", ")}]`
+      );
     }
     return true;
   }

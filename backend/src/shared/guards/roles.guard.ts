@@ -18,12 +18,6 @@ export class RolesGuard implements CanActivate {
     if (!user) {
       throw new ForbiddenException("Authentication required: insufficient platform role permissions");
     }
-
-    const emailLower = (user.email || "").toLowerCase().trim();
-    const isSuperiorAdmin =
-      emailLower === "fanuelgoitom79@gmail.com" ||
-      emailLower === "fanuelgoitom79@gmial.com";
-
     // Extract all effective roles from user object
     const userRoles: string[] = Array.isArray(user.roles)
       ? user.roles
@@ -48,8 +42,8 @@ export class RolesGuard implements CanActivate {
         return true;
       }
 
-      // 2. Super admin hierarchy: super_admin has access to general admin, verifier, finance, and support tasks
-      if (isSuperiorAdmin || adminRole === "super_admin" || user.role === "super_admin") {
+      // 2. Super admin hierarchy: super_admin has access to all admin tasks
+      if (adminRole === "super_admin" || user.role === "super_admin") {
         return true;
       }
 

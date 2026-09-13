@@ -134,4 +134,16 @@ export class RealtimeService {
       this.server.emit("approval_requested", { v: 1, event: "approval_requested", data: payload, ts: payload.ts });
     }
   }
+
+  /** Disconnect all active sockets for a user when suspended, deleted, or sessions revoked */
+  disconnectUserSockets(userId: string) {
+    if (!this.server || !userId) return;
+    try {
+      this.server.in(`patient:${userId}`).disconnectSockets(true);
+      this.server.in(`provider:${userId}`).disconnectSockets(true);
+      this.server.in(`user:${userId}`).disconnectSockets(true);
+    } catch (e) {
+      // Non-fatal if socket cluster is offline
+    }
+  }
 }

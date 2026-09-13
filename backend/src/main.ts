@@ -45,6 +45,15 @@ async function bootstrap() {
     ? process.env.CORS_ORIGIN.split(",").map((s) => s.trim())
     : [];
 
+  const productionAllowlist = [
+    "https://admin.merihcare.live",
+    "https://merihcare.live",
+    "https://merihcare.et",
+    "https://admin.merihcare.et",
+    "https://app.merihcare.et",
+    ...configuredOrigins,
+  ];
+
   if (process.env.NODE_ENV === "production") {
     const weakSecrets = [
       "super_secret_jwt_key_change_me_in_production",
@@ -58,18 +67,35 @@ async function bootstrap() {
 
   app.enableCors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps, curl, Postman)
-      if (!origin || process.env.NODE_ENV !== "production") {
+      // Allow requests with no origin (like mobile native apps, curl, server-to-server)
+      if (!origin) {
         return callback(null, true);
       }
 
-      const isAllowed =
-        configuredOrigins.includes(origin) ||
-        origin.endsWith(".azurecontainerapps.io") ||
-        origin.endsWith(".azurestaticapps.net") ||
-        origin.endsWith("merihcare.live") ||
-        origin.endsWith("merihcare.et") ||
-        origin.includes("localhost");
+      if (process.env.NODE_ENV !== "production") {
+        return callback(null, true);
+      }
+
+      let isAllowed = productionAllowlist.includes(origin);
+
+      if (!isAllowed) {
+        try {
+          const parsed = new URL(origin);
+          const hostname = parsed.hostname;
+          if (
+            hostname === "merihcare.live" ||
+            hostname.endsWith(".merihcare.live") ||
+            hostname === "merihcare.et" ||
+            hostname.endsWith(".merihcare.et") ||
+            hostname.endsWith(".azurecontainerapps.io") ||
+            hostname.endsWith(".azurestaticapps.net")
+          ) {
+            isAllowed = true;
+          }
+        } catch {
+          isAllowed = false;
+        }
+      }
 
       if (isAllowed) {
         callback(null, true);
