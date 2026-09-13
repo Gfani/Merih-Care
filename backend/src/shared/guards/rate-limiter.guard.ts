@@ -68,15 +68,13 @@ export class RateLimiterGuard implements CanActivate {
       ? "mfa"
       : "general";
 
-    // When Redis is configured or in production, fail closed if Redis is unavailable
-    const isRedisConfigured = !!(
-      process.env.REDIS_URL ||
-      process.env.REDIS_HOST ||
-      process.env.NODE_ENV === "production"
-    );
+    // In production (or when explicitly required), distributed rate limiting MUST fail closed if Redis is down
+    const isProduction = process.env.NODE_ENV === "production";
+    const requireDistributedRedis = isProduction || process.env.REQUIRE_REDIS === "true";
 
-    if (isRedisConfigured) {
-      const redis = getRedisClient();
+    const redis = getRedisClient();
+
+    if (requireDistributedRedis) {
       if (!redis || redis.status !== "ready") {
         throw new HttpException(
           "Distributed rate limiter connection unavailable. Request blocked for security.",
@@ -129,6 +127,49 @@ export class RateLimiterGuard implements CanActivate {
           "Distributed rate limiter connection error. Request blocked for security.",
           HttpStatus.SERVICE_UNAVAILABLE
         );
+      }
+    }
+
+    // In local development/test environments, use Redis if ready, otherwise use in-memory rate limiting
+    if (redis && redis.status === "ready") {
+      try {
+        const ttlSec = Math.ceil(this.ttlMs / 1000);
+        const redisIpKey = `ratelimit:${purpose}:ip:${ip}`;
+        const ipCount = await redis.incr(redisIpKey);
+        if (ipCount === 1) await redis.expire(redisIpKey, ttlSec);
+        if (ipCount > this.limit * 2) {
+          throw new HttpException(
+            "Too Many Requests - Rate limit exceeded for IP. Please retry later.",
+            HttpStatus.TOO_MANY_REQUESTS
+          );
+        }
+
+        if (identifier) {
+          const redisIdKey = `ratelimit:${purpose}:id:${identifier}`;
+          const idCount = await redis.incr(redisIdKey);
+          if (idCount === 1) await redis.expire(redisIdKey, ttlSec);
+          if (idCount > this.limit) {
+            throw new HttpException(
+              "Too Many Requests - Rate limit exceeded for this account. Please retry later.",
+              HttpStatus.TOO_MANY_REQUESTS
+            );
+          }
+        }
+
+        const redisCompKey = `ratelimit:${purpose}:${identifier || "anon"}:${ip}:${deviceId}`;
+        const compCount = await redis.incr(redisCompKey);
+        if (compCount === 1) await redis.expire(redisCompKey, ttlSec);
+        if (compCount > this.limit) {
+          throw new HttpException(
+            "Too Many Requests - Rate limit exceeded. Please retry later.",
+            HttpStatus.TOO_MANY_REQUESTS
+          );
+        }
+
+        return true;
+      } catch (err: any) {
+        if (err instanceof HttpException) throw err;
+        // Fall back to process memory in local dev
       }
     }
 
