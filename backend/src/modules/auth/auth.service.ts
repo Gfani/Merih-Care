@@ -499,6 +499,17 @@ export class AuthService {
       }
     }
 
+    if (role === "provider" && this.realtimeService) {
+      this.realtimeService.emitApprovalRequested({
+        userId: savedUser.id,
+        name: savedUser.name,
+        email: savedUser.email,
+        phone: savedUser.phone,
+        role: "provider",
+        specialty: providerDetails?.specialty || "General Medicine",
+      });
+    }
+
     return savedUser;
   }
 

@@ -238,13 +238,45 @@ function formatPhoneE164(raw: string): string {
   return `+${digits}`;
 }
 
+export function formatPhoneForTextbee(raw: string): string {
+  if (!raw) return "";
+  const digits = raw.replace(/[^\d+]/g, "");
+  // Ethiopian numbers: convert +251, 251, 00251 to domestic 10-digit 09... or 07... for Textbee Android SMS Gateway
+  if (digits.startsWith("+251")) {
+    const rest = digits.substring(4);
+    if (rest.startsWith("9") || rest.startsWith("7")) return "0" + rest;
+  } else if (digits.startsWith("251")) {
+    const rest = digits.substring(3);
+    if (rest.startsWith("9") || rest.startsWith("7")) return "0" + rest;
+  } else if (digits.startsWith("00251")) {
+    const rest = digits.substring(5);
+    if (rest.startsWith("9") || rest.startsWith("7")) return "0" + rest;
+  } else if (digits.startsWith("0") && (digits.startsWith("09") || digits.startsWith("07"))) {
+    return digits;
+  } else if ((digits.startsWith("9") || digits.startsWith("7")) && digits.length === 9) {
+    return "0" + digits;
+  }
+  // International destinations retain E.164
+  return formatPhoneE164(raw);
+}
+
 async function dispatchSms(userId: string, body: string, recipientPhone?: string): Promise<boolean> {
   const rawPhone = recipientPhone || (userId.startsWith("+") || userId.startsWith("0") ? userId : "");
   if (!rawPhone) {
     logger.warn(`[SMS] No recipient phone available for user ${userId}`);
     return false;
   }
-  const targetPhone = formatPhoneE164(rawPhone);
+  const targetPhoneE164 = formatPhoneE164(rawPhone);
+  const textbeePhone = formatPhoneForTextbee(rawPhone);
+
+  // Always display prominent terminal notification banner for SMS
+  console.log("\n====================================================================");
+  console.log(`📱  MERIHCARE OUTBOUND SMS DISPATCH`);
+  console.log(`   RECIPIENT (RAW):     ${rawPhone}`);
+  console.log(`   TEXTBEE (DOMESTIC):  ${textbeePhone}`);
+  console.log(`   GLOBAL (E.164):      ${targetPhoneE164}`);
+  console.log(`   MESSAGE:             ${body}`);
+  console.log("====================================================================\n");
 
   // 1. Textbee Android Gateway (dispatches directly via connected Android SIM)
   const textbeeDeviceId = process.env.TEXTBEE_DEVICE_ID;
@@ -260,14 +292,14 @@ async function dispatchSms(userId: string, body: string, recipientPhone?: string
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          recipients: [targetPhone],
+          recipients: [textbeePhone],
           message: `[Merihcare] ${body}`,
         }),
       });
 
       const resData: any = await res.json().catch(() => ({}));
       if (res.ok && resData.success !== false) {
-        logger.log(`[SMS Textbee Gateway] Dispatched via Android SIM → ${targetPhone}: ${body}`);
+        logger.log(`[SMS Textbee Gateway] Dispatched via Android SIM → ${textbeePhone}: ${body}`);
         return true;
       } else {
         logger.warn(`[SMS Textbee Gateway] Dispatch failed (${res.status}): ${JSON.stringify(resData)}`);
@@ -289,7 +321,7 @@ async function dispatchSms(userId: string, body: string, recipientPhone?: string
 
       const params = new URLSearchParams();
       params.append("username", atUsername);
-      params.append("to", targetPhone);
+      params.append("to", targetPhoneE164);
       params.append("message", `[Merihcare] ${body}`);
 
       const res = await fetch(endpoint, {
@@ -307,7 +339,7 @@ async function dispatchSms(userId: string, body: string, recipientPhone?: string
         logger.warn(`[SMS AfricaTalking] Dispatch failed: ${res.status} ${errText}`);
         return false;
       }
-      logger.log(`[SMS AfricaTalking] SMS sent → ${targetPhone}: ${body}`);
+      logger.log(`[SMS AfricaTalking] SMS sent → ${targetPhoneE164}: ${body}`);
       return true;
     } catch (err: any) {
       logger.error(`[SMS] Failed to send SMS: ${err.message}`);
@@ -318,7 +350,7 @@ async function dispatchSms(userId: string, body: string, recipientPhone?: string
       logger.error(`[SMS Error] SMS provider credentials are not configured in production`);
       return false;
     }
-    logger.log(`[SMS dev/stub] → ${targetPhone}: ${body}`);
+    logger.log(`[SMS dev/stub] SMS → ${textbeePhone || targetPhoneE164}: ${body}`);
     return true;
   }
 }
@@ -403,34 +435,35 @@ export class NotificationsService {
     const targetChannel = opts.targetChannel || (opts.data?.channel as "email" | "sms" | "all");
 
     if (isOtp) {
-      // If user explicitly chose SMS:
-      if (targetChannel === "sms" && recipientPhone) {
-        const smsOk = await dispatchSms(userId, opts.body, recipientPhone).catch(() => false);
-        await this.attemptDelivery(notification, "sms", smsOk, smsOk ? null : "SMS dispatch failed").catch(() => {});
-        return notification;
+      // DUAL DISPATCH & RESILIENCE:
+      // If user provided or selected SMS, dispatch SMS immediately via Textbee (or fallback).
+      // In parallel, if recipientEmail is available, dispatch Email immediately as well.
+      // This guarantees zero lockout if cellular network is congested, and vice versa.
+      const dispatchTasks: Promise<any>[] = [];
+
+      if (recipientPhone && (targetChannel === "sms" || targetChannel === "all" || !recipientEmail)) {
+        dispatchTasks.push(
+          dispatchSms(userId, opts.body, recipientPhone)
+            .then(async (smsOk) => {
+              await this.attemptDelivery(notification, "sms", smsOk, smsOk ? null : "SMS dispatch failed").catch(() => {});
+              return smsOk;
+            })
+            .catch(() => false)
+        );
       }
 
-      // If user explicitly chose Email:
-      if (targetChannel === "email" && recipientEmail) {
-        const emailOk = await dispatchEmail(userId, opts.title, opts.body, recipientEmail).catch(() => false);
-        await this.attemptDelivery(notification, "email", emailOk, emailOk ? null : "Email dispatch failed").catch(() => {});
-        return notification;
+      if (recipientEmail && (targetChannel === "email" || targetChannel === "all" || !recipientPhone || targetChannel === "sms")) {
+        dispatchTasks.push(
+          dispatchEmail(userId, opts.title, opts.body, recipientEmail)
+            .then(async (emailOk) => {
+              await this.attemptDelivery(notification, "email", emailOk, emailOk ? null : "Email dispatch failed").catch(() => {});
+              return emailOk;
+            })
+            .catch(() => false)
+        );
       }
 
-      // Default dual delivery: deliver email immediately and dispatch SMS backup
-      const emailPromise = (async () => {
-        const ok = await dispatchEmail(userId, opts.title, opts.body, recipientEmail).catch(() => false);
-        await this.attemptDelivery(notification, "email", ok, ok ? null : "Email dispatch failed").catch(() => {});
-        return ok;
-      })();
-
-      if (recipientPhone && (isCritical || prefs.sms)) {
-        dispatchSms(userId, opts.body, recipientPhone)
-          .then(ok => this.attemptDelivery(notification, "sms", ok, ok ? null : "SMS dispatch failed"))
-          .catch(() => {});
-      }
-
-      await emailPromise;
+      await Promise.allSettled(dispatchTasks);
       return notification;
     }
 

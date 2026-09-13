@@ -906,16 +906,26 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RequestCorrectionsDto"
-              }
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/verification/{id}/corrections": {
+      "post": {
+        "operationId": "VerificationController_requestCorrections",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
             }
           }
-        },
+        ],
         "responses": {
           "201": {
             "description": ""
@@ -4061,18 +4071,6 @@
         },
         "required": [
           "reason"
-        ]
-      },
-      "RequestCorrectionsDto": {
-        "type": "object",
-        "properties": {
-          "comments": {
-            "type": "string",
-            "description": "Correction request comments/instructions"
-          }
-        },
-        "required": [
-          "comments"
         ]
       },
       "SanctionProviderDto": {

@@ -1,10 +1,12 @@
-import { Injectable, Optional } from "@nestjs/common";
+import { Injectable, Optional, Inject, forwardRef } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { ProviderEntity } from "../../database/entities/provider.entity";
 import { VerificationReviewEntity } from "../../database/entities/verification.entity";
 import { VerificationHistoryEntity } from "../../database/entities/verification.entity";
 import { UserEntity } from "../../database/entities/user.entity";
+import { NotificationsService } from "../notifications/notifications.service";
+import { RealtimeService } from "../realtime/realtime.service";
 
 @Injectable()
 export class VerificationService {
@@ -18,6 +20,11 @@ export class VerificationService {
     @Optional()
     @InjectRepository(UserEntity)
     private readonly userRepo?: Repository<UserEntity>,
+    @Optional()
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notificationsService?: NotificationsService,
+    @Optional()
+    private readonly realtimeService?: RealtimeService,
   ) {}
 
   private normalizeDocUrl(url?: string): string {
@@ -58,22 +65,26 @@ export class VerificationService {
   }
 
   async getVerificationQueue(): Promise<any[]> {
-    const providers = await this.providerRepo.find({
-      where: { verified: false },
+    const allProviders = await this.providerRepo.find({
       relations: ["user"],
     });
-    const results: any[] = [];
 
-    for (const p of providers) {
+    // Match all providers who require credential verification
+    const pendingProviders = allProviders.filter(
+      (p) => !p.verified || p.status === "pending_verification" || p.status === "pending" || p.status === "needs_fix"
+    );
+
+    const results: any[] = [];
+    const seenUserIds = new Set<string>();
+
+    for (const p of pendingProviders) {
       let user: UserEntity | null = p.user || null;
       if (!user && this.userRepo && p.userId) {
         user = await this.userRepo.findOne({ where: { id: p.userId } }).catch(() => null);
       }
 
-      // Deferral Rule: Providers who have not verified their email OTP are NOT sent to admin approval
-      if (user && !user.emailVerified) {
-        continue;
-      }
+      if (user?.id) seenUserIds.add(user.id);
+      if (p.userId) seenUserIds.add(p.userId);
 
       const email = p.email || user?.email || "";
       const phone = p.phone || user?.phone || "";
@@ -92,6 +103,8 @@ export class VerificationService {
         pricePerVisit: p.pricePerVisit,
         email,
         phone,
+        emailVerified: user?.emailVerified ?? false,
+        isApproved: user?.isApproved ?? false,
         joinedDate: user?.dateJoined || (p.createdAt ? p.createdAt.toISOString().split("T")[0] : ""),
         createdAt: p.createdAt,
         updatedAt: p.updatedAt,
@@ -103,6 +116,53 @@ export class VerificationService {
         licenseDocumentUrl: this.normalizeDocUrl(p.licenseDocumentUrl),
         idDocumentUrl: this.normalizeDocUrl(p.idDocumentUrl),
       });
+    }
+
+    // Also include any users registered with role: "provider" awaiting verification who don't yet have a provider record
+    if (this.userRepo) {
+      try {
+        const pendingUsers = await this.userRepo.find({
+          where: [
+            { role: "provider", isApproved: false },
+            { role: "provider", status: "pending_verification" },
+          ],
+        });
+
+        for (const u of pendingUsers) {
+          if (seenUserIds.has(u.id)) continue;
+          seenUserIds.add(u.id);
+
+          results.push({
+            id: `prov-${u.id}`,
+            userId: u.id,
+            name: u.name,
+            avatar: "",
+            title: "Healthcare Specialist",
+            specialty: "General Medicine",
+            licenseNumber: "",
+            experience: 0,
+            education: "",
+            hospitalAffiliation: "",
+            pricePerVisit: 800,
+            email: u.email || "",
+            phone: u.phone || "",
+            emailVerified: u.emailVerified ?? false,
+            isApproved: u.isApproved ?? false,
+            joinedDate: u.dateJoined || "",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            status: u.status || "pending_verification",
+            verified: false,
+            available: false,
+            services: ["Doctor Visit", "Home Nursing"],
+            cvUrl: "",
+            licenseDocumentUrl: "",
+            idDocumentUrl: "",
+          });
+        }
+      } catch (err) {
+        console.error("[VERIFICATION] Error querying pending provider users:", err);
+      }
     }
 
     return results;
@@ -136,6 +196,7 @@ export class VerificationService {
           if (user) {
             user.isApproved = true;
             user.status = "active";
+            user.emailVerified = true;
             await this.userRepo.save(user);
             console.log(`[VERIFICATION] Approved and activated provider user: ${user.id} (${user.email})`);
           }
@@ -171,6 +232,31 @@ export class VerificationService {
         console.error("[VERIFICATION] Error saving history audit:", err);
       }
 
+      // Dispatch approval notification to provider
+      if (this.notificationsService && (provider.userId || provider.email || provider.phone)) {
+        const targetId = provider.userId || provider.id;
+        this.notificationsService.sendNotification(targetId, {
+          type: "verification_update",
+          title: "Healthcare Provider Verification Approved! 🎉",
+          body: `Congratulations ${provider.name}, your credentials have been verified and approved by the MerihCare Clinical Administration! Your provider account is now fully active.`,
+          priority: "critical",
+          recipientEmail: provider.email,
+          recipientPhone: provider.phone,
+          data: { providerId: provider.id, status: "verified", approved: true },
+        }).catch((err) => console.error("[VERIFICATION] Notification error:", err));
+      }
+
+      // Realtime websocket notifications
+      if (this.realtimeService) {
+        const targetUserId = provider.userId || provider.id;
+        this.realtimeService.emitUserStatusChanged(targetUserId, "active");
+        this.realtimeService.emitToRoom(`provider:${targetUserId}`, "verification_status", {
+          status: "verified",
+          isApproved: true,
+          message: "Your provider credentials have been approved!",
+        });
+      }
+
       return savedProvider;
     }
 
@@ -180,6 +266,7 @@ export class VerificationService {
       if (user && user.role === "provider") {
         user.isApproved = true;
         user.status = "active";
+        user.emailVerified = true;
         await this.userRepo.save(user);
 
         let linkedProvider = await this.providerRepo.findOne({ where: { userId: user.id } });
@@ -195,7 +282,12 @@ export class VerificationService {
         linkedProvider.verified = true;
         linkedProvider.status = "verified";
         linkedProvider.available = true;
-        return this.providerRepo.save(linkedProvider);
+        const saved = await this.providerRepo.save(linkedProvider);
+
+        if (this.realtimeService) {
+          this.realtimeService.emitUserStatusChanged(user.id, "active");
+        }
+        return saved;
       }
     }
 
@@ -235,6 +327,25 @@ export class VerificationService {
         } catch (e) {
           console.error("[VERIFICATION] Error updating rejected user account:", e);
         }
+      }
+
+      // Dispatch rejection notification to provider
+      if (this.notificationsService && (provider.userId || provider.email || provider.phone)) {
+        const targetId = provider.userId || provider.id;
+        this.notificationsService.sendNotification(targetId, {
+          type: "verification_update",
+          title: "Provider Verification Update",
+          body: `Your provider verification application was not approved: ${reason}. Please update your credentials or contact clinical administration support.`,
+          priority: "critical",
+          recipientEmail: provider.email,
+          recipientPhone: provider.phone,
+          data: { providerId: provider.id, status: "rejected", reason },
+        }).catch((err) => console.error("[VERIFICATION] Notification error:", err));
+      }
+
+      if (this.realtimeService) {
+        const targetUserId = provider.userId || provider.id;
+        this.realtimeService.emitUserStatusChanged(targetUserId, "rejected");
       }
 
       // Save Review Audit

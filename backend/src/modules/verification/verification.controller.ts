@@ -108,15 +108,16 @@ export class VerificationController {
     return this.verificationService.rejectProvider(id, body.reason, actorId);
   }
 
-  @Post(":id/request-corrections")
+  @Post([":id/request-corrections", ":id/corrections"])
   @Permissions(Permission.CREDENTIALS_APPROVE)
   async requestCorrections(
     @Param("id") id: string,
-    @Body() body: RequestCorrectionsDto,
+    @Body() body: any,
     @Req() req: any
   ) {
     const actorId = req.user?.id || "u-admin";
-    return this.verificationService.requestCorrections(id, body.comments, actorId);
+    const comments = body.comments || body.notes || "Corrections required";
+    return this.verificationService.requestCorrections(id, comments, actorId);
   }
 
   @Post(":id/sanction")
