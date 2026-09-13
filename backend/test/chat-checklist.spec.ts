@@ -137,4 +137,78 @@ describe("Chat & Messaging Checklist Tests", () => {
       expect(result.assignedSupportId).toBe("u-admin-support");
     });
   });
+
+  describe("ChatGateway Event Membership Verification", () => {
+    let gateway: any;
+    const { ChatGateway } = require("../src/modules/chat/chat.gateway");
+
+    beforeEach(() => {
+      gateway = new ChatGateway(service, {} as any);
+    });
+
+    it("should reject typing_start from non-members", async () => {
+      const mockSocket: any = {
+        userId: "unauthorized-user",
+        emit: jest.fn(),
+        to: jest.fn().mockReturnValue({ emit: jest.fn() }),
+      };
+      jest.spyOn(service, "isParticipant").mockResolvedValue(false);
+
+      await gateway.handleTypingStart(mockSocket, { conversationId: "conv-1" });
+
+      expect(mockSocket.emit).toHaveBeenCalledWith("error", {
+        message: "Not a participant of this conversation",
+      });
+      expect(mockSocket.to).not.toHaveBeenCalled();
+    });
+
+    it("should broadcast typing_start when user is a verified member", async () => {
+      const mockToEmit = jest.fn();
+      const mockSocket: any = {
+        userId: "member-user",
+        emit: jest.fn(),
+        to: jest.fn().mockReturnValue({ emit: mockToEmit }),
+      };
+      jest.spyOn(service, "isParticipant").mockResolvedValue(true);
+
+      await gateway.handleTypingStart(mockSocket, { conversationId: "conv-1" });
+
+      expect(mockSocket.to).toHaveBeenCalledWith("conv:conv-1");
+      expect(mockToEmit).toHaveBeenCalledWith("typing", { userId: "member-user", isTyping: true });
+    });
+
+    it("should reject mark_read from non-members", async () => {
+      const mockSocket: any = {
+        userId: "unauthorized-user",
+        emit: jest.fn(),
+        to: jest.fn().mockReturnValue({ emit: jest.fn() }),
+      };
+      jest.spyOn(service, "isParticipant").mockResolvedValue(false);
+      jest.spyOn(service, "markRead").mockResolvedValue(undefined as any);
+
+      await gateway.handleMarkRead(mockSocket, { conversationId: "conv-1", messageId: "msg-1" });
+
+      expect(mockSocket.emit).toHaveBeenCalledWith("error", {
+        message: "Not a participant of this conversation",
+      });
+      expect(service.markRead).not.toHaveBeenCalled();
+    });
+
+    it("should process mark_read when user is a verified member", async () => {
+      const mockToEmit = jest.fn();
+      const mockSocket: any = {
+        userId: "member-user",
+        emit: jest.fn(),
+        to: jest.fn().mockReturnValue({ emit: mockToEmit }),
+      };
+      jest.spyOn(service, "isParticipant").mockResolvedValue(true);
+      jest.spyOn(service, "markRead").mockResolvedValue(undefined as any);
+
+      await gateway.handleMarkRead(mockSocket, { conversationId: "conv-1", messageId: "msg-1" });
+
+      expect(service.markRead).toHaveBeenCalledWith("conv-1", "member-user", "msg-1");
+      expect(mockSocket.to).toHaveBeenCalledWith("conv:conv-1");
+      expect(mockToEmit).toHaveBeenCalledWith("messages_read", { userId: "member-user", messageId: "msg-1" });
+    });
+  });
 });

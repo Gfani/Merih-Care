@@ -3,6 +3,16 @@ import { CanActivate, ExecutionContext, Injectable, HttpException, HttpStatus } 
 let redisClient: any = null;
 let redisInitialized = false;
 
+export function setRedisClientForTesting(client: any) {
+  redisClient = client;
+  redisInitialized = true;
+}
+
+export function resetRedisClientForTesting() {
+  redisClient = null;
+  redisInitialized = false;
+}
+
 function getRedisClient(): any {
   if (redisInitialized) return redisClient;
   redisInitialized = true;
@@ -19,7 +29,7 @@ function getRedisClient(): any {
         enableOfflineQueue: false,
       });
       client.on("error", () => {
-        // Silently handle Redis offline errors to avoid crashing HTTP requests
+        // Handle Redis offline error events
       });
       client.connect().catch(() => {});
       redisClient = client;
@@ -58,9 +68,22 @@ export class RateLimiterGuard implements CanActivate {
       ? "mfa"
       : "general";
 
-    // Distributed Redis rate limiting (if Redis is configured and ready)
-    const redis = getRedisClient();
-    if (redis && redis.status === "ready") {
+    // When Redis is configured or in production, fail closed if Redis is unavailable
+    const isRedisConfigured = !!(
+      process.env.REDIS_URL ||
+      process.env.REDIS_HOST ||
+      process.env.NODE_ENV === "production"
+    );
+
+    if (isRedisConfigured) {
+      const redis = getRedisClient();
+      if (!redis || redis.status !== "ready") {
+        throw new HttpException(
+          "Distributed rate limiter connection unavailable. Request blocked for security.",
+          HttpStatus.SERVICE_UNAVAILABLE
+        );
+      }
+
       try {
         const ttlSec = Math.ceil(this.ttlMs / 1000);
 
@@ -102,7 +125,10 @@ export class RateLimiterGuard implements CanActivate {
         return true;
       } catch (err: any) {
         if (err instanceof HttpException) throw err;
-        // Fall back to process memory on Redis failure
+        throw new HttpException(
+          "Distributed rate limiter connection error. Request blocked for security.",
+          HttpStatus.SERVICE_UNAVAILABLE
+        );
       }
     }
 

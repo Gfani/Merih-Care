@@ -140,7 +140,7 @@ export default function VerificationSection() {
   const [adminRejectModal, setAdminRejectModal] = useState(false);
   const [selectedAdmin, setSelectedAdmin] = useState<any>(null);
 
-  const userStr = localStorage.getItem("admin_user");
+  const userStr = sessionStorage.getItem("admin_user") || localStorage.getItem("admin_user");
   const user = (() => {
     if (!userStr || userStr === "undefined" || userStr === "null") return null;
     try { return JSON.parse(userStr); } catch { return null; }
@@ -149,9 +149,7 @@ export default function VerificationSection() {
   const isSuperAdmin =
     user?.adminRole === "super_admin" ||
     user?.role === "super_admin" ||
-    emailLower === "fanuelgoitom79@gmail.com" ||
-    emailLower === "fani@g.com" ||
-    emailLower === "admin@merihcare.et";
+    user?.permissions === "all";
 
   const loadData = async () => {
     try {
@@ -610,7 +608,7 @@ export default function VerificationSection() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {activeAdmins.map((admin) => {
                 const isCurrent = admin.email?.toLowerCase().trim() === emailLower;
-                const isSuper = admin.adminRole === "super_admin" || admin.email?.toLowerCase().trim() === "fanuelgoitom79@gmail.com";
+                const isSuper = admin.adminRole === "super_admin" || admin.role === "super_admin";
                 return (
                   <Card key={admin.id} className="p-5 animate-fade-in">
                     <div className="flex items-start gap-3 mb-4 pb-4 border-b border-[#f0f4f7] dark:border-slate-700">

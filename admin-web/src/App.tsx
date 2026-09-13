@@ -280,7 +280,7 @@ function AppContent() {
     }
   }, [darkMode]);
 
-  const isAuthed = isAuthenticated || !!localStorage.getItem("admin_token");
+  const isAuthed = isAuthenticated || !!sessionStorage.getItem("admin_token") || !!localStorage.getItem("admin_token");
 
   React.useEffect(() => {
     setMobileSidebarOpen(false);
@@ -306,16 +306,14 @@ function AppContent() {
     );
   }
 
-  const currentEmailLower = (user?.email || "").toLowerCase().trim();
-  const isSuperAdminEmail =
-    currentEmailLower === "fanuelgoitom79@gmail.com" ||
-    currentEmailLower === "fani@g.com" ||
-    currentEmailLower === "admin@merihcare.et";
+  const isSuperAdmin =
+    user?.adminRole === "super_admin" ||
+    user?.role === "super_admin" ||
+    (user as any)?.permissions === "all";
 
   const isAnyAdmin =
-    isSuperAdminEmail ||
+    isSuperAdmin ||
     user?.role === "admin" ||
-    user?.role === "super_admin" ||
     !!(user as any)?.adminRole ||
     String(user?.role).includes("admin");
 
@@ -394,7 +392,7 @@ function AppContent() {
               <p className="text-xs font-semibold text-[#18232e] dark:text-white truncate">{user?.name || "Admin"}</p>
               <p className="text-[10px] text-[#0d7c6a] dark:text-emerald-400 font-bold capitalize flex items-center gap-1">
                 <ShieldAlert size={10} />
-                {currentEmailLower === "fanuelgoitom79@gmail.com" || currentEmailLower === "fani@g.com" || user?.adminRole === "super_admin"
+                {isSuperAdmin
                   ? "Super Admin"
                   : (user as any)?.adminRole?.replace(/_/g, " ") || "Administrator"}
               </p>

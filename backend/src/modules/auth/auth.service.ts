@@ -485,14 +485,10 @@ export class AuthService {
     if (providerData) {
       rolesSet.add("provider");
     }
-    const emailLower = (user.email || "").toLowerCase().trim();
     if (
       user.adminRole ||
       user.role === "admin" ||
-      user.role === "super_admin" ||
-      emailLower === "fanuelgoitom79@gmail.com" ||
-      emailLower === "fanuelgoitom79@gmial.com" ||
-      emailLower === "fani@g.com"
+      user.role === "super_admin"
     ) {
       rolesSet.add("admin");
       if (user.adminRole) rolesSet.add(user.adminRole);

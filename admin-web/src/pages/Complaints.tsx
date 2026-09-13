@@ -20,12 +20,12 @@ export default function ComplaintsSection() {
 
   // Permissions configuration
   const getAdminUser = () => {
-    const raw = localStorage.getItem("admin_user");
+    const raw = sessionStorage.getItem("admin_user") || localStorage.getItem("admin_user");
     if (!raw || raw === "undefined" || raw === "null") return {};
     try { return JSON.parse(raw); } catch { return {}; }
   };
   const adminUser = getAdminUser();
-  const isSuperAdmin = adminUser.adminRole === "super_admin" || adminUser.role === "super_admin" || adminUser.permissions === "all" || adminUser.email === "fanuelgoitom79@gmail.com";
+  const isSuperAdmin = adminUser.adminRole === "super_admin" || adminUser.role === "super_admin" || adminUser.permissions === "all";
   // All administrators have full access to assign and resolve complaints
   const canResolve = true;
 

@@ -274,7 +274,7 @@ describe("Auth & User Security Checklist Tests", () => {
     });
   });
 
-  describe("Superior Administrator & Deletion Hierarchy", () => {
+  describe("Administrator Role-Based Deletion & Quorum Protection", () => {
     let adminService: any;
     const { AdminService } = require("../src/modules/admin/admin.service");
 
@@ -282,54 +282,65 @@ describe("Auth & User Security Checklist Tests", () => {
       adminService = new AdminService(mockUserRepo, mockSessionRepo);
     });
 
-    it("should prevent anyone from deleting the superior administrator account", async () => {
-      const superiorUser = new UserEntity();
-      superiorUser.id = "u-superior";
-      superiorUser.email = "fanuelgoitom79@gmail.com";
-      mockUserRepo.findOne.mockResolvedValue(superiorUser);
+    it("should prevent non-super administrators from deleting administrators", async () => {
+      const nonSuperActor = new UserEntity();
+      nonSuperActor.id = "u-actor";
+      nonSuperActor.email = "ops@merihcare.et";
+      nonSuperActor.adminRole = "operations_admin";
+
+      const targetAdmin = new UserEntity();
+      targetAdmin.id = "u-target";
+      targetAdmin.email = "target@merihcare.et";
+      targetAdmin.adminRole = "support_admin";
+
+      mockUserRepo.findOne
+        .mockResolvedValueOnce(targetAdmin)
+        .mockResolvedValueOnce(nonSuperActor);
 
       await expect(
-        adminService.deleteAdministrator("u-other-super", "u-superior")
-      ).rejects.toThrow("The superior administrator account (fanuelgoitom79@gmail.com) cannot be deleted");
+        adminService.deleteAdministrator("u-actor", "u-target")
+      ).rejects.toThrow("Only super administrators have permission to delete administrators");
     });
 
-    it("should prevent an ordinary superadmin from deleting another superadmin", async () => {
+    it("should prevent deleting the last remaining super administrator", async () => {
       const actorSuper = new UserEntity();
       actorSuper.id = "u-actor";
-      actorSuper.email = "ordinary.super@merihcare.et";
+      actorSuper.email = "super1@merihcare.et";
       actorSuper.adminRole = "super_admin";
 
       const targetSuper = new UserEntity();
       targetSuper.id = "u-target";
-      targetSuper.email = "target.super@merihcare.et";
-      targetSuper.adminRole = "super_admin";
-
-      mockUserRepo.findOne
-        .mockResolvedValueOnce(targetSuper) // target lookup
-        .mockResolvedValueOnce(actorSuper); // actor lookup
-
-      await expect(
-        adminService.deleteAdministrator("u-actor", "u-target")
-      ).rejects.toThrow("Only the superior administrator (fanuelgoitom79@gmail.com) has permission to delete super administrators");
-    });
-
-    it("should allow the superior administrator to delete a superadmin", async () => {
-      const superiorActor = new UserEntity();
-      superiorActor.id = "u-superior";
-      superiorActor.email = "fanuelgoitom79@gmail.com";
-      superiorActor.adminRole = "super_admin";
-
-      const targetSuper = new UserEntity();
-      targetSuper.id = "u-target";
-      targetSuper.email = "target.super@merihcare.et";
+      targetSuper.email = "super2@merihcare.et";
       targetSuper.adminRole = "super_admin";
 
       mockUserRepo.findOne
         .mockResolvedValueOnce(targetSuper)
-        .mockResolvedValueOnce(superiorActor);
+        .mockResolvedValueOnce(actorSuper);
+      mockUserRepo.count = jest.fn().mockResolvedValue(1);
+
+      await expect(
+        adminService.deleteAdministrator("u-actor", "u-target")
+      ).rejects.toThrow("Cannot delete the last remaining super administrator account");
+    });
+
+    it("should allow a super administrator to delete an admin when quorum is preserved", async () => {
+      const superActor = new UserEntity();
+      superActor.id = "u-actor";
+      superActor.email = "super1@merihcare.et";
+      superActor.adminRole = "super_admin";
+
+      const targetSuper = new UserEntity();
+      targetSuper.id = "u-target";
+      targetSuper.email = "super2@merihcare.et";
+      targetSuper.adminRole = "super_admin";
+
+      mockUserRepo.findOne
+        .mockResolvedValueOnce(targetSuper)
+        .mockResolvedValueOnce(superActor);
+      mockUserRepo.count = jest.fn().mockResolvedValue(2);
       mockUserRepo.remove.mockResolvedValue(targetSuper);
 
-      const result = await adminService.deleteAdministrator("u-superior", "u-target");
+      const result = await adminService.deleteAdministrator("u-actor", "u-target");
       expect(result.success).toBe(true);
       expect(mockSessionRepo.delete).toHaveBeenCalledWith({ userId: "u-target" });
       expect(mockUserRepo.remove).toHaveBeenCalledWith(targetSuper);

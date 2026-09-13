@@ -61,7 +61,7 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
   const effectiveToken =
     propToken ||
     (typeof window !== "undefined"
-      ? localStorage.getItem("token") || localStorage.getItem("admin_token")
+      ? sessionStorage.getItem("admin_token") || sessionStorage.getItem("token") || localStorage.getItem("admin_token")
       : null);
 
   const socketRef = useRef<Socket | null>(null);

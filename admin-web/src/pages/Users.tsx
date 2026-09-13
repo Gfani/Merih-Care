@@ -46,19 +46,15 @@ export default function UsersSection() {
   const [error, setError] = useState<string | null>(null);
 
   const getAdminUser = () => {
-    const raw = localStorage.getItem("admin_user");
+    const raw = sessionStorage.getItem("admin_user") || localStorage.getItem("admin_user");
     if (!raw || raw === "undefined" || raw === "null") return {};
     try { return JSON.parse(raw); } catch { return {}; }
   };
   const adminUser = getAdminUser();
-  const currentAdminEmail = (adminUser.email || "").toLowerCase().trim();
   const isSuperAdmin =
     adminUser.adminRole === "super_admin" ||
     adminUser.role === "super_admin" ||
-    adminUser.permissions === "all" ||
-    currentAdminEmail === "fanuelgoitom79@gmail.com" ||
-    currentAdminEmail === "fani@g.com" ||
-    currentAdminEmail === "admin@merihcare.et";
+    adminUser.permissions === "all";
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);

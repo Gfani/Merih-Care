@@ -33,20 +33,27 @@ function isTokenValid(token: string | null): boolean {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => {
-    const stored = localStorage.getItem("admin_token");
-    if (!isTokenValid(stored)) {
+    const stored = sessionStorage.getItem("admin_token") || localStorage.getItem("admin_token");
+    if (!stored || !isTokenValid(stored)) {
+      sessionStorage.removeItem("admin_token");
+      sessionStorage.removeItem("admin_user");
       localStorage.removeItem("admin_token");
       localStorage.removeItem("admin_user");
       return null;
     }
+    // If it was in localStorage, migrate to sessionStorage and clear localStorage
+    sessionStorage.setItem("admin_token", stored);
+    localStorage.removeItem("admin_token");
     return stored;
   });
   const [user, setUser] = useState<User | null>(() => {
-    const storedToken = localStorage.getItem("admin_token");
-    if (!isTokenValid(storedToken)) return null;
-    const raw = localStorage.getItem("admin_user");
+    const storedToken = sessionStorage.getItem("admin_token") || localStorage.getItem("admin_token");
+    if (!storedToken || !isTokenValid(storedToken)) return null;
+    const raw = sessionStorage.getItem("admin_user") || localStorage.getItem("admin_user");
     if (!raw || raw === "undefined" || raw === "null") return null;
     try {
+      sessionStorage.setItem("admin_user", raw);
+      localStorage.removeItem("admin_user");
       return JSON.parse(raw);
     } catch {
       return null;
@@ -55,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const validateActiveSession = async () => {
-      const stored = localStorage.getItem("admin_token");
+      const stored = sessionStorage.getItem("admin_token");
       if (!isTokenValid(stored)) {
         setToken(null);
         setUser(null);
@@ -67,6 +74,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error("Invalid session");
         }
       } catch {
+        sessionStorage.removeItem("admin_token");
+        sessionStorage.removeItem("admin_user");
         localStorage.removeItem("admin_token");
         localStorage.removeItem("admin_user");
         setToken(null);

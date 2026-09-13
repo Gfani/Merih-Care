@@ -62,11 +62,12 @@ async function bootstrap() {
   const productionAllowlist = [
     "https://admin.merihcare.live",
     "https://merihcare.live",
+    "https://app.merihcare.live",
     "https://merihcare.et",
     "https://admin.merihcare.et",
     "https://app.merihcare.et",
     ...configuredOrigins,
-  ];
+  ].filter(Boolean);
 
   if (process.env.NODE_ENV === "production") {
     const weakSecrets = [
@@ -90,24 +91,8 @@ async function bootstrap() {
         return callback(null, true);
       }
 
-      let isAllowed = productionAllowlist.includes(origin);
-
-      if (!isAllowed) {
-        try {
-          const parsed = new URL(origin);
-          const hostname = parsed.hostname;
-          if (
-            hostname === "merihcare.live" ||
-            hostname.endsWith(".merihcare.live") ||
-            hostname === "merihcare.et" ||
-            hostname.endsWith(".merihcare.et")
-          ) {
-            isAllowed = true;
-          }
-        } catch {
-          isAllowed = false;
-        }
-      }
+      // Enforce strict exact-origin matching
+      const isAllowed = productionAllowlist.includes(origin);
 
       if (isAllowed) {
         callback(null, true);

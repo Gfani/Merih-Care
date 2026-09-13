@@ -86,10 +86,6 @@ export class UpdatePasswordDto {
 }
 
 export class VerifyMfaDto {
-  @IsOptional()
-  @Length(32, 32)
-  secret?: string;
-
   @IsNotEmpty()
   @Length(6, 6)
   @IsNumberString()
@@ -162,15 +158,14 @@ export class AdminController {
   async verifyMfa(@Body() body: VerifyMfaDto, @Req() req: any) {
     const actorId = req.user?.id || req.user?.sub;
     const user = actorId ? await this.authService.getUserById(actorId) : null;
-    const secretToVerify = user?.mfaSecretPending || body.secret;
-    if (!secretToVerify) {
+    if (!user || !user.mfaSecretPending) {
       throw new BadRequestException("No pending MFA setup found. Please initiate MFA setup first.");
     }
-    const verified = verifyTOTP(body.otpToken, secretToVerify);
+    const verified = verifyTOTP(body.otpToken, user.mfaSecretPending);
     if (!verified) {
       throw new BadRequestException("Verification failed. Invalid authenticator token.");
     }
-    await this.authService.completeMfaSetup(actorId, secretToVerify);
+    await this.authService.completeMfaSetup(actorId);
     return { success: true };
   }
 

@@ -38,12 +38,16 @@ describe("Admin Web - Sandbox / Live Mode & API Tests", () => {
   });
 
   describe("Session Expiration & Logout", () => {
-    it("should clear localStorage tokens and user info on logout", () => {
-      localStorage.setItem("admin_token", "jwt-token-123");
+    it("should clear sessionStorage and legacy localStorage tokens and user info on logout", () => {
+      sessionStorage.setItem("admin_token", "jwt-token-123");
+      sessionStorage.setItem("admin_user", JSON.stringify({ name: "Admin" }));
+      localStorage.setItem("admin_token", "legacy-token-123");
       localStorage.setItem("admin_user", JSON.stringify({ name: "Admin" }));
 
       api.logout();
 
+      expect(sessionStorage.getItem("admin_token")).toBeNull();
+      expect(sessionStorage.getItem("admin_user")).toBeNull();
       expect(localStorage.getItem("admin_token")).toBeNull();
       expect(localStorage.getItem("admin_user")).toBeNull();
     });

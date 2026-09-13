@@ -9,12 +9,6 @@ import * as bcrypt from "bcryptjs";
 import * as crypto from "crypto";
 import { ROLE_PERMISSIONS } from "../../shared/constants/permissions";
 
-export function isSuperiorAdmin(email?: string): boolean {
-  if (!email) return false;
-  const clean = email.toLowerCase().trim();
-  return clean === "fanuelgoitom79@gmail.com" || clean === "fanuelgoitom79@gmial.com";
-}
-
 @Injectable()
 export class AdminService {
   constructor(
@@ -222,27 +216,26 @@ export class AdminService {
     if (!targetUser) {
       throw new Error("Administrator account not found");
     }
-    const targetEmail = (targetUser.email || "").toLowerCase().trim();
-    if (isSuperiorAdmin(targetEmail)) {
-      throw new Error("The superior administrator account (fanuelgoitom79@gmail.com) cannot be deleted under any circumstances");
-    }
 
     // Resolve actor details
-    let actorEmail = "";
-    if (actorId) {
-      const actorUser = await this.userRepo.findOne({ where: { id: actorId } });
-      actorEmail = (actorUser?.email || "").toLowerCase().trim();
+    const actorUser = actorId ? await this.userRepo.findOne({ where: { id: actorId } }) : null;
+    const isActorSuper = actorUser?.adminRole === "super_admin" || actorUser?.role === "super_admin";
+    if (!isActorSuper) {
+      throw new Error("Only super administrators have permission to delete administrators");
     }
 
     // Check if target is a super administrator
     const isTargetSuper =
       targetUser.adminRole === "super_admin" ||
-      targetUser.role === "super_admin" ||
-      targetEmail === "goitomfanuel@gmail.com" ||
-      targetEmail === "fani@g.com";
+      targetUser.role === "super_admin";
 
-    if (isTargetSuper && !isSuperiorAdmin(actorEmail)) {
-      throw new Error("Only the superior administrator (fanuelgoitom79@gmail.com) has permission to delete super administrators");
+    if (isTargetSuper) {
+      const remainingSuperAdmins = await this.userRepo.count({
+        where: [{ adminRole: "super_admin" }, { role: "super_admin" }],
+      });
+      if (remainingSuperAdmins <= 1) {
+        throw new Error("Cannot delete the last remaining super administrator account");
+      }
     }
 
     // Revoke and purge all active sessions immediately so tokens are killed instantly
@@ -274,12 +267,12 @@ export class AdminService {
       throw new Error("Target user is not an administrator account. Operation rejected.");
     }
 
-    const targetEmail = (user.email || "").toLowerCase().trim();
-    if (
-      (targetEmail === "fanuelgoitom79@gmail.com" || targetEmail === "fanuelgoitom79@gmial.com") &&
-      !isSuperiorAdmin(actorEmail)
-    ) {
-      throw new Error("Only the superior administrator can reset their own password.");
+    const actorUser = actorEmail ? await this.userRepo.findOne({ where: { email: actorEmail } }) : null;
+    const isActorSuper = actorUser?.adminRole === "super_admin" || actorUser?.role === "super_admin";
+    const isSelf = actorUser && actorUser.id === user.id;
+
+    if (!isActorSuper && !isSelf) {
+      throw new Error("Only super administrators can reset passwords for other administrator accounts.");
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -302,8 +295,7 @@ export class AdminService {
     const actorUser = await this.userRepo.findOne({ where: { id: actorId } });
     const isSuper =
       actorUser?.adminRole === "super_admin" ||
-      actorUser?.role === "super_admin" ||
-      (actorUser?.email && isSuperiorAdmin(actorUser.email));
+      actorUser?.role === "super_admin";
     if (!isSuper) {
       throw new Error("Only super administrators have permission to promote administrators or reassign administrative roles");
     }
@@ -318,9 +310,14 @@ export class AdminService {
       throw new Error("Target user account not found");
     }
 
-    const targetEmail = (targetUser.email || "").toLowerCase().trim();
-    if (isSuperiorAdmin(targetEmail) && targetAdminRole !== "super_admin") {
-      throw new Error("The superior administrator cannot be demoted");
+    const isTargetSuper = targetUser.adminRole === "super_admin" || targetUser.role === "super_admin";
+    if (isTargetSuper && targetAdminRole !== "super_admin") {
+      const remainingSuperAdmins = await this.userRepo.count({
+        where: [{ adminRole: "super_admin" }, { role: "super_admin" }],
+      });
+      if (remainingSuperAdmins <= 1) {
+        throw new Error("Cannot demote the last remaining super administrator");
+      }
     }
 
     targetUser.role = "admin";

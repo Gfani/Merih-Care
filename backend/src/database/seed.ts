@@ -47,13 +47,9 @@ export class DatabaseSeedService implements OnModuleInit {
       );
     }
 
-    // 1. Seed & Ensure Super Administrator Accounts
-    const targetSuperAdmins = [
-      "fanuelgoitom79@gmail.com",
-      "goitomfanuel@gmail.com",
-      "fani@g.com",
-      (process.env.SUPER_ADMIN_EMAIL || "").toLowerCase().trim()
-    ].filter(e => e && e !== "admin@merihcare.et");
+    // 1. Seed & Ensure Super Administrator Accounts from Environment Variables
+    const defaultSuperAdmin = (process.env.SUPER_ADMIN_EMAIL || "admin@merihcare.live").toLowerCase().trim();
+    const targetSuperAdmins = [defaultSuperAdmin].filter(Boolean);
 
     for (const adminEmail of targetSuperAdmins) {
       let superAdmin = await this.userRepo.findOne({ where: { email: adminEmail } });
@@ -64,10 +60,10 @@ export class DatabaseSeedService implements OnModuleInit {
           crypto.randomBytes(16).toString("hex") + "!Aa1";
 
         superAdmin = new UserEntity();
-        superAdmin.id = adminEmail === "fanuelgoitom79@gmail.com" ? "u-superadmin" : "u-superadmin-" + adminEmail.split("@")[0];
+        superAdmin.id = "u-superadmin-" + adminEmail.split("@")[0].replace(/[^a-zA-Z0-9]/g, "");
         superAdmin.email = adminEmail;
-        superAdmin.name = "Fanuel Goitom";
-        superAdmin.phone = "+251 91 111 2233";
+        superAdmin.name = process.env.SUPER_ADMIN_NAME || "System Administrator";
+        superAdmin.phone = process.env.SUPER_ADMIN_PHONE || "+251 91 111 2233";
         superAdmin.dateJoined = new Date().toISOString().split("T")[0];
         superAdmin.password = await bcrypt.hash(bootstrapPassword, 10);
         superAdmin.role = "admin";

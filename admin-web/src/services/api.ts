@@ -68,17 +68,44 @@ export const API_URL = resolveApiUrl();
 
 const getStoredToken = (): string | null => {
   if (typeof window === "undefined") return null;
-  return sessionStorage.getItem("admin_token") || localStorage.getItem("admin_token");
+  let token = sessionStorage.getItem("admin_token");
+  if (!token) {
+    const legacy = localStorage.getItem("admin_token");
+    if (legacy) {
+      sessionStorage.setItem("admin_token", legacy);
+      localStorage.removeItem("admin_token");
+      token = legacy;
+    }
+  }
+  return token;
 };
 
 const getStoredRefreshToken = (): string | null => {
   if (typeof window === "undefined") return null;
-  return sessionStorage.getItem("admin_refresh_token") || localStorage.getItem("admin_refresh_token");
+  let token = sessionStorage.getItem("admin_refresh_token");
+  if (!token) {
+    const legacy = localStorage.getItem("admin_refresh_token");
+    if (legacy) {
+      sessionStorage.setItem("admin_refresh_token", legacy);
+      localStorage.removeItem("admin_refresh_token");
+      token = legacy;
+    }
+  }
+  return token;
 };
 
 const getStoredUser = (): string | null => {
   if (typeof window === "undefined") return null;
-  return sessionStorage.getItem("admin_user") || localStorage.getItem("admin_user");
+  let user = sessionStorage.getItem("admin_user");
+  if (!user) {
+    const legacy = localStorage.getItem("admin_user");
+    if (legacy) {
+      sessionStorage.setItem("admin_user", legacy);
+      localStorage.removeItem("admin_user");
+      user = legacy;
+    }
+  }
+  return user;
 };
 
 const setSessionTokens = (token: string, user: any, refreshToken?: string) => {
@@ -88,12 +115,6 @@ const setSessionTokens = (token: string, user: any, refreshToken?: string) => {
   if (refreshToken) {
     sessionStorage.setItem("admin_refresh_token", refreshToken);
   }
-  // Sync to localStorage for component/hook compatibility
-  localStorage.setItem("admin_token", token);
-  localStorage.setItem("admin_user", JSON.stringify(user));
-  if (refreshToken) {
-    localStorage.setItem("admin_refresh_token", refreshToken);
-  }
 };
 
 const clearSessionTokens = () => {
@@ -101,6 +122,7 @@ const clearSessionTokens = () => {
   sessionStorage.removeItem("admin_token");
   sessionStorage.removeItem("admin_refresh_token");
   sessionStorage.removeItem("admin_user");
+  // Clean up any legacy localStorage entries
   localStorage.removeItem("admin_token");
   localStorage.removeItem("admin_refresh_token");
   localStorage.removeItem("admin_user");

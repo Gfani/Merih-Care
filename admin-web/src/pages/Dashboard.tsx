@@ -15,7 +15,7 @@ export default function DashboardSection() {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const token = localStorage.getItem("admin_token");
+  const token = sessionStorage.getItem("admin_token") || localStorage.getItem("admin_token");
   const { on, off, joinRoom, isLive } = useRealtimeSocket({ token });
 
   useEffect(() => {

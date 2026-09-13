@@ -44,7 +44,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
   const [routeInfo, setRouteInfo] = useState<{ distance: string; eta: number } | null>(null);
   const [myPrivacy, setMyPrivacy] = useState(false);
 
-  const token = localStorage.getItem("admin_token") || "demo-token";
+  const token = sessionStorage.getItem("admin_token") || localStorage.getItem("admin_token") || "demo-token";
   const { isLive, connectionState, on, off } = useRealtimeSocket({ token });
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);

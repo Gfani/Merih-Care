@@ -392,17 +392,17 @@ describe("Security Audit Remediation Test Suite", () => {
       ).rejects.toThrow(/Target user is not an administrator account/);
     });
 
-    it("should reject resetting the superior administrator password by another admin", async () => {
+    it("should reject resetting super administrator password by a non-super admin", async () => {
       const superior = new UserEntity();
       superior.id = "superior-id";
-      superior.email = "fanuelgoitom79@gmail.com";
+      superior.email = "superadmin@merihcare.et";
       superior.role = "admin";
       superior.adminRole = "super_admin";
       await mockUserRepo.save(superior);
 
       await expect(
         adminService.updateAdminPasswordForUser("other.admin@merihcare.et", "superior-id", "NewAdminPass123!")
-      ).rejects.toThrow(/Only the superior administrator can reset their own password/);
+      ).rejects.toThrow(/Only super administrators can reset passwords for other administrator accounts/);
     });
   });
 

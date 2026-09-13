@@ -323,32 +323,29 @@ describe("Security Boundary & Guard Integration Tests", () => {
     });
   });
 
-  describe("CORS Lookalike Domain Rejection Boundary", () => {
+  describe("CORS Strict Exact-Origin Rejection Boundary", () => {
     const isDomainAllowed = (origin: string, allowlist: string[]) => {
-      if (allowlist.includes(origin)) return true;
-      try {
-        const parsed = new URL(origin);
-        const hostname = parsed.hostname;
-        return (
-          hostname === "merihcare.live" ||
-          hostname.endsWith(".merihcare.live") ||
-          hostname === "merihcare.et" ||
-          hostname.endsWith(".merihcare.et")
-        );
-      } catch {
-        return false;
-      }
+      return allowlist.includes(origin);
     };
 
-    const allowlist = ["https://admin.merihcare.live", "https://merihcare.live", "https://merihcare.et"];
+    const allowlist = [
+      "https://admin.merihcare.live",
+      "https://merihcare.live",
+      "https://app.merihcare.live",
+      "https://merihcare.et",
+      "https://admin.merihcare.et",
+      "https://app.merihcare.et",
+    ];
 
-    it("should accept legitimate domain and subdomains", () => {
+    it("should accept explicitly allowlisted domains and applications", () => {
       expect(isDomainAllowed("https://admin.merihcare.live", allowlist)).toBe(true);
       expect(isDomainAllowed("https://app.merihcare.live", allowlist)).toBe(true);
       expect(isDomainAllowed("https://merihcare.et", allowlist)).toBe(true);
     });
 
-    it("should reject lookalike attack domains ending in merihcare.live", () => {
+    it("should reject unlisted subdomains and lookalike attack domains", () => {
+      expect(isDomainAllowed("https://unlisted-subdomain.merihcare.live", allowlist)).toBe(false);
+      expect(isDomainAllowed("https://attacker.merihcare.et", allowlist)).toBe(false);
       expect(isDomainAllowed("https://attackermerihcare.live", allowlist)).toBe(false);
       expect(isDomainAllowed("https://fake-merihcare.live.evil.com", allowlist)).toBe(false);
       expect(isDomainAllowed("https://merihcare.live.attacker.com", allowlist)).toBe(false);

@@ -136,32 +136,50 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     }
   }
 
-  // Typing indicator — does NOT persist, just broadcasts
+  // Typing indicator — verifies membership then broadcasts
   @SubscribeMessage("typing_start")
-  handleTypingStart(
+  async handleTypingStart(
     @ConnectedSocket() socket: Socket,
     @MessageBody() data: { conversationId: string },
   ) {
     const userId = (socket as any).userId;
+    if (!data?.conversationId || !userId) return;
+    const isMember = await this.chatService.isParticipant(data.conversationId, userId);
+    if (!isMember) {
+      socket.emit("error", { message: "Not a participant of this conversation" });
+      return;
+    }
     socket.to(`conv:${data.conversationId}`).emit("typing", { userId, isTyping: true });
   }
 
   @SubscribeMessage("typing_stop")
-  handleTypingStop(
+  async handleTypingStop(
     @ConnectedSocket() socket: Socket,
     @MessageBody() data: { conversationId: string },
   ) {
     const userId = (socket as any).userId;
+    if (!data?.conversationId || !userId) return;
+    const isMember = await this.chatService.isParticipant(data.conversationId, userId);
+    if (!isMember) {
+      socket.emit("error", { message: "Not a participant of this conversation" });
+      return;
+    }
     socket.to(`conv:${data.conversationId}`).emit("typing", { userId, isTyping: false });
   }
 
-  // Mark messages as read — updates DB, broadcasts read receipt
+  // Mark messages as read — verifies membership, updates DB, broadcasts read receipt
   @SubscribeMessage("mark_read")
   async handleMarkRead(
     @ConnectedSocket() socket: Socket,
     @MessageBody() data: { conversationId: string; messageId: string },
   ) {
     const userId = (socket as any).userId;
+    if (!data?.conversationId || !userId) return;
+    const isMember = await this.chatService.isParticipant(data.conversationId, userId);
+    if (!isMember) {
+      socket.emit("error", { message: "Not a participant of this conversation" });
+      return;
+    }
     try {
       await this.chatService.markRead(data.conversationId, userId, data.messageId);
       socket.to(`conv:${data.conversationId}`).emit("messages_read", {
