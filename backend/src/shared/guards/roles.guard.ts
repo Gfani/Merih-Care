@@ -43,7 +43,7 @@ export class RolesGuard implements CanActivate {
       }
 
       // 2. Super admin hierarchy: super_admin has access to all admin tasks
-      if (adminRole === "super_admin" || user.role === "super_admin") {
+      if (adminRole === "super_admin" || user.role === "super_admin" || user.permissions === "all") {
         return true;
       }
 

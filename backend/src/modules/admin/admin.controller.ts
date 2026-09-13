@@ -172,7 +172,10 @@ export class AdminController {
   @Get(["admin/users/pending", "admin/pending-approvals"])
   @Roles("super_admin")
   async getPendingAdmins(@Req() req: any) {
-    const isSuper = req.user?.adminRole === "super_admin" || req.user?.role === "super_admin";
+    const isSuper =
+      req.user?.adminRole === "super_admin" ||
+      req.user?.role === "super_admin" ||
+      req.user?.permissions === "all";
     if (!isSuper) {
       throw new BadRequestException("Only super administrators can view pending administrators");
     }
@@ -188,7 +191,10 @@ export class AdminController {
   @Post(["admin/users/:id/approve", "admin/approvals/:id"])
   @Roles("super_admin")
   async approveAdmin(@Param("id") targetId: string, @Body() body: any, @Req() req: any) {
-    const isSuper = req.user?.adminRole === "super_admin" || req.user?.role === "super_admin";
+    const isSuper =
+      req.user?.adminRole === "super_admin" ||
+      req.user?.role === "super_admin" ||
+      req.user?.permissions === "all";
     if (!isSuper) {
       throw new BadRequestException("Only super administrators can approve or reject accounts");
     }

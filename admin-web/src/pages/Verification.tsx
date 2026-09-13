@@ -341,10 +341,8 @@ export default function VerificationSection() {
   };
 
   const filteredAdmins = pendingAdmins.filter(admin => {
-    const name = (admin.name || "").toLowerCase().trim();
     const email = (admin.email || "").toLowerCase().trim();
-    const isMock = name === "merihcare admin" || /^admin\.\d+@gmail\.com$/.test(email) || email.includes("test-google-token");
-    return !isMock;
+    return !email.includes("test-google-token");
   });
 
   return (

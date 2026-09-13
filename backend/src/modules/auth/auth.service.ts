@@ -426,6 +426,51 @@ export class AuthService {
       });
     }
 
+    // When an administrator registers, immediately alert super administrators
+    if (role === "admin") {
+      if (this.notificationsService) {
+        try {
+          const superAdmins = await this.userRepo.find({
+            where: [
+              { adminRole: "super_admin" },
+              { role: "super_admin" },
+            ],
+          });
+          for (const sa of superAdmins) {
+            await this.notificationsService.sendNotification(sa.id, {
+              type: "verification_update",
+              title: "New Administrator Approval Required",
+              body: `New administrator registration received from ${savedUser.name} (${savedUser.email || savedUser.phone}) for ${savedUser.adminRole || "Admin"} role.`,
+              priority: "critical",
+              recipientEmail: sa.email,
+              recipientPhone: sa.phone,
+              data: {
+                applicantId: savedUser.id,
+                name: savedUser.name,
+                email: savedUser.email,
+                phone: savedUser.phone,
+                role: savedUser.role,
+                adminRole: savedUser.adminRole,
+              },
+            }).catch(() => {});
+          }
+        } catch (err: any) {
+          console.error(`Failed to dispatch superadmin notifications: ${err?.message || err}`);
+        }
+      }
+
+      if (this.realtimeService) {
+        this.realtimeService.emitApprovalRequested({
+          userId: savedUser.id,
+          name: savedUser.name,
+          email: savedUser.email,
+          phone: savedUser.phone,
+          role: savedUser.role,
+          adminRole: savedUser.adminRole,
+        });
+      }
+    }
+
     if (role === "provider" && this.providerRepo) {
       try {
         const provider = new ProviderEntity();
@@ -999,6 +1044,7 @@ export class AuthService {
         phone: user.phone,
         role: user.role,
         adminRole: user.adminRole,
+        verified: true,
       });
     }
 

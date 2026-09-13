@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
 import {
   ShieldCheck, ShieldAlert, UserPlus, Trash2, KeyRound, Check, X,
-  Search, RefreshCw, UserCheck, Phone, Building2, Calendar, AlertCircle
+  Search, RefreshCw, UserCheck, Phone, Building2, Calendar, AlertCircle,
+  CheckCircle2, Clock
 } from "lucide-react";
 import { api } from "../services/api";
 import { Avatar, toast } from "../components/ui";
+import { useRealtimeSocket } from "../hooks/useRealtimeSocket";
 
 export default function AdministratorsSection() {
   const [activeAdmins, setActiveAdmins] = useState<any[]>([]);
@@ -64,6 +66,20 @@ export default function AdministratorsSection() {
   useEffect(() => {
     loadData();
   }, []);
+
+  const token = sessionStorage.getItem("admin_token") || localStorage.getItem("admin_token") || "";
+  useRealtimeSocket({
+    token,
+    approval_requested: (data: any) => {
+      if (data?.role === "admin" || !data?.role) {
+        toast(`🔔 Administrator Application: ${data?.name || "Applicant"} applied for ${data?.adminRole || "administrative"} role`, "info");
+        loadData();
+      }
+    },
+    user_status_changed: () => {
+      loadData();
+    },
+  });
 
   const handleCreateAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -453,59 +469,93 @@ export default function AdministratorsSection() {
                     <th className="py-3 px-4">Applicant</th>
                     <th className="py-3 px-4">Requested Role</th>
                     <th className="py-3 px-4">Department</th>
+                    <th className="py-3 px-4">Contact & Status</th>
                     <th className="py-3 px-4">Registered On</th>
                     <th className="py-3 px-4 text-right">Review Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#e2e8ee] dark:divide-slate-700">
-                  {pendingAdmins.map((admin) => (
-                    <tr key={admin.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-3">
-                          <Avatar name={admin.name || "Admin"} size="sm" />
-                          <div>
-                            <span className="font-bold text-[#18232e] dark:text-white block">{admin.name}</span>
-                            <span className="text-[11px] text-[#8a9aaa]">{admin.email}</span>
+                  {pendingAdmins.map((admin) => {
+                    const roleLabel = (admin.adminRole || admin.role || "admin")
+                      .replace(/_/g, " ")
+                      .toUpperCase();
+                    const deptLabel =
+                      admin.department ||
+                      (admin.adminRole
+                        ? admin.adminRole.replace(/_admin$/i, "").replace(/[_\-]/g, " ").toUpperCase()
+                        : "OPERATIONS");
+
+                    return (
+                      <tr key={admin.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-3">
+                            <Avatar name={admin.name || "Admin"} size="sm" />
+                            <div>
+                              <span className="font-bold text-[#18232e] dark:text-white block">{admin.name}</span>
+                              <span className="text-[11px] text-[#8a9aaa]">{admin.email}</span>
+                            </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                          {admin.role || "admin"}
-                        </span>
-                      </td>
+                        <td className="py-3 px-4">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                            {roleLabel}
+                          </span>
+                        </td>
 
-                      <td className="py-3 px-4 text-[#4a5a6a] dark:text-slate-300">
-                        {admin.department || "Operations"}
-                      </td>
+                        <td className="py-3 px-4 font-medium text-[#4a5a6a] dark:text-slate-300">
+                          {deptLabel}
+                        </td>
 
-                      <td className="py-3 px-4 text-[#8a9aaa]">
-                        {admin.createdAt ? new Date(admin.createdAt).toLocaleDateString() : "Recent"}
-                      </td>
+                        <td className="py-3 px-4">
+                          <div className="flex flex-col gap-0.5">
+                            {admin.phone && (
+                              <span className="text-[11px] text-[#4a5a6a] dark:text-slate-300 flex items-center gap-1 font-mono">
+                                <Phone size={10} className="text-[#0d7c6a]" />
+                                {admin.phone}
+                              </span>
+                            )}
+                            {admin.emailVerified ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                                <CheckCircle2 size={11} />
+                                Contact Verified
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                <Clock size={11} />
+                                Pending Contact OTP
+                              </span>
+                            )}
+                          </div>
+                        </td>
 
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            disabled={processingId === admin.id}
-                            onClick={() => handleApprovePending(admin)}
-                            className="px-3 py-1 bg-[#0d7c6a] hover:bg-[#0a6355] text-white font-bold rounded-lg text-[11px] flex items-center gap-1 shadow-sm transition-all"
-                          >
-                            <Check size={12} />
-                            Approve
-                          </button>
-                          <button
-                            disabled={processingId === admin.id}
-                            onClick={() => handleRejectPending(admin)}
-                            className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-950/40 dark:text-red-300 font-bold rounded-lg text-[11px] flex items-center gap-1 transition-all"
-                          >
-                            <X size={12} />
-                            Reject
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        <td className="py-3 px-4 text-[#8a9aaa]">
+                          {admin.createdAt ? new Date(admin.createdAt).toLocaleDateString() : "Recent"}
+                        </td>
+
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              disabled={processingId === admin.id}
+                              onClick={() => handleApprovePending(admin)}
+                              className="px-3 py-1 bg-[#0d7c6a] hover:bg-[#0a6355] text-white font-bold rounded-lg text-[11px] flex items-center gap-1 shadow-sm transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                            >
+                              <Check size={12} />
+                              Approve
+                            </button>
+                            <button
+                              disabled={processingId === admin.id}
+                              onClick={() => handleRejectPending(admin)}
+                              className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-950/40 dark:text-red-300 font-bold rounded-lg text-[11px] flex items-center gap-1 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                            >
+                              <X size={12} />
+                              Reject
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

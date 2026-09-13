@@ -1,8 +1,10 @@
-import { Injectable, Optional } from "@nestjs/common";
+import { Injectable, Optional, Inject, forwardRef } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { UserEntity } from "../../database/entities/user.entity";
 import { SessionEntity } from "../../database/entities/session.entity";
+import { NotificationsService } from "../notifications/notifications.service";
+import { RealtimeService } from "../realtime/realtime.service";
 import * as fs from "fs";
 import * as path from "path";
 import * as bcrypt from "bcryptjs";
@@ -17,6 +19,12 @@ export class AdminService {
     @Optional()
     @InjectRepository(SessionEntity)
     private readonly sessionRepo?: Repository<SessionEntity>,
+    @Optional()
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notificationsService?: NotificationsService,
+    @Optional()
+    @Inject(forwardRef(() => RealtimeService))
+    private readonly realtimeService?: RealtimeService,
   ) {}
 
   private getSettingsPath() {
@@ -116,37 +124,66 @@ export class AdminService {
 
     targetUser.isApproved = true;
     targetUser.status = "active";
-    targetUser.permissions = "all";
-    return this.userRepo.save(targetUser);
+    targetUser.emailVerified = true;
+    targetUser.permissions = targetUser.adminRole === "super_admin" ? "all" : (targetUser.permissions || "all");
+    const saved = await this.userRepo.save(targetUser);
+
+    // Notify the newly approved administrator
+    if (this.notificationsService) {
+      await this.notificationsService.sendNotification(targetUser.id, {
+        type: "verification_update",
+        title: "Administrator Account Approved",
+        body: `Congratulations ${targetUser.name}! Your MerihCare administrator registration has been approved. You may now sign in to access the administrator portal.`,
+        priority: "critical",
+        recipientEmail: targetUser.email,
+        recipientPhone: targetUser.phone,
+      }).catch(() => {});
+    }
+
+    // Broadcast live event to all superadmin consoles and target user
+    if (this.realtimeService) {
+      this.realtimeService.emitToRoom("admin", "user_status_changed", {
+        userId: targetUser.id,
+        status: "active",
+        isApproved: true,
+      });
+      this.realtimeService.emitToRoom(`admin:${targetUser.id}`, "account_approved", {
+        userId: targetUser.id,
+      });
+    }
+
+    return saved;
   }
 
-  async getPendingAdmins(): Promise<UserEntity[]> {
-    const admins = await this.userRepo.find({ where: { role: "admin", isApproved: false } });
-    const realAdmins: UserEntity[] = [];
-    const mockAdmins: UserEntity[] = [];
+  async getPendingAdmins(): Promise<any[]> {
+    const admins = await this.userRepo.find({
+      where: [
+        { role: "admin", isApproved: false },
+        { role: "super_admin", isApproved: false },
+      ],
+      order: { createdAt: "DESC" } as any,
+    });
+    const realAdmins: any[] = [];
 
     for (const a of admins) {
-      // Must complete email OTP verification before appearing in pending approval queue
-      if (!a.emailVerified) {
+      const email = (a.email || "").toLowerCase();
+      // Filter out test-generated token mocks only
+      if (email.includes("test-google-token")) {
         continue;
       }
 
-      const email = (a.email || "").toLowerCase();
-      const name = (a.name || "").toLowerCase();
-      const isMock =
-        name === "merihcare admin" ||
-        /^admin\.\d+@gmail\.com$/.test(email) ||
-        email.includes("test-google-token");
-      if (isMock) {
-        mockAdmins.push(a);
-      } else {
-        realAdmins.push(a);
-      }
-    }
+      // Format clean department string for UI display
+      const deptRaw = (a as any).department || a.adminRole || "operations";
+      const department = deptRaw
+        .replace(/_admin$/i, "")
+        .replace(/[_\-]/g, " ")
+        .replace(/\b\w/g, (c: string) => c.toUpperCase());
 
-    // Automatically clean up any synthetic mock accounts
-    if (mockAdmins.length > 0) {
-      await this.userRepo.remove(mockAdmins).catch(() => {});
+      realAdmins.push({
+        ...a,
+        department,
+        adminRole: a.adminRole || "admin",
+      });
     }
 
     return realAdmins;
@@ -167,6 +204,15 @@ export class AdminService {
     }
 
     await this.userRepo.remove(targetUser);
+
+    if (this.realtimeService) {
+      this.realtimeService.emitToRoom("admin", "user_status_changed", {
+        userId: targetId,
+        status: "removed",
+        isApproved: false,
+      });
+    }
+
     return { success: true };
   }
 

@@ -78,7 +78,7 @@ const AdministratorsSection = lazyWithRetry(() => import("./pages/Administrators
 const Login = lazyWithRetry(() => import("./pages/Login"));
 const SignUp = lazyWithRetry(() => import("./pages/SignUp"));
 
-const getNavigationSections = (badges: { verification: number; complaints: number; payouts: number; requests: number }) => [
+const getNavigationSections = (badges: { verification: number; complaints: number; payouts: number; requests: number; admins?: number }) => [
   {
     title: "Overview",
     items: [
@@ -121,7 +121,7 @@ const getNavigationSections = (badges: { verification: number; complaints: numbe
   {
     title: "Administration",
     items: [
-      { id: "administrators", path: "/administrators", label: "Administrators", icon: <ShieldAlert size={16} /> },
+      { id: "administrators", path: "/administrators", label: "Administrators", icon: <ShieldAlert size={16} />, badge: badges.admins || undefined },
       { id: "audit-logs", path: "/audit-logs", label: "Audit Logs", icon: <FileText size={16} /> },
       { id: "settings", path: "/settings", label: "Settings", icon: <SettingsIcon size={16} /> },
     ],
@@ -199,7 +199,7 @@ function AppContent() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [notifPopoverOpen, setNotifPopoverOpen] = useState(false);
-  const [badgeCounts, setBadgeCounts] = useState({ verification: 0, complaints: 0, payouts: 0, requests: 0 });
+  const [badgeCounts, setBadgeCounts] = useState({ verification: 0, complaints: 0, payouts: 0, requests: 0, admins: 0 });
 
   const loadNotifications = async () => {
     if (!isAuthenticated) return;
@@ -216,25 +216,43 @@ function AppContent() {
   const loadBadgeCounts = async () => {
     if (!isAuthenticated) return;
     try {
-      const [verifs, comps, pays, reqs] = await Promise.all([
+      const [verifs, comps, pays, reqs, pendingAdmins] = await Promise.all([
         api.getVerificationReviews().catch(() => []),
         api.getComplaints().catch(() => []),
         api.getPayouts().catch(() => []),
         api.getAppointments().catch(() => []),
+        api.getPendingAdmins().catch(() => []),
       ]);
       const pendingVerifs = (verifs || []).filter((v: any) => v.status === "pending" || v.reviewStatus === "pending").length;
       const pendingComps = (comps || []).filter((c: any) => c.status === "open" || c.status === "pending").length;
       const pendingPays = (pays || []).filter((p: any) => p.status === "pending").length;
       const reqList = Array.isArray(reqs) ? reqs : (reqs as any)?.data || [];
       const pendingReqs = reqList.filter((r: any) => r.status === "requested" || r.status === "searching" || r.status === "pending").length;
-      setBadgeCounts({ verification: pendingVerifs, complaints: pendingComps, payouts: pendingPays, requests: pendingReqs });
+      const pendingAdminCount = Array.isArray(pendingAdmins) ? pendingAdmins.length : 0;
+      setBadgeCounts({
+        verification: pendingVerifs,
+        complaints: pendingComps,
+        payouts: pendingPays,
+        requests: pendingReqs,
+        admins: pendingAdminCount,
+      });
     } catch {
       // Ignored in background
     }
   };
 
   const handleRealtimeEvent = React.useCallback((event: string, payload: any) => {
-    if (event === "new_service_request") {
+    if (event === "approval_requested") {
+      const data = payload?.data || payload;
+      const applicantName = data?.name || "Applicant";
+      const applicantRole = data?.role === "admin" ? "Administrator" : "Provider";
+      toast(`🔔 New ${applicantRole} Application: ${applicantName} is awaiting approval`, "info");
+      loadBadgeCounts();
+      loadNotifications();
+    } else if (event === "user_status_changed" || event === "account_approved") {
+      loadBadgeCounts();
+      loadNotifications();
+    } else if (event === "new_service_request") {
       const data = payload?.data || payload;
       const patientName = data?.patientName || data?.patient?.name || "Patient";
       const serviceType = data?.serviceType || data?.service || "Care Service";

@@ -424,7 +424,8 @@ export class AuthController {
 
       return {
         success: true,
-        message: "Registration successful. Pending administrator approval before you can access endpoints."
+        message: "Registration successful. Pending administrator approval before you can access endpoints.",
+        destination: (body.verificationChannel === "sms" ? body.phone : body.email) || body.email,
       };
     } catch (err) {
       throw new BadRequestException(err.message);
