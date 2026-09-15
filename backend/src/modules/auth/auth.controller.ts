@@ -494,7 +494,10 @@ export class AuthController {
   @UseGuards(RateLimiterGuard)
   async confirmEmailVerification(@Body() body: EmailVerificationConfirmDto) {
     const id = body.identifier || body.email || body.phone || "";
-    return this.authService.confirmEmailVerification(id, body.token);
+    return this.authService.confirmEmailVerification(id, body.token, {
+      email: body.email,
+      phone: body.phone,
+    });
   }
 
   @Post("lookup-contact")

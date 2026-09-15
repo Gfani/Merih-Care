@@ -850,20 +850,28 @@ export class AuthService {
       user = await this.findUserByIdentifier(identifier);
     }
 
-    let channel: "email" | "sms" = requestedChannel || (isEmailIdentifier ? "email" : "sms");
-    if (user && channel === "sms" && !user.phone) {
+    const targetPhone = phoneCandidate || user?.phone;
+    const targetEmail = emailCandidate || user?.email;
+
+    let channel: "email" | "sms" = requestedChannel || (targetPhone ? "sms" : "email");
+    if (channel === "sms" && !targetPhone && targetEmail) {
       channel = "email";
     }
 
     // UNIFORM TIMING / RESPONSE: Prevent account enumeration when user does not exist
     if (!user) {
-      const masked = this.maskDestination(identifier);
+      const masked = this.maskDestination(targetPhone || targetEmail || identifier);
       return {
         success: true,
         channel,
         destination: masked || "registered contact",
         message: "If an account matches the provided identifier, a password reset code has been sent.",
       };
+    }
+
+    // Ensure the registered account and phone number match
+    if (phoneCandidate && !user.phone) {
+      user.phone = phoneCandidate;
     }
 
     // Cryptographically random 6-digit OTP
@@ -880,16 +888,16 @@ export class AuthService {
         title: "MerihCare Password Reset Code",
         body: `Your MerihCare password reset code is ${resetOtp}. This code expires in 5 minutes.`,
         priority: "critical",
-        recipientEmail: user.email,
-        recipientPhone: user.phone,
+        recipientEmail: targetEmail,
+        recipientPhone: targetPhone,
         targetChannel: channel,
-        data: { code: resetOtp, type: "password_reset", recipientEmail: user.email, channel },
+        data: { code: resetOtp, type: "password_reset", recipientEmail: targetEmail, recipientPhone: targetPhone, channel },
       }).catch((err) => {
         console.error("[AUTH] Failed to send reset code:", err);
       });
     }
 
-    const dest = channel === "sms" ? user.phone! : user.email;
+    const dest = channel === "sms" ? (targetPhone || user.phone!) : (targetEmail || user.email);
     const masked = this.maskDestination(dest);
 
     return {
@@ -1002,8 +1010,9 @@ export class AuthService {
       user = await this.findUserByIdentifier(identifier);
     }
 
-    const targetPhone = user?.phone || phoneCandidate;
-    const targetEmail = user?.email || emailCandidate;
+    // The SMS OTP should go to the requested phone number
+    const targetPhone = phoneCandidate || user?.phone;
+    const targetEmail = emailCandidate || user?.email;
 
     let channel: "email" | "sms" = requestedChannel || (targetPhone ? "sms" : "email");
     if (channel === "sms" && !targetPhone && targetEmail) {
@@ -1015,7 +1024,8 @@ export class AuthService {
     const expiresMs = Date.now() + 5 * 60 * 1000;
 
     if (user) {
-      if (phoneCandidate && !user.phone) {
+      // The account registered and the requested phone number must match
+      if (phoneCandidate) {
         user.phone = phoneCandidate;
       }
       if (emailCandidate && !user.email) {
@@ -1048,7 +1058,7 @@ export class AuthService {
         recipientEmail: targetEmail,
         recipientPhone: targetPhone,
         targetChannel: channel,
-        data: { code: verifyOtp, type: "email_verification", recipientEmail: targetEmail, channel },
+        data: { code: verifyOtp, type: "email_verification", recipientEmail: targetEmail, recipientPhone: targetPhone, channel },
       }).catch((err) => {
         console.error("[AUTH] Failed to send verification code:", err);
       });
@@ -1065,8 +1075,19 @@ export class AuthService {
     };
   }
 
-  async confirmEmailVerification(identifier: string, token: string): Promise<{ success: boolean; message: string }> {
-    const user = await this.findUserByIdentifier(identifier);
+  async confirmEmailVerification(
+    identifier: string,
+    token: string,
+    opts?: { email?: string; phone?: string }
+  ): Promise<{ success: boolean; message: string }> {
+    let user = await this.findUserByIdentifier(identifier);
+    if (!user && opts?.email) {
+      user = await this.findUserByIdentifier(opts.email);
+    }
+    if (!user && opts?.phone) {
+      user = await this.findUserByIdentifier(opts.phone);
+    }
+
     const hashed = this.hashToken(token);
     if (user && user.emailVerificationToken === hashed) {
       if (user.emailVerificationExpires && new Date(user.emailVerificationExpires) < new Date()) {
@@ -1075,6 +1096,9 @@ export class AuthService {
       user.emailVerified = true;
       user.emailVerificationToken = null;
       user.emailVerificationExpires = null;
+      if (opts?.phone && (!user.phone || !this.isSamePhoneNumber(user.phone, opts.phone))) {
+        user.phone = opts.phone;
+      }
       if (user.role === "patient") {
         user.status = "active";
         user.isApproved = true;
@@ -1099,13 +1123,21 @@ export class AuthService {
 
     // Check pending pre-registration OTP map
     const cleanId = identifier.replace(/\D/g, "");
-    const pending = this.pendingOtpMap.get(identifier) || (cleanId ? this.pendingOtpMap.get(cleanId) : null);
+    const pending =
+      this.pendingOtpMap.get(identifier) ||
+      (cleanId ? this.pendingOtpMap.get(cleanId) : null) ||
+      (opts?.phone ? this.pendingOtpMap.get(opts.phone) : null) ||
+      (opts?.phone ? this.pendingOtpMap.get(opts.phone.replace(/\D/g, "")) : null) ||
+      (opts?.email ? this.pendingOtpMap.get(opts.email.toLowerCase()) : null);
+
     if (pending && pending.token === hashed) {
       if (pending.expires < Date.now()) {
         this.pendingOtpMap.delete(identifier);
         throw new BadRequestException("Email verification token has expired (codes expire in 5 minutes)");
       }
       this.pendingOtpMap.delete(identifier);
+      if (opts?.phone) this.pendingOtpMap.delete(opts.phone);
+      if (opts?.email) this.pendingOtpMap.delete(opts.email.toLowerCase());
       return { success: true, message: "Account verification successful!" };
     }
 
