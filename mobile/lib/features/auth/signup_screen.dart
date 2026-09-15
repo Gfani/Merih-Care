@@ -1723,7 +1723,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                           errorMsg = null;
                         });
 
-                        final res = await ref.read(authProvider.notifier).confirmEmailVerification(email, otp);
+                        final res = await ref.read(authProvider.notifier).confirmEmailVerification(email, otp, phone: phone);
                         setDialogState(() => loading = false);
 
                         if (res['success'] == true) {

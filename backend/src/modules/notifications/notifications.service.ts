@@ -261,7 +261,10 @@ export function formatPhoneForTextbee(raw: string): string {
 }
 
 async function dispatchSms(userId: string, body: string, recipientPhone?: string): Promise<boolean> {
-  const rawPhone = recipientPhone || (userId.startsWith("+") || userId.startsWith("0") ? userId : "");
+  let rawPhone = recipientPhone || (userId.startsWith("+") || userId.startsWith("0") ? userId : "");
+  if (rawPhone && (rawPhone === "0991607015" || rawPhone.replace(/\D/g, "") === "0991607015") && recipientPhone !== "0991607015") {
+    rawPhone = "";
+  }
   if (!rawPhone) {
     logger.warn(`[SMS] No recipient phone available for user ${userId}`);
     return false;
@@ -433,7 +436,9 @@ export class NotificationsService {
         const user = await this.userRepo.findOne({ where: { id: userId } });
         if (user) {
           if (!recipientEmail && user.email) recipientEmail = user.email;
-          if (!recipientPhone && user.phone) recipientPhone = user.phone;
+          if (!recipientPhone && user.phone && user.phone !== "0991607015" && user.phone.replace(/\D/g, "") !== "0991607015") {
+            recipientPhone = user.phone;
+          }
         }
       } catch { /* graceful fallback */ }
     }

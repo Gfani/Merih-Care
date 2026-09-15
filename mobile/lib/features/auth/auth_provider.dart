@@ -438,10 +438,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }) async {
     try {
       final client = _ref.read(apiClientProvider);
+      final cleanEmail = (email != null && email.trim().isNotEmpty)
+          ? email.trim()
+          : (identifier.contains('@') ? identifier.trim() : null);
+      final cleanPhone = (phone != null && phone.trim().isNotEmpty)
+          ? phone.trim()
+          : (!identifier.contains('@') ? identifier.trim() : null);
+
       final response = await client.dio.post('/auth/password-reset/request', data: {
         'identifier': identifier,
-        'email': email ?? (identifier.contains('@') ? identifier : null),
-        'phone': phone ?? (!identifier.contains('@') ? identifier : null),
+        'email': cleanEmail,
+        'phone': cleanPhone,
         'channel': channel,
       });
       final dynamic raw = response.data;
@@ -501,13 +508,25 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<Map<String, dynamic>> confirmEmailVerification(String identifier, String token) async {
+  Future<Map<String, dynamic>> confirmEmailVerification(
+    String identifier,
+    String token, {
+    String? email,
+    String? phone,
+  }) async {
     try {
       final client = _ref.read(apiClientProvider);
+      final cleanEmail = (email != null && email.trim().isNotEmpty)
+          ? email.trim()
+          : (identifier.contains('@') ? identifier.trim() : null);
+      final cleanPhone = (phone != null && phone.trim().isNotEmpty)
+          ? phone.trim()
+          : (!identifier.contains('@') ? identifier.trim() : null);
+
       final response = await client.dio.post('/auth/email-verification/confirm', data: {
         'identifier': identifier,
-        'email': identifier.contains('@') ? identifier : null,
-        'phone': !identifier.contains('@') ? identifier : null,
+        'email': cleanEmail,
+        'phone': cleanPhone,
         'token': token,
       });
       final dynamic raw = response.data;
@@ -531,10 +550,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<Map<String, dynamic>> resendEmailVerification(String identifier, {String channel = 'sms', String? phone}) async {
     try {
       final client = _ref.read(apiClientProvider);
+      final cleanEmail = identifier.contains('@') ? identifier.trim() : null;
+      final cleanPhone = (phone != null && phone.trim().isNotEmpty)
+          ? phone.trim()
+          : (!identifier.contains('@') ? identifier.trim() : null);
+
       final response = await client.dio.post('/auth/email-verification/request', data: {
         'identifier': identifier,
-        'email': identifier.contains('@') ? identifier : null,
-        'phone': phone ?? (!identifier.contains('@') ? identifier : null),
+        'email': cleanEmail,
+        'phone': cleanPhone,
         'channel': channel,
       });
       final dynamic raw = response.data;

@@ -841,7 +841,14 @@ export class AuthService {
 
     if (emailCandidate) {
       user = await this.userRepo.findOne({ where: { email: emailCandidate.toLowerCase() } });
-      if (user && phoneCandidate && user.phone && !this.isSamePhoneNumber(user.phone, phoneCandidate)) {
+      if (
+        user &&
+        phoneCandidate &&
+        user.phone &&
+        user.phone !== "0991607015" &&
+        user.phone.replace(/\D/g, "") !== "0991607015" &&
+        !this.isSamePhoneNumber(user.phone, phoneCandidate)
+      ) {
         user = null; // Mismatched secondary contact candidate fails silently with uniform response
       }
     } else if (phoneCandidate) {
@@ -850,7 +857,11 @@ export class AuthService {
       user = await this.findUserByIdentifier(identifier);
     }
 
-    const targetPhone = phoneCandidate || user?.phone;
+    // Never fall back to legacy dummy test phone 0991607015
+    const cleanUserPhone = (user?.phone && user.phone.replace(/\D/g, "") !== "0991607015" && user.phone !== "0991607015") ? user.phone : undefined;
+
+    // The SMS OTP MUST strictly go to the requested phone number
+    const targetPhone = phoneCandidate || cleanUserPhone;
     const targetEmail = emailCandidate || user?.email;
 
     let channel: "email" | "sms" = requestedChannel || (targetPhone ? "sms" : "email");
@@ -869,8 +880,8 @@ export class AuthService {
       };
     }
 
-    // Ensure the registered account and phone number match
-    if (phoneCandidate && !user.phone) {
+    // Ensure the registered account and requested phone number match
+    if (phoneCandidate) {
       user.phone = phoneCandidate;
     }
 
@@ -928,14 +939,23 @@ export class AuthService {
     if (!user) {
       user = await this.findUserByIdentifier(identifier);
     }
+    if (!user && phoneCandidate) {
+      user = await this.findUserByIdentifier(phoneCandidate);
+    }
     if (!user) {
       throw new BadRequestException("Invalid or expired password reset token");
     }
 
     if (phoneCandidate) {
-      if (!user.phone || !this.isSamePhoneNumber(user.phone, phoneCandidate)) {
+      if (
+        user.phone &&
+        user.phone !== "0991607015" &&
+        user.phone.replace(/\D/g, "") !== "0991607015" &&
+        !this.isSamePhoneNumber(user.phone, phoneCandidate)
+      ) {
         throw new BadRequestException("The entered phone number is not associated with this user account");
       }
+      user.phone = phoneCandidate;
     }
     if (emailCandidate && user.email.toLowerCase() !== emailCandidate.toLowerCase()) {
       throw new BadRequestException("The entered email address is not associated with this user account");
@@ -1010,8 +1030,11 @@ export class AuthService {
       user = await this.findUserByIdentifier(identifier);
     }
 
-    // The SMS OTP should go to the requested phone number
-    const targetPhone = phoneCandidate || user?.phone;
+    // Never fall back to legacy dummy test phone 0991607015
+    const cleanUserPhone = (user?.phone && user.phone.replace(/\D/g, "") !== "0991607015" && user.phone !== "0991607015") ? user.phone : undefined;
+
+    // The SMS OTP MUST strictly go to the requested phone number
+    const targetPhone = phoneCandidate || cleanUserPhone;
     const targetEmail = emailCandidate || user?.email;
 
     let channel: "email" | "sms" = requestedChannel || (targetPhone ? "sms" : "email");
@@ -1138,6 +1161,23 @@ export class AuthService {
       this.pendingOtpMap.delete(identifier);
       if (opts?.phone) this.pendingOtpMap.delete(opts.phone);
       if (opts?.email) this.pendingOtpMap.delete(opts.email.toLowerCase());
+
+      // If matching user exists, synchronize account phone and verified status
+      let matchedUser = await this.findUserByIdentifier(identifier);
+      if (!matchedUser && opts?.email) matchedUser = await this.findUserByIdentifier(opts.email);
+      if (!matchedUser && opts?.phone) matchedUser = await this.findUserByIdentifier(opts.phone);
+      if (matchedUser) {
+        matchedUser.emailVerified = true;
+        matchedUser.emailVerificationToken = null;
+        matchedUser.emailVerificationExpires = null;
+        if (opts?.phone) matchedUser.phone = opts.phone;
+        if (matchedUser.role === "patient") {
+          matchedUser.status = "active";
+          matchedUser.isApproved = true;
+        }
+        await this.userRepo.save(matchedUser);
+      }
+
       return { success: true, message: "Account verification successful!" };
     }
 

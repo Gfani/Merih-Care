@@ -436,7 +436,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   void _showForgotPasswordDialog(BuildContext context) async {
     final emailCtrl = TextEditingController(text: _emailController.text.trim());
-    final phoneCtrl = TextEditingController(text: _savedPhone ?? '');
+    final phoneCtrl = TextEditingController(text: (_savedPhone != null && _savedPhone != '0991607015') ? _savedPhone! : '');
     final otpCtrl = TextEditingController();
     final newPassCtrl = TextEditingController();
     final confirmPassCtrl = TextEditingController();
@@ -449,22 +449,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     String? errorMsg;
     String? successMsg;
 
-    // Check SecureStorage for saved phone
+    // Check SecureStorage for saved phone (cleanly purge any legacy 0991607015 dummy test number)
     if (phoneCtrl.text.isEmpty) {
       final p = await SecureStorage.instance.readLastPhone();
-      if (p != null && p.isNotEmpty) {
+      if (p == '0991607015') {
+        await SecureStorage.instance.deleteKey('last_phone');
+        _savedPhone = null;
+      } else if (p != null && p.isNotEmpty) {
         phoneCtrl.text = p;
         _savedPhone = p;
-      }
-    }
-
-    // If email is present and phone is still empty, automatically lookup phone in backend
-    if (phoneCtrl.text.isEmpty && emailCtrl.text.isNotEmpty) {
-      final contact = await ref.read(authProvider.notifier).lookupContact(emailCtrl.text);
-      if (contact != null && contact['phone'] != null && contact['phone']!.isNotEmpty) {
-        phoneCtrl.text = contact['phone']!;
-        _savedPhone = contact['phone']!;
-        SecureStorage.instance.writeLastPhone(contact['phone']!);
       }
     }
 
@@ -519,15 +512,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                         setDialogState(() => selectedChannel = 'sms');
                                         if (phoneCtrl.text.trim().isEmpty) {
                                           final p = await SecureStorage.instance.readLastPhone() ?? _savedPhone;
-                                          if (p != null && p.isNotEmpty) {
+                                          if (p != null && p.isNotEmpty && p != '0991607015') {
                                             setDialogState(() => phoneCtrl.text = p);
-                                          } else if (emailCtrl.text.trim().isNotEmpty) {
-                                            final contact = await ref.read(authProvider.notifier).lookupContact(emailCtrl.text.trim());
-                                            if (contact != null && contact['phone'] != null && contact['phone']!.isNotEmpty) {
-                                              setDialogState(() => phoneCtrl.text = contact['phone']!);
-                                              _savedPhone = contact['phone']!;
-                                              SecureStorage.instance.writeLastPhone(contact['phone']!);
-                                            }
                                           }
                                         }
                                       },
@@ -846,6 +832,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               activeIdentifier = identifier;
                               maskedDestination = res['destination'] ?? identifier;
                               successMsg = res['message'] ?? 'OTP code sent. Valid for 5 minutes.';
+                              if (selectedChannel == 'sms' && phoneCtrl.text.trim().isNotEmpty) {
+                                SecureStorage.instance.writeLastPhone(phoneCtrl.text.trim());
+                                _savedPhone = phoneCtrl.text.trim();
+                              }
                             } else {
                               errorMsg = res['message'] ?? 'Failed to send OTP';
                             }
