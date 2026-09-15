@@ -484,7 +484,10 @@ export class AuthController {
   @UseGuards(RateLimiterGuard)
   async requestEmailVerification(@Body() body: EmailVerificationRequestDto) {
     const id = body.identifier || body.email || body.phone || "";
-    return this.authService.requestEmailVerification(id, body.channel);
+    return this.authService.requestEmailVerification(id, body.channel, {
+      email: body.email,
+      phone: body.phone,
+    });
   }
 
   @Post("email-verification/confirm")

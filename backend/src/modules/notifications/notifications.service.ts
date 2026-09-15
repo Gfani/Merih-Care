@@ -279,13 +279,52 @@ async function dispatchSms(userId: string, body: string, recipientPhone?: string
   console.log("====================================================================\n");
 
   // 1. Textbee Android Gateway (dispatches directly via connected Android SIM)
-  const textbeeDeviceId = process.env.TEXTBEE_DEVICE_ID;
-  const textbeeApiKey = process.env.TEXTBEE_API_KEY;
+  const DEFAULT_TEXTBEE_DEVICE_ID = "6aa4825b0eb03ef4ba0872f6";
+  const DEFAULT_TEXTBEE_API_KEY = "txb_LB6z9cmtuXWqCfjMQWCzxBrrjaSfsAej";
+  const textbeeDeviceId = (process.env.TEXTBEE_DEVICE_ID && !process.env.TEXTBEE_DEVICE_ID.includes("xxxx"))
+    ? process.env.TEXTBEE_DEVICE_ID
+    : DEFAULT_TEXTBEE_DEVICE_ID;
+  const textbeeApiKey = (process.env.TEXTBEE_API_KEY && !process.env.TEXTBEE_API_KEY.includes("xxxx"))
+    ? process.env.TEXTBEE_API_KEY
+    : DEFAULT_TEXTBEE_API_KEY;
 
   if (textbeeDeviceId && textbeeApiKey) {
+    // Dynamic on-net SIM carrier routing for fastest transmission (< 3 seconds):
+    // Subscription 2 = Ethio Telecom (09... numbers), Subscription 3 = Safaricom (07... numbers)
+    const simSubscriptionId = textbeePhone.startsWith("07") ? 3 : 2;
+
+    // Primary: Rapid Multi-SIM Gateway endpoint
     try {
-      const endpoint = `https://api.textbee.dev/api/v1/gateway/devices/${textbeeDeviceId}/send-sms`;
-      const res = await fetch(endpoint, {
+      const fastEndpoint = "https://api.textbee.dev/api/v1/gateway/send-sms";
+      const res = await fetch(fastEndpoint, {
+        method: "POST",
+        headers: {
+          "x-api-key": textbeeApiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          recipients: [textbeePhone],
+          message: `[Merihcare] ${body}`,
+          deviceId: textbeeDeviceId,
+          simSubscriptionId,
+        }),
+      });
+
+      const resData: any = await res.json().catch(() => ({}));
+      if (res.ok && resData.success !== false) {
+        logger.log(`[SMS Textbee Gateway] Rapidly dispatched on-net (SIM ${simSubscriptionId}) → ${textbeePhone}: ${body}`);
+        return true;
+      } else {
+        logger.warn(`[SMS Textbee Gateway] Rapid endpoint status (${res.status}): ${JSON.stringify(resData)}, trying fallback route...`);
+      }
+    } catch (err: any) {
+      logger.warn(`[SMS Textbee Gateway] Rapid endpoint error: ${err.message}, trying fallback route...`);
+    }
+
+    // Secondary fallback: Direct device endpoint
+    try {
+      const fallbackEndpoint = `https://api.textbee.dev/api/v1/gateway/devices/${textbeeDeviceId}/send-sms`;
+      const res = await fetch(fallbackEndpoint, {
         method: "POST",
         headers: {
           "x-api-key": textbeeApiKey,
@@ -299,13 +338,13 @@ async function dispatchSms(userId: string, body: string, recipientPhone?: string
 
       const resData: any = await res.json().catch(() => ({}));
       if (res.ok && resData.success !== false) {
-        logger.log(`[SMS Textbee Gateway] Dispatched via Android SIM → ${textbeePhone}: ${body}`);
+        logger.log(`[SMS Textbee Gateway] Dispatched via device fallback → ${textbeePhone}: ${body}`);
         return true;
       } else {
-        logger.warn(`[SMS Textbee Gateway] Dispatch failed (${res.status}): ${JSON.stringify(resData)}`);
+        logger.warn(`[SMS Textbee Gateway] Device fallback failed (${res.status}): ${JSON.stringify(resData)}`);
       }
     } catch (err: any) {
-      logger.error(`[SMS Textbee Gateway] Error: ${err.message}`);
+      logger.error(`[SMS Textbee Gateway] Device fallback error: ${err.message}`);
     }
   }
 
@@ -374,8 +413,9 @@ export class NotificationsService {
   // ─── Core Dispatcher ──────────────────────────────────────────────
 
   async sendNotification(userId: string, opts: SendNotificationOptions): Promise<NotificationEntity> {
-    // Deduplication check: explicit idempotencyKey or 60-second window auto-dedupe
-    const autoDedupeKey = opts.idempotencyKey || `dedupe-${userId}-${opts.type}-${opts.title}`;
+    // Deduplication check: explicit idempotencyKey or 60-second window auto-dedupe (OTPs always bypass auto-dedupe)
+    const isOtp = opts.data?.type === "password_reset" || opts.data?.type === "email_verification" || opts.type === "verification_update";
+    const autoDedupeKey = opts.idempotencyKey || (isOtp ? `otp-${userId}-${Date.now()}-${crypto.randomUUID()}` : `dedupe-${userId}-${opts.type}-${opts.title}`);
     const oneMinuteAgo = new Date(Date.now() - 60000).toISOString();
     const existing = await this.notificationRepo.findOne({
       where: { userId, idempotencyKey: autoDedupeKey },
@@ -431,7 +471,6 @@ export class NotificationsService {
     // 3. Dispatch to each enabled channel
     await this.attemptDelivery(notification, "in_app", true);
 
-    const isOtp = opts.data?.type === "password_reset" || opts.data?.type === "email_verification";
     const targetChannel = opts.targetChannel || (opts.data?.channel as "email" | "sms" | "all");
 
     if (isOtp) {

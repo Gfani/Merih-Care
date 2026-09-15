@@ -231,6 +231,8 @@ export class AuthService {
     private readonly realtimeService?: RealtimeService,
   ) {}
 
+  private readonly pendingOtpMap = new Map<string, { token: string; expires: number }>();
+
   private hashToken(token: string): string {
     return crypto.createHash("sha256").update(token).digest("hex");
   }
@@ -979,51 +981,86 @@ export class AuthService {
 
   async requestEmailVerification(
     identifier: string,
-    requestedChannel?: "email" | "sms"
+    requestedChannel?: "email" | "sms",
+    opts?: { email?: string; phone?: string }
   ): Promise<{ success: boolean; message: string; channel: string; destination: string }> {
-    const user = await this.findUserByIdentifier(identifier);
-    if (user) {
-      let channel: "email" | "sms" = requestedChannel || (identifier.includes("@") ? "email" : "sms");
-      if (channel === "sms" && !user.phone) {
-        channel = "email";
-      }
+    const rawEmail = opts?.email?.trim();
+    const rawPhone = opts?.phone?.trim();
+    const isEmailIdentifier = identifier.includes("@");
 
-      const verifyOtp = crypto.randomInt(100000, 999999).toString();
-      user.emailVerificationToken = this.hashToken(verifyOtp);
-      user.emailVerificationExpires = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-      await this.userRepo.save(user);
+    const emailCandidate = rawEmail || (isEmailIdentifier ? identifier.trim() : undefined);
+    const phoneCandidate = rawPhone || (!isEmailIdentifier ? identifier.trim() : undefined);
 
-      // Dispatch verification code via notification service
-      if (this.notificationsService) {
-        await this.notificationsService.sendNotification(user.id, {
-          type: "verification_update",
-          title: channel === "sms" ? "MerihCare Verification Code" : "MerihCare Email Verification Code",
-          body: `Your MerihCare verification code is ${verifyOtp}. This code expires in 5 minutes.`,
-          priority: "critical",
-          recipientEmail: user.email,
-          recipientPhone: user.phone,
-          targetChannel: channel,
-          data: { code: verifyOtp, type: "email_verification", recipientEmail: user.email, channel },
-        }).catch((err) => {
-          console.error("[AUTH] Failed to send verification code:", err);
-        });
-      }
-
-      const dest = channel === "sms" ? (user.phone || identifier) : user.email;
-      const masked = this.maskDestination(dest);
-
-      return {
-        success: true,
-        channel,
-        destination: masked,
-        message: "If an account matches the provided identifier, a 6-digit verification code has been dispatched. Valid for 5 minutes.",
-      };
+    let user: UserEntity | null = null;
+    if (phoneCandidate) {
+      user = await this.findUserByIdentifier(phoneCandidate);
     }
-    const masked = this.maskDestination(identifier);
+    if (!user && emailCandidate) {
+      user = await this.findUserByIdentifier(emailCandidate);
+    }
+    if (!user) {
+      user = await this.findUserByIdentifier(identifier);
+    }
+
+    const targetPhone = user?.phone || phoneCandidate;
+    const targetEmail = user?.email || emailCandidate;
+
+    let channel: "email" | "sms" = requestedChannel || (targetPhone ? "sms" : "email");
+    if (channel === "sms" && !targetPhone && targetEmail) {
+      channel = "email";
+    }
+
+    const verifyOtp = crypto.randomInt(100000, 999999).toString();
+    const hashed = this.hashToken(verifyOtp);
+    const expiresMs = Date.now() + 5 * 60 * 1000;
+
+    if (user) {
+      if (phoneCandidate && !user.phone) {
+        user.phone = phoneCandidate;
+      }
+      if (emailCandidate && !user.email) {
+        user.email = emailCandidate;
+      }
+      user.emailVerificationToken = hashed;
+      user.emailVerificationExpires = new Date(expiresMs).toISOString();
+      await this.userRepo.save(user);
+    }
+
+    // Always record in pendingOtpMap so pre-registration and pending OTP verification succeed immediately
+    if (targetPhone) {
+      const cleanPhone = targetPhone.replace(/\D/g, "");
+      this.pendingOtpMap.set(targetPhone, { token: hashed, expires: expiresMs });
+      this.pendingOtpMap.set(cleanPhone, { token: hashed, expires: expiresMs });
+    }
+    if (targetEmail) {
+      this.pendingOtpMap.set(targetEmail.toLowerCase(), { token: hashed, expires: expiresMs });
+    }
+    this.pendingOtpMap.set(identifier, { token: hashed, expires: expiresMs });
+
+    // Dispatch verification code via notification service
+    if (this.notificationsService) {
+      const recipientId = user ? user.id : (targetPhone || targetEmail || identifier);
+      await this.notificationsService.sendNotification(recipientId, {
+        type: "verification_update",
+        title: channel === "sms" ? "MerihCare Verification Code" : "MerihCare Email Verification Code",
+        body: `Your MerihCare verification code is ${verifyOtp}. This code expires in 5 minutes.`,
+        priority: "critical",
+        recipientEmail: targetEmail,
+        recipientPhone: targetPhone,
+        targetChannel: channel,
+        data: { code: verifyOtp, type: "email_verification", recipientEmail: targetEmail, channel },
+      }).catch((err) => {
+        console.error("[AUTH] Failed to send verification code:", err);
+      });
+    }
+
+    const dest = channel === "sms" ? (targetPhone || identifier) : (targetEmail || identifier);
+    const masked = this.maskDestination(dest);
+
     return {
       success: true,
-      channel: requestedChannel || "email",
-      destination: masked || "registered contact",
+      channel,
+      destination: masked,
       message: "If an account matches the provided identifier, a 6-digit verification code has been dispatched. Valid for 5 minutes.",
     };
   }
@@ -1031,36 +1068,50 @@ export class AuthService {
   async confirmEmailVerification(identifier: string, token: string): Promise<{ success: boolean; message: string }> {
     const user = await this.findUserByIdentifier(identifier);
     const hashed = this.hashToken(token);
-    if (!user || user.emailVerificationToken !== hashed) {
-      throw new BadRequestException("Invalid email verification token");
-    }
-    if (user.emailVerificationExpires && new Date(user.emailVerificationExpires) < new Date()) {
-      throw new BadRequestException("Email verification token has expired (codes expire in 5 minutes)");
-    }
-    user.emailVerified = true;
-    user.emailVerificationToken = null;
-    user.emailVerificationExpires = null;
-    if (user.role === "patient") {
-      user.status = "active";
-      user.isApproved = true;
-    }
-    await this.userRepo.save(user);
+    if (user && user.emailVerificationToken === hashed) {
+      if (user.emailVerificationExpires && new Date(user.emailVerificationExpires) < new Date()) {
+        throw new BadRequestException("Email verification token has expired (codes expire in 5 minutes)");
+      }
+      user.emailVerified = true;
+      user.emailVerificationToken = null;
+      user.emailVerificationExpires = null;
+      if (user.role === "patient") {
+        user.status = "active";
+        user.isApproved = true;
+      }
+      await this.userRepo.save(user);
 
-    // Notify administrators live that a verified provider or admin has entered the approval queue
-    if ((user.role === "provider" || user.role === "admin") && this.realtimeService) {
-      this.realtimeService.emitApprovalRequested({
-        userId: user.id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        adminRole: user.adminRole,
-        verified: true,
-      });
+      // Notify administrators live that a verified provider or admin has entered the approval queue
+      if ((user.role === "provider" || user.role === "admin") && this.realtimeService) {
+        this.realtimeService.emitApprovalRequested({
+          userId: user.id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+          adminRole: user.adminRole,
+          verified: true,
+        });
+      }
+
+      return { success: true, message: "Account verification successful!" };
     }
 
-    return { success: true, message: "Account verification successful!" };
+    // Check pending pre-registration OTP map
+    const cleanId = identifier.replace(/\D/g, "");
+    const pending = this.pendingOtpMap.get(identifier) || (cleanId ? this.pendingOtpMap.get(cleanId) : null);
+    if (pending && pending.token === hashed) {
+      if (pending.expires < Date.now()) {
+        this.pendingOtpMap.delete(identifier);
+        throw new BadRequestException("Email verification token has expired (codes expire in 5 minutes)");
+      }
+      this.pendingOtpMap.delete(identifier);
+      return { success: true, message: "Account verification successful!" };
+    }
+
+    throw new BadRequestException("Invalid email verification token");
   }
+
 
   async getUserById(id: string): Promise<any> {
     const user = await this.userRepo.findOne({ where: { id } });

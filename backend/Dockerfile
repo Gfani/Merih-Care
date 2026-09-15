@@ -26,6 +26,8 @@ COPY --from=build /app/src ./src
 ENV NODE_ENV=production
 ENV UPLOADS_DIR=/app/uploads
 ENV RESEND_FROM_EMAIL="Merihcare <otp@merihcare.live>"
+ENV TEXTBEE_DEVICE_ID=6aa4825b0eb03ef4ba0872f6
+ENV TEXTBEE_API_KEY=txb_LB6z9cmtuXWqCfjMQWCzxBrrjaSfsAej
 
 RUN mkdir -p /app/uploads/credentials && chmod -R 777 /app/uploads
 
