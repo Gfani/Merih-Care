@@ -972,7 +972,7 @@ export const api = {
         phone: opts?.phone || (!identifier.includes("@") ? identifier : undefined),
       };
       const res = await axios.post(`${API_URL}/auth/password-reset/request`, payload);
-      return res.data;
+      return res.data?.data || res.data;
     } catch (error) {
       if (isDemoMode()) return { success: true, message: "Reset OTP code sent" };
       throw error;

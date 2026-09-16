@@ -893,7 +893,9 @@ export class AuthService {
     const isEmailIdentifier = identifier.includes("@");
 
     const emailCandidate = rawEmail || (isEmailIdentifier ? identifier.trim() : undefined);
-    const phoneCandidate = rawPhone || (!isEmailIdentifier ? identifier.trim() : undefined);
+    const phoneCandidate = (rawPhone && !rawPhone.includes("@"))
+      ? rawPhone
+      : (!isEmailIdentifier && !identifier.includes("@") ? identifier.trim() : undefined);
 
     let user: UserEntity | null = null;
 
@@ -902,6 +904,7 @@ export class AuthService {
       if (
         user &&
         phoneCandidate &&
+        !phoneCandidate.includes("@") &&
         user.phone &&
         user.phone !== "0991607015" &&
         user.phone.replace(/\D/g, "") !== "0991607015" &&
@@ -930,7 +933,8 @@ export class AuthService {
 
     // UNIFORM TIMING / RESPONSE: Prevent account enumeration when user does not exist
     if (!user) {
-      const masked = this.maskDestination(targetPhone || targetEmail || identifier);
+      const dest = channel === "sms" ? (targetPhone || "registered mobile") : (targetEmail || identifier);
+      const masked = channel === "sms" ? this.maskPhone(dest) : this.maskEmail(dest);
       return {
         success: true,
         channel,
@@ -940,7 +944,7 @@ export class AuthService {
     }
 
     // Ensure the registered account and requested phone number match - NEVER save masked phone with *!
-    if (phoneCandidate && !phoneCandidate.includes("*")) {
+    if (phoneCandidate && !phoneCandidate.includes("*") && !phoneCandidate.includes("@")) {
       user.phone = phoneCandidate;
     }
 
@@ -967,8 +971,8 @@ export class AuthService {
       });
     }
 
-    const dest = channel === "sms" ? (targetPhone || user.phone!) : (targetEmail || user.email);
-    const masked = this.maskDestination(dest);
+    const dest = channel === "sms" ? (targetPhone || user.phone || "registered mobile") : (targetEmail || user.email);
+    const masked = channel === "sms" ? this.maskPhone(dest) : this.maskEmail(dest);
 
     return {
       success: true,

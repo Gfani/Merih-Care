@@ -174,14 +174,19 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     try {
       const contact = await api.lookupContact(emailToLookup);
       if (contact && (contact.phone || contact.email)) {
-        const maskedP = maskPhone(contact.phone || "");
-        const maskedE = maskEmail(contact.email || emailToLookup);
+        const maskedP = contact.phone ? maskPhone(contact.phone) : "";
+        const maskedE = contact.email ? maskEmail(contact.email) : maskEmail(emailToLookup);
         setMaskedPhone(maskedP);
         setMaskedEmail(maskedE);
-        setResetIdentifier(maskedP);
-        setIsContactLocked(true);
         if (contact.email) {
           setAccountEmail(contact.email);
+        }
+        if (maskedP) {
+          setResetIdentifier(maskedP);
+          setIsContactLocked(true);
+        } else {
+          setResetIdentifier("");
+          setIsContactLocked(false);
         }
         return;
       }
@@ -189,10 +194,17 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
       // Fallback below
     }
 
-    if (currentEmail) {
+    if (currentEmail && currentEmail.includes("@")) {
       const maskedE = maskEmail(currentEmail);
       setMaskedEmail(maskedE);
-      setResetIdentifier(maskedE);
+      setMaskedPhone("");
+      setResetIdentifier("");
+      setIsContactLocked(false);
+    } else if (currentEmail && !currentEmail.includes("@")) {
+      const maskedP = maskPhone(currentEmail);
+      setMaskedPhone(maskedP);
+      setResetIdentifier(maskedP);
+      setIsContactLocked(true);
     } else {
       setResetIdentifier("");
       setMaskedPhone("");
@@ -214,17 +226,26 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     setResetNewPassword("");
     setResetConfirmPassword("");
     try {
-      const targetIdentifier = accountEmail || (resetIdentifier.includes("@") ? resetIdentifier : (savedEmail || email.trim() || "admin@merihcare.live"));
+      const isPhoneInput = !val.includes("@");
+      const phoneCandidate = (resetChannel === "sms") ? (maskedPhone || (isPhoneInput ? val : undefined)) : undefined;
+      const emailCandidate = accountEmail || savedEmail || (val.includes("@") ? val : undefined);
+      const targetIdentifier = (resetChannel === "sms" ? (phoneCandidate || emailCandidate) : (emailCandidate || phoneCandidate)) || "admin@merihcare.live";
+
       const res = await api.requestPasswordReset(targetIdentifier, resetChannel, {
-        email: accountEmail || savedEmail || (targetIdentifier.includes("@") ? targetIdentifier : undefined),
-        phone: maskedPhone || (resetChannel === "sms" ? val : undefined),
+        email: emailCandidate,
+        phone: phoneCandidate,
       });
-      const dest = res.destination || (resetChannel === "sms" ? (maskedPhone || val) : (maskedEmail || targetIdentifier));
-      setResetMaskedDest(dest);
+
+      const actualChannel = (res.channel as "sms" | "email") || resetChannel;
+      const actualDest = res.destination || (actualChannel === "sms" ? (phoneCandidate || maskedPhone || "registered mobile") : (emailCandidate || maskedEmail));
+
+      setResetChannel(actualChannel);
+      setResetMaskedDest(actualDest);
+
       toast(
-        resetChannel === "sms"
-          ? `6-Digit OTP code sent via SMS to ${dest}! (Valid for 5 minutes)`
-          : `6-Digit OTP code sent via Email to ${dest}! (Valid for 5 minutes)`,
+        actualChannel === "sms"
+          ? `6-Digit OTP code sent via SMS to ${actualDest}! (Valid for 5 minutes)`
+          : `6-Digit OTP code sent via Email to ${actualDest}! (Valid for 5 minutes)`,
         "success"
       );
       setResetOtp("");
@@ -242,15 +263,23 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     if (targetChannel === "sms") setResendingSms(true);
     else setResendingEmail(true);
     try {
-      const targetIdentifier = accountEmail || (resetIdentifier.includes("@") ? resetIdentifier : (savedEmail || email.trim() || "admin@merihcare.live"));
+      const val = resetIdentifier.trim();
+      const isPhoneInput = !val.includes("@");
+      const phoneCandidate = (targetChannel === "sms") ? (maskedPhone || (isPhoneInput ? val : undefined)) : undefined;
+      const emailCandidate = accountEmail || savedEmail || (val.includes("@") ? val : undefined);
+      const targetIdentifier = (targetChannel === "sms" ? (phoneCandidate || emailCandidate) : (emailCandidate || phoneCandidate)) || "admin@merihcare.live";
+
       const res = await api.requestPasswordReset(targetIdentifier, targetChannel, {
-        email: accountEmail || savedEmail || (targetIdentifier.includes("@") ? targetIdentifier : undefined),
-        phone: maskedPhone || (targetChannel === "sms" ? resetIdentifier : undefined),
+        email: emailCandidate,
+        phone: phoneCandidate,
       });
-      setResetChannel(targetChannel);
-      const dest = res.destination || (targetChannel === "sms" ? (maskedPhone || resetIdentifier) : (maskedEmail || targetIdentifier));
-      setResetMaskedDest(dest);
-      toast(`New 6-digit OTP code sent via ${targetChannel.toUpperCase()} to ${dest}!`, "success");
+
+      const actualChannel = (res.channel as "sms" | "email") || targetChannel;
+      const actualDest = res.destination || (actualChannel === "sms" ? (phoneCandidate || maskedPhone || "registered mobile") : (emailCandidate || maskedEmail));
+
+      setResetChannel(actualChannel);
+      setResetMaskedDest(actualDest);
+      toast(`New 6-digit OTP code sent via ${actualChannel.toUpperCase()} to ${actualDest}!`, "success");
     } catch (err: any) {
       toast(err.response?.data?.message || err.message || `Failed to resend OTP via ${targetChannel.toUpperCase()}`, "error");
     } finally {
@@ -479,20 +508,29 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
                     setResetChannel("sms");
                     if (maskedPhone) {
                       setResetIdentifier(maskedPhone);
+                      setIsContactLocked(true);
                     } else {
-                      const emailToLookup = accountEmail || savedEmail || (resetIdentifier.includes("@") ? resetIdentifier : "admin@merihcare.live");
+                      const emailToLookup = accountEmail || savedEmail || (email.includes("@") ? email.trim() : "admin@merihcare.live");
                       try {
                         const contact = await api.lookupContact(emailToLookup);
                         if (contact && (contact.phone || contact.email)) {
-                          const mPhone = maskPhone(contact.phone || "");
-                          const mEmail = maskEmail(contact.email || emailToLookup);
+                          const mPhone = contact.phone ? maskPhone(contact.phone) : "";
+                          const mEmail = contact.email ? maskEmail(contact.email) : maskEmail(emailToLookup);
                           setMaskedPhone(mPhone);
                           setMaskedEmail(mEmail);
-                          setResetIdentifier(mPhone);
-                          setIsContactLocked(true);
                           if (contact.email) setAccountEmail(contact.email);
+                          if (mPhone) {
+                            setResetIdentifier(mPhone);
+                            setIsContactLocked(true);
+                          } else {
+                            setResetIdentifier("");
+                            setIsContactLocked(false);
+                          }
                         }
-                      } catch {}
+                      } catch {
+                        setResetIdentifier("");
+                        setIsContactLocked(false);
+                      }
                     }
                   }}
                   className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
@@ -530,8 +568,8 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
 
             <p className="text-[#4a5a6a] dark:text-slate-300 leading-relaxed">
               {resetChannel === "sms"
-                ? "Enter your registered mobile phone number. We will send a secure 6-digit OTP via SMS (valid for 5 minutes)."
-                : "Enter your registered administrator email address. We will send a secure 6-digit OTP code (valid for 5 minutes)."}
+                ? "Your registered mobile phone number will receive a secure 6-digit OTP via SMS (valid for 5 minutes)."
+                : "Your registered administrator email address will receive a secure 6-digit OTP code (valid for 5 minutes)."}
             </p>
 
             {resetChannel === "sms" ? (
@@ -539,7 +577,7 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
                 <Input
                   label="Administrator Mobile Phone"
                   type="text"
-                  value={isContactLocked ? (maskedPhone || resetIdentifier) : resetIdentifier}
+                  value={isContactLocked ? (maskedPhone || "") : (!resetIdentifier.includes("@") ? resetIdentifier : "")}
                   onChange={(e) => {
                     if (!isContactLocked) {
                       setResetIdentifier(e.target.value);
@@ -625,10 +663,10 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
 
             <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg text-emerald-800 dark:text-emerald-300">
               <p className="font-semibold text-xs mb-1">
-                6-Digit OTP Dispatched via {resetChannel.toUpperCase()}
+                6-Digit OTP Dispatched via {resetChannel === "sms" ? "SMS" : "Email"}
               </p>
               <p className="text-[11px] leading-relaxed">
-                Sent to <strong className="text-slate-900 dark:text-white">{resetMaskedDest || resetIdentifier}</strong>. Valid strictly for <strong>5 minutes</strong>.
+                Sent to <strong className="text-slate-900 dark:text-white">{resetMaskedDest || (resetChannel === "sms" ? (maskedPhone || "your registered mobile") : (maskedEmail || "your registered email"))}</strong>. Valid strictly for <strong>5 minutes</strong>.
               </p>
             </div>
 
