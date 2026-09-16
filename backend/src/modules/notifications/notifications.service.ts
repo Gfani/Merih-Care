@@ -483,13 +483,15 @@ export class NotificationsService {
     const targetChannel = opts.targetChannel || (opts.data?.channel as "email" | "sms" | "all");
 
     if (isOtp) {
-      // DUAL DISPATCH & RESILIENCE:
-      // If user provided or selected SMS, dispatch SMS immediately via Textbee (or fallback).
-      // In parallel, if recipientEmail is available, dispatch Email immediately as well.
-      // This guarantees zero lockout if cellular network is congested, and vice versa.
+      // Strict channel separation:
+      // If user requested SMS, dispatch strictly through SMS.
+      // If user requested Email, dispatch strictly through Email.
       const dispatchTasks: Promise<any>[] = [];
 
-      if (recipientPhone && (targetChannel === "sms" || targetChannel === "all" || !recipientEmail)) {
+      const shouldSendSms = recipientPhone && (targetChannel === "sms" || targetChannel === "all" || (!targetChannel && !recipientEmail));
+      const shouldSendEmail = recipientEmail && (targetChannel === "email" || targetChannel === "all" || (!targetChannel && !recipientPhone));
+
+      if (shouldSendSms) {
         dispatchTasks.push(
           dispatchSms(userId, opts.body, recipientPhone)
             .then(async (smsOk) => {
@@ -500,7 +502,7 @@ export class NotificationsService {
         );
       }
 
-      if (recipientEmail && (targetChannel === "email" || targetChannel === "all" || !recipientPhone || targetChannel === "sms")) {
+      if (shouldSendEmail) {
         dispatchTasks.push(
           dispatchEmail(userId, opts.title, opts.body, recipientEmail)
             .then(async (emailOk) => {
