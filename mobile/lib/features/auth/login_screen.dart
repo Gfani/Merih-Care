@@ -247,6 +247,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   ),
                                 );
                               } else {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(result.message ?? 'Welcome back. You can sign in with Google.'),
+                                      backgroundColor: const Color(0xFF0D7C6A),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                }
                                 final user = ref.read(authProvider).user;
                                 final role = user?['role'];
                                 if (role == 'provider') {
@@ -812,6 +821,31 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   onPressed: loading
                       ? null
                       : () async {
+                          if (!isContactLocked) {
+                            final inputVal = selectedChannel == 'sms' ? phoneCtrl.text.trim() : emailCtrl.text.trim();
+                            if (inputVal.isNotEmpty) {
+                              try {
+                                final contact = await ref.read(authProvider.notifier).lookupContact(inputVal);
+                                if (contact != null && contact['found'] == true) {
+                                  setDialogState(() {
+                                    maskedPhone = contact['phone'] ?? '';
+                                    maskedEmail = contact['email'] ?? '';
+                                    isContactLocked = true;
+                                    phoneCtrl.text = maskedPhone;
+                                    emailCtrl.text = maskedEmail;
+                                    activeAccountEmail = contact['email'] ?? activeAccountEmail;
+                                  });
+                                } else {
+                                  setDialogState(() => errorMsg = 'No account found. Please register first.');
+                                  return;
+                                }
+                              } catch (_) {
+                                setDialogState(() => errorMsg = 'No account found. Please register first.');
+                                return;
+                              }
+                            }
+                          }
+
                           final reqIdentifier = (isContactLocked && activeAccountEmail.isNotEmpty)
                               ? activeAccountEmail
                               : (selectedChannel == 'sms' ? phoneCtrl.text.trim() : emailCtrl.text.trim());
@@ -847,12 +881,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               step = 2;
                               activeIdentifier = reqIdentifier;
                               maskedDestination = res['destination'] ?? reqIdentifier;
-                              successMsg = res['message'] ?? 'OTP code sent. Valid for 5 minutes.';
-                              if (selectedChannel == 'sms' && phoneCtrl.text.trim().isNotEmpty) {
+                              successMsg = res['message'] ?? 'Reset instructions have been sent to your registered contact.';
+                              if (selectedChannel == 'sms' && phoneCtrl.text.trim().isNotEmpty && !phoneCtrl.text.contains('*')) {
                                 SecureStorage.instance.writeLastPhone(phoneCtrl.text.trim());
                               }
                             } else {
-                              errorMsg = res['message'] ?? 'Failed to send OTP';
+                              final msg = res['message'] ?? 'No account found. Please register first.';
+                              errorMsg = (msg.toLowerCase().contains('not found') || msg.toLowerCase().contains('no account'))
+                                  ? 'No account found. Please register first.'
+                                  : msg;
                             }
                           });
                         },

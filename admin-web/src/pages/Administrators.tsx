@@ -83,8 +83,8 @@ export default function AdministratorsSection() {
 
   const handleCreateAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!addName || !addEmail || !addPassword) {
-      toast("Please provide name, email, and a secure password", "warning");
+    if (!addName || !addEmail || !addPassword || !addPhone.trim()) {
+      toast("Please provide name, email, password, and a valid phone number", "warning");
       return;
     }
     setSavingAdmin(true);
@@ -647,12 +647,15 @@ export default function AdministratorsSection() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-[#4a5a6a] dark:text-slate-300 mb-1">Phone Number (Optional)</label>
+                <label className="block text-[11px] font-semibold text-[#4a5a6a] dark:text-slate-300 mb-1">
+                  Phone Number <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="tel"
+                  required
                   value={addPhone}
                   onChange={(e) => setAddPhone(e.target.value)}
-                  placeholder="+251 91 234 5678"
+                  placeholder="+251 91 234 5678 or 0912345678"
                   className="w-full text-xs p-2.5 rounded-lg border border-[#e2e8ee] dark:border-slate-700 bg-white dark:bg-slate-900 text-[#18232e] dark:text-white focus:outline-none focus:border-[#0d7c6a]"
                 />
               </div>

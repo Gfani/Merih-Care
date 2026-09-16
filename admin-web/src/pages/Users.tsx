@@ -19,6 +19,7 @@ export default function UsersSection() {
   const [newMemberEmail, setNewMemberEmail] = useState("");
   const [newMemberPassword, setNewMemberPassword] = useState("");
   const [newMemberRole, setNewMemberRole] = useState("admin");
+  const [newMemberPhone, setNewMemberPhone] = useState("");
 
   const [detailsModal, setDetailsModal] = useState(false);
   const [selectedDetails, setSelectedDetails] = useState<any>(null);
@@ -271,8 +272,8 @@ export default function UsersSection() {
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMemberName || !newMemberEmail || !newMemberPassword) {
-      toast("All fields are required", "error");
+    if (!newMemberName || !newMemberEmail || !newMemberPassword || !newMemberPhone.trim()) {
+      toast("All fields including a valid phone number are required", "error");
       return;
     }
     try {
@@ -282,16 +283,18 @@ export default function UsersSection() {
           email: newMemberEmail,
           password: newMemberPassword,
           adminRole: newMemberRole,
+          phone: newMemberPhone,
         });
         toast(`Administrator ${newMemberName} added and verified successfully!`, "success");
       } else {
-        await api.signup(newMemberName, newMemberEmail, newMemberPassword, newMemberRole);
+        await api.signup(newMemberName, newMemberEmail, newMemberPassword, newMemberRole, newMemberPhone);
         toast(`Admin account for ${newMemberEmail} created. Pending superadmin approval.`, "success");
       }
       setAddMemberModal(false);
       setNewMemberName("");
       setNewMemberEmail("");
       setNewMemberPassword("");
+      setNewMemberPhone("");
       loadData();
     } catch (err: any) {
       toast(err.response?.data?.message || err.message || "Failed to create account.", "error");
@@ -871,6 +874,7 @@ export default function UsersSection() {
         <form onSubmit={handleAddMember} className="space-y-4">
           <Input label="Full Name" value={newMemberName} onChange={e => setNewMemberName(e.target.value)} placeholder="e.g. Dr. Hana Bekele" required />
           <Input label="Email Address" type="email" value={newMemberEmail} onChange={e => setNewMemberEmail(e.target.value)} placeholder="name@merihcare.et" required />
+          <Input label="Phone Number" type="tel" value={newMemberPhone} onChange={e => setNewMemberPhone(e.target.value)} placeholder="+251 91 234 5678 or 0912345678" required />
           <Input label="Temporary Password" type="password" value={newMemberPassword} onChange={e => setNewMemberPassword(e.target.value)} placeholder="Minimum 6 characters" required />
           <Select
             label="Administrative Role"

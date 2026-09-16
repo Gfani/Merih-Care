@@ -1,9 +1,11 @@
-import { Injectable, Optional, Inject, forwardRef, NotFoundException, BadRequestException, UnauthorizedException, ForbiddenException } from "@nestjs/common";
+import { Injectable, Optional, Inject, forwardRef, NotFoundException, BadRequestException, UnauthorizedException, ForbiddenException, ConflictException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { UserEntity } from "../../database/entities/user.entity";
 import { SessionEntity } from "../../database/entities/session.entity";
 import { ProviderEntity } from "../../database/entities/provider.entity";
+import { PatientProfileEntity } from "../../database/entities/patient-provider.entity";
+import { validatePhoneNumber } from "../../shared/utils/phone.util";
 import * as bcrypt from "bcryptjs";
 import * as crypto from "crypto";
 import { JwtService } from "@nestjs/jwt";
@@ -227,6 +229,9 @@ export class AuthService {
     @InjectRepository(ProviderEntity)
     private readonly providerRepo?: Repository<ProviderEntity>,
     @Optional()
+    @InjectRepository(PatientProfileEntity)
+    private readonly patientProfileRepo?: Repository<PatientProfileEntity>,
+    @Optional()
     @Inject(forwardRef(() => RealtimeService))
     private readonly realtimeService?: RealtimeService,
   ) {}
@@ -321,6 +326,10 @@ export class AuthService {
     validateRealEmail(email);
     validateStrongPassword(pass);
 
+    if (role === "admin" && !adminRole) {
+      throw new Error("Admin accounts require a specified admin role");
+    }
+
     const normalizedEmail = (email || "").trim().toLowerCase();
     let existing = await this.userRepo.findOne({ where: { email: normalizedEmail } });
     if (!existing && typeof this.userRepo.createQueryBuilder === "function") {
@@ -329,20 +338,14 @@ export class AuthService {
         .where("LOWER(user.email) = :email", { email: normalizedEmail })
         .getOne();
     }
-    if (existing) {
-      throw new Error("User already exists with this email address");
-    }
 
-    const normalizedPhone = (phone || "").trim().replace(/[\s\-\(\)]/g, "");
-    if (normalizedPhone) {
-      const existingPhone = await this.userRepo.findOne({ where: { phone: normalizedPhone } });
-      if (existingPhone) {
-        throw new Error("A user with this phone number is already registered");
+    let normalizedPhone = "";
+    if (phone && phone.trim()) {
+      const phoneValidation = validatePhoneNumber(phone);
+      if (!phoneValidation.isValid) {
+        throw new BadRequestException(phoneValidation.error || "Phone number is required.");
       }
-    }
-
-    if (role === "admin" && !adminRole) {
-      throw new Error("Admin accounts require a specified admin role");
+      normalizedPhone = phone.trim().startsWith("+") ? phone.trim() : phoneValidation.normalized;
     }
 
     if (role === "provider") {
@@ -380,14 +383,110 @@ export class AuthService {
       };
     }
 
+    // A. Cross-Registration: If user already exists, attach the requested role/profile
+    if (existing) {
+      const existingRoles = new Set<string>();
+      if (existing.role) existingRoles.add(existing.role);
+      if (existing.roles) {
+        existing.roles.split(",").map((r) => r.trim()).filter(Boolean).forEach((r) => existingRoles.add(r));
+      }
+
+      if (role === "patient") {
+        const hasPatientRole = existingRoles.has("patient");
+        const hasPatientProfile = this.patientProfileRepo
+          ? await this.patientProfileRepo.findOne({ where: { userId: existing.id } })
+          : null;
+        if (hasPatientRole || hasPatientProfile || (!existing.role && !existing.roles)) {
+          throw new ConflictException("User already exists with this email address.");
+        }
+
+        existingRoles.add("patient");
+        existing.roles = Array.from(existingRoles).join(",");
+        if (!existing.phone && normalizedPhone) {
+          existing.phone = normalizedPhone;
+        }
+        if (this.patientProfileRepo) {
+          const patientProfile = new PatientProfileEntity();
+          patientProfile.id = "pat-" + crypto.randomUUID();
+          patientProfile.userId = existing.id;
+          await this.patientProfileRepo.save(patientProfile);
+        }
+        return await this.userRepo.save(existing);
+      }
+
+      if (role === "provider") {
+        const hasProviderRole = existingRoles.has("provider");
+        const hasProviderEntity = this.providerRepo
+          ? await this.providerRepo.findOne({ where: { userId: existing.id } })
+          : null;
+        if (hasProviderRole || hasProviderEntity) {
+          throw new ConflictException("Provider account already exists for this user.");
+        }
+
+        existingRoles.add("provider");
+        existing.roles = Array.from(existingRoles).join(",");
+        if (!existing.phone && normalizedPhone) {
+          existing.phone = normalizedPhone;
+        }
+        if (this.providerRepo) {
+          const provider = new ProviderEntity();
+          provider.id = "prov-" + crypto.randomUUID();
+          provider.userId = existing.id;
+          provider.name = existing.name;
+          provider.email = existing.email || "";
+          provider.phone = existing.phone || normalizedPhone;
+          provider.title = providerDetails?.title || "Healthcare Specialist";
+          provider.specialty = providerDetails?.specialty || "General Medicine";
+          provider.licenseNumber = providerDetails?.licenseNumber || "";
+          provider.experience = Number(providerDetails?.experience) || 0;
+          provider.education = providerDetails?.education || "";
+          provider.hospitalAffiliation = providerDetails?.hospitalAffiliation || "";
+          provider.cvUrl = providerDetails?.cvUrl || "";
+          provider.licenseDocumentUrl = providerDetails?.licenseDocumentUrl || "";
+          provider.idDocumentUrl = providerDetails?.idDocumentUrl || "";
+          provider.pricePerVisit = 800;
+          provider.available = false;
+          provider.status = "pending_verification";
+          provider.verified = false;
+          provider.services = ["Doctor Visit", "Home Nursing"];
+          await this.providerRepo.save(provider);
+        }
+        return await this.userRepo.save(existing);
+      }
+
+      if (role === "admin") {
+        const hasAdminRole = existingRoles.has("admin") || existingRoles.has("super_admin") || !!existing.adminRole;
+        if (hasAdminRole) {
+          throw new ConflictException("Administrator account already exists for this user.");
+        }
+
+        existingRoles.add("admin");
+        existing.roles = Array.from(existingRoles).join(",");
+        existing.adminRole = adminRole || "operations_admin";
+        if (!existing.phone && normalizedPhone) {
+          existing.phone = normalizedPhone;
+        }
+        return await this.userRepo.save(existing);
+      }
+
+      throw new ConflictException("An account with this email address already exists.");
+    }
+
+    // B. Brand New User Registration
+    const existingPhone = await this.userRepo.findOne({ where: { phone: normalizedPhone } });
+    if (existingPhone) {
+      throw new ConflictException("A user with this phone number is already registered");
+    }
+
     const hashed = await this.hashPassword(pass);
     const user = new UserEntity();
     user.id = "u-" + crypto.randomUUID();
     user.name = name;
     user.email = normalizedEmail;
     user.password = hashed;
-    user.phone = normalizedPhone || phone || "";
+    user.phone = normalizedPhone;
     user.role = role;
+    user.roles = role;
     user.status = "active";
     user.dateJoined = new Date().toISOString().split("T")[0];
 
@@ -501,6 +600,17 @@ export class AuthService {
       }
     }
 
+    if (role === "patient" && this.patientProfileRepo) {
+      try {
+        const patientProfile = new PatientProfileEntity();
+        patientProfile.id = "pat-" + crypto.randomUUID();
+        patientProfile.userId = savedUser.id;
+        await this.patientProfileRepo.save(patientProfile);
+      } catch (err) {
+        console.error("[AUTH] Failed to auto-create patient profile entity:", err);
+      }
+    }
+
     if (role === "provider" && this.realtimeService) {
       this.realtimeService.emitApprovalRequested({
         userId: savedUser.id,
@@ -539,7 +649,6 @@ export class AuthService {
     if (user.roles) {
       user.roles.split(",").map((r) => r.trim()).filter(Boolean).forEach((r) => rolesSet.add(r));
     }
-    rolesSet.add("patient"); // Every registered account has patient access
     if (providerData) {
       rolesSet.add("provider");
     }
@@ -832,21 +941,21 @@ export class AuthService {
     if (!identifier || !identifier.trim()) {
       return {
         found: false,
-        message: "If an account matches the provided identifier, instructions have been prepared."
+        message: "No account found. Please register first."
       };
     }
     const user = await this.findUserByIdentifier(identifier.trim());
     if (!user) {
       return {
         found: false,
-        message: "If an account matches the provided identifier, instructions have been prepared."
+        message: "No account found. Please register first."
       };
     }
     return {
       found: true,
       email: user.email ? this.maskEmail(user.email) : undefined,
       phone: user.phone ? this.maskPhone(user.phone) : undefined,
-      message: "If an account matches the provided identifier, instructions have been prepared."
+      message: "Reset instructions have been sent to your registered contact."
     };
   }
 
@@ -931,7 +1040,6 @@ export class AuthService {
       channel = "email";
     }
 
-    // UNIFORM TIMING / RESPONSE: Prevent account enumeration when user does not exist
     if (!user) {
       const dest = channel === "sms" ? (targetPhone || "registered mobile") : (targetEmail || identifier);
       const masked = channel === "sms" ? this.maskPhone(dest) : this.maskEmail(dest);
@@ -939,13 +1047,8 @@ export class AuthService {
         success: true,
         channel,
         destination: masked || "registered contact",
-        message: "If an account matches the provided identifier, a password reset code has been sent.",
+        message: "If an account matches the provided identifier, reset instructions have been sent to your registered contact.",
       };
-    }
-
-    // Ensure the registered account and requested phone number match - NEVER save masked phone with *!
-    if (phoneCandidate && !phoneCandidate.includes("*") && !phoneCandidate.includes("@")) {
-      user.phone = phoneCandidate;
     }
 
     // Cryptographically random 6-digit OTP
@@ -978,7 +1081,7 @@ export class AuthService {
       success: true,
       channel,
       destination: masked,
-      message: "If an account matches the provided identifier, a password reset code has been sent.",
+      message: "If an account matches the provided identifier, reset instructions have been sent to your registered contact.",
     };
   }
 
@@ -1372,6 +1475,17 @@ export class AuthService {
 
       user = await this.userRepo.save(user);
 
+      if (targetRole === "patient" && this.patientProfileRepo) {
+        try {
+          const patientProfile = new PatientProfileEntity();
+          patientProfile.id = "pat-" + crypto.randomUUID();
+          patientProfile.userId = user.id;
+          await this.patientProfileRepo.save(patientProfile);
+        } catch (err) {
+          console.error("[AUTH] Failed to auto-create patient profile entity for Google user:", err);
+        }
+      }
+
       if (targetRole === "provider" && this.providerRepo) {
         const provider = new ProviderEntity();
         provider.id = "prov-" + crypto.randomUUID();
@@ -1477,7 +1591,11 @@ export class AuthService {
     }
 
     // 4. Issue authenticated session
-    return this.createSession(user.id, userAgent, ipAddress);
+    const session = await this.createSession(user.id, userAgent, ipAddress);
+    return {
+      ...session,
+      message: "Welcome back. You can sign in with Google.",
+    };
   }
 
   async appleAuth(

@@ -27,8 +27,9 @@ export class CreateAdminDto {
   @IsOptional()
   department?: string;
 
-  @IsOptional()
-  phone?: string;
+  @IsNotEmpty({ message: "A valid phone number is required." })
+  @MaxLength(30)
+  phone: string;
 }
 
 export class ResetAdminPasswordDto {

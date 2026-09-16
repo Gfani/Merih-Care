@@ -10,6 +10,7 @@ import * as path from "path";
 import * as bcrypt from "bcryptjs";
 import * as crypto from "crypto";
 import { ROLE_PERMISSIONS } from "../../shared/constants/permissions";
+import { validatePhoneNumber } from "../../shared/utils/phone.util";
 
 @Injectable()
 export class AdminService {
@@ -233,6 +234,17 @@ export class AdminService {
       throw new Error("An account with this email address already exists");
     }
 
+    const phoneValidation = validatePhoneNumber(data.phone);
+    if (!phoneValidation.isValid) {
+      throw new Error(phoneValidation.error || "A valid phone number is required.");
+    }
+    const phoneNorm = phoneValidation.normalized;
+
+    const existingPhone = await this.userRepo.findOne({ where: { phone: phoneNorm } });
+    if (existingPhone) {
+      throw new Error("A user with this phone number is already registered");
+    }
+
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(data.password, salt);
 
@@ -241,8 +253,9 @@ export class AdminService {
     admin.name = data.name.trim();
     admin.email = emailNorm;
     admin.password = hashedPassword;
-    admin.phone = data.phone?.trim() || "";
+    admin.phone = phoneNorm;
     admin.role = "admin";
+    admin.roles = "admin";
     admin.adminRole = data.adminRole || (data.department ? `${data.department.toLowerCase()}_admin` : "operations_admin");
     admin.isApproved = true;
     admin.status = "active";
@@ -293,7 +306,23 @@ export class AdminService {
       }
     }
 
+    targetUser.status = "disabled";
+    targetUser.isApproved = false;
+    targetUser.tokenVersion = (targetUser.tokenVersion || 0) + 1;
     await this.userRepo.remove(targetUser);
+
+    if (this.realtimeService) {
+      try {
+        this.realtimeService.emitToRoom("admin", "user_status_changed", {
+          userId: targetId,
+          status: "removed",
+          isApproved: false,
+        });
+      } catch (err) {
+        console.error("Failed to emit admin removal status change:", err);
+      }
+    }
+
     return { success: true, message: `Administrator ${targetUser.name || targetUser.email} has been immediately removed.` };
   }
 

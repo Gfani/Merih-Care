@@ -167,50 +167,42 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     setResetNewPassword("");
     setResetConfirmPassword("");
     setResetStep(1);
-    setOtpModalOpen(true);
 
-    // Look up the related registered account contact info
-    const emailToLookup = currentEmail || "admin@merihcare.live";
-    try {
-      const contact = await api.lookupContact(emailToLookup);
-      if (contact && (contact.phone || contact.email)) {
-        const maskedP = contact.phone ? maskPhone(contact.phone) : "";
-        const maskedE = contact.email ? maskEmail(contact.email) : maskEmail(emailToLookup);
-        setMaskedPhone(maskedP);
-        setMaskedEmail(maskedE);
-        if (contact.email) {
-          setAccountEmail(contact.email);
-        }
-        if (maskedP) {
-          setResetIdentifier(maskedP);
-          setIsContactLocked(true);
+    if (currentEmail) {
+      try {
+        const contact = await api.lookupContact(currentEmail);
+        if (contact && contact.found) {
+          const maskedP = contact.phone ? maskPhone(contact.phone) : "";
+          const maskedE = contact.email ? maskEmail(contact.email) : maskEmail(currentEmail);
+          setMaskedPhone(maskedP);
+          setMaskedEmail(maskedE);
+          if (contact.email) {
+            setAccountEmail(contact.email);
+          }
+          if (maskedP) {
+            setResetIdentifier(maskedP);
+            setIsContactLocked(true);
+          } else {
+            setResetIdentifier(maskedE);
+            setIsContactLocked(true);
+          }
+          setOtpModalOpen(true);
+          return;
         } else {
-          setResetIdentifier("");
-          setIsContactLocked(false);
+          toast("No account found. Please register first.", "error");
+          return;
         }
+      } catch {
+        toast("No account found. Please register first.", "error");
         return;
       }
-    } catch {
-      // Fallback below
     }
 
-    if (currentEmail && currentEmail.includes("@")) {
-      const maskedE = maskEmail(currentEmail);
-      setMaskedEmail(maskedE);
-      setMaskedPhone("");
-      setResetIdentifier("");
-      setIsContactLocked(false);
-    } else if (currentEmail && !currentEmail.includes("@")) {
-      const maskedP = maskPhone(currentEmail);
-      setMaskedPhone(maskedP);
-      setResetIdentifier(maskedP);
-      setIsContactLocked(true);
-    } else {
-      setResetIdentifier("");
-      setMaskedPhone("");
-      setMaskedEmail("");
-      setIsContactLocked(false);
-    }
+    setResetIdentifier("");
+    setMaskedPhone("");
+    setMaskedEmail("");
+    setIsContactLocked(false);
+    setOtpModalOpen(true);
   };
 
   const handleRequestOtp = async (e: React.FormEvent) => {
@@ -225,11 +217,43 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     setResetOtp("");
     setResetNewPassword("");
     setResetConfirmPassword("");
+
+    let resolvedEmail = accountEmail || savedEmail;
+    let resolvedPhone = maskedPhone;
+
+    if (!isContactLocked && val) {
+      try {
+        const contact = await api.lookupContact(val);
+        if (!contact || !contact.found) {
+          toast("No account found. Please register first.", "error");
+          setResetLoading(false);
+          return;
+        }
+        const maskedP = contact.phone ? maskPhone(contact.phone) : "";
+        const maskedE = contact.email ? maskEmail(contact.email) : maskEmail(val);
+        setMaskedPhone(maskedP);
+        setMaskedEmail(maskedE);
+        resolvedEmail = contact.email || (val.includes("@") ? val : resolvedEmail);
+        resolvedPhone = maskedP;
+        setAccountEmail(resolvedEmail);
+        if (resetChannel === "sms" && maskedP) {
+          setResetIdentifier(maskedP);
+        } else if (maskedE) {
+          setResetIdentifier(maskedE);
+        }
+        setIsContactLocked(true);
+      } catch {
+        toast("No account found. Please register first.", "error");
+        setResetLoading(false);
+        return;
+      }
+    }
+
     try {
       const isPhoneInput = !val.includes("@");
-      const phoneCandidate = (resetChannel === "sms") ? (maskedPhone || (isPhoneInput ? val : undefined)) : undefined;
-      const emailCandidate = accountEmail || savedEmail || (val.includes("@") ? val : undefined);
-      const targetIdentifier = (resetChannel === "sms" ? (phoneCandidate || emailCandidate) : (emailCandidate || phoneCandidate)) || "admin@merihcare.live";
+      const phoneCandidate = (resetChannel === "sms") ? (resolvedPhone || (isPhoneInput ? val : undefined)) : undefined;
+      const emailCandidate = resolvedEmail || (val.includes("@") ? val : undefined);
+      const targetIdentifier = (resetChannel === "sms" ? (phoneCandidate || emailCandidate) : (emailCandidate || phoneCandidate)) || val;
 
       const res = await api.requestPasswordReset(targetIdentifier, resetChannel, {
         email: emailCandidate,
@@ -242,18 +266,18 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
       setResetChannel(actualChannel);
       setResetMaskedDest(actualDest);
 
-      toast(
-        actualChannel === "sms"
-          ? `6-Digit OTP code sent via SMS to ${actualDest}! (Valid for 5 minutes)`
-          : `6-Digit OTP code sent via Email to ${actualDest}! (Valid for 5 minutes)`,
-        "success"
-      );
+      toast(res.message || "Reset instructions have been sent to your registered contact.", "success");
       setResetOtp("");
       setResetNewPassword("");
       setResetConfirmPassword("");
       setResetStep(2);
     } catch (err: any) {
-      toast(err.response?.data?.message || err.message || "Failed to request password reset code", "error");
+      const msg = err.response?.data?.message || err.message;
+      if (typeof msg === "string" && (msg.includes("No account found") || msg.includes("not found"))) {
+        toast("No account found. Please register first.", "error");
+      } else {
+        toast(msg || "No account found. Please register first.", "error");
+      }
     } finally {
       setResetLoading(false);
     }
@@ -279,7 +303,7 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
 
       setResetChannel(actualChannel);
       setResetMaskedDest(actualDest);
-      toast(`New 6-digit OTP code sent via ${actualChannel.toUpperCase()} to ${actualDest}!`, "success");
+      toast(res.message || "Reset instructions have been sent to your registered contact.", "success");
     } catch (err: any) {
       toast(err.response?.data?.message || err.message || `Failed to resend OTP via ${targetChannel.toUpperCase()}`, "error");
     } finally {

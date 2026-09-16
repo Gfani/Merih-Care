@@ -501,6 +501,7 @@ export class AuthController {
   }
 
   @Post("lookup-contact")
+  @Post("forgot-password/lookup")
   @HttpCode(HttpStatus.OK)
   async lookupContact(@Body() body: { identifier?: string; email?: string; phone?: string }) {
     const id = body.identifier || body.email || body.phone || "";

@@ -6,12 +6,13 @@ import { AuthController } from "./auth.controller";
 import { UserEntity } from "../../database/entities/user.entity";
 import { SessionEntity } from "../../database/entities/session.entity";
 import { ProviderEntity } from "../../database/entities/provider.entity";
+import { PatientProfileEntity } from "../../database/entities/patient-provider.entity";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { RealtimeModule } from "../realtime/realtime.module";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([UserEntity, SessionEntity, ProviderEntity]),
+    TypeOrmModule.forFeature([UserEntity, SessionEntity, ProviderEntity, PatientProfileEntity]),
     forwardRef(() => NotificationsModule),
     forwardRef(() => RealtimeModule),
     JwtModule.register({
