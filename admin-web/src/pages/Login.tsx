@@ -7,8 +7,50 @@ import logo from "../assets/logo.png";
 import GoogleLogo from "../components/GoogleLogo";
 import AppleLogo from "../components/AppleLogo";
 import { validateRealEmail } from "../utils/validation";
-
 import { useAuth } from "../context/AuthContext";
+
+const maskPhone = (phone: string): string => {
+  if (!phone) return "";
+  const trimmed = phone.trim();
+  if (!trimmed) return "";
+  if (trimmed.includes("*")) {
+    const digitsOnly = trimmed.replace(/\D/g, "");
+    if (digitsOnly.length >= 3) {
+      const last3 = digitsOnly.slice(-3);
+      const stars = "*".repeat(Math.max(3, digitsOnly.length - 3));
+      return trimmed.startsWith("+") ? `+${stars}${last3}` : `${stars}${last3}`;
+    }
+    return trimmed;
+  }
+  const hasPlus = trimmed.startsWith("+");
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length <= 3) return "***";
+  const last3 = digits.slice(-3);
+  const starCount = Math.max(3, digits.length - 3);
+  const stars = "*".repeat(starCount);
+  return hasPlus ? `+${stars}${last3}` : `${stars}${last3}`;
+};
+
+const maskEmail = (email: string): string => {
+  if (!email) return "";
+  const trimmed = email.trim();
+  if (!trimmed) return "";
+  if (!trimmed.includes("@")) return maskPhone(trimmed);
+  if (trimmed.includes("*")) return trimmed;
+  const [name, fullDomain] = trimmed.split("@");
+  const maskedName = name.length > 1 ? `${name[0]}***` : "***";
+  if (fullDomain) {
+    const parts = fullDomain.split(".");
+    if (parts.length >= 2) {
+      const domainName = parts[0];
+      const tld = parts.slice(1).join(".");
+      const maskedDomain = domainName.length > 1 ? `${domainName[0]}***` : "***";
+      return `${maskedName}@${maskedDomain}.${tld}`;
+    }
+    return `${maskedName}@***`;
+  }
+  return `${maskedName}@***`;
+};
 
 export default function Login({ onLogin }: { onLogin?: () => void }) {
   const navigate = useNavigate();
@@ -25,6 +67,10 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
   const [resetStep, setResetStep] = useState<1 | 2>(1);
   const [resetChannel, setResetChannel] = useState<"sms" | "email">("sms");
   const [resetIdentifier, setResetIdentifier] = useState("");
+  const [accountEmail, setAccountEmail] = useState("");
+  const [maskedPhone, setMaskedPhone] = useState("");
+  const [maskedEmail, setMaskedEmail] = useState("");
+  const [isContactLocked, setIsContactLocked] = useState(false);
   const [savedEmail, setSavedEmail] = useState("");
   const [savedPhone, setSavedPhone] = useState("");
   const [resetMaskedDest, setResetMaskedDest] = useState("");
@@ -109,12 +155,13 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
   };
 
   const handleOpenOtpModal = async () => {
-    const currentEmail = email || localStorage.getItem("admin_email") || "";
-    let currentPhone = localStorage.getItem("admin_phone") || "";
+    // Purge any raw unmasked phone strings from storage to protect privacy
+    localStorage.removeItem("admin_phone");
+
+    const currentEmail = (email.trim() || localStorage.getItem("admin_email") || "").trim();
     setSavedEmail(currentEmail);
-    setSavedPhone(currentPhone);
+    setAccountEmail(currentEmail);
     setResetChannel("sms");
-    setResetIdentifier(currentPhone);
     setResetMaskedDest("");
     setResetOtp("");
     setResetNewPassword("");
@@ -122,45 +169,57 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     setResetStep(1);
     setOtpModalOpen(true);
 
-    // If phone is empty but email is available, automatically look up phone from backend
-    if (!currentPhone && currentEmail) {
-      try {
-        const contact = await api.lookupContact(currentEmail);
-        if (contact && contact.phone) {
-          setSavedPhone(contact.phone);
-          setResetIdentifier(contact.phone);
-          localStorage.setItem("admin_phone", contact.phone);
+    // Look up the related registered account contact info
+    const emailToLookup = currentEmail || "admin@merihcare.live";
+    try {
+      const contact = await api.lookupContact(emailToLookup);
+      if (contact && (contact.phone || contact.email)) {
+        const maskedP = maskPhone(contact.phone || "");
+        const maskedE = maskEmail(contact.email || emailToLookup);
+        setMaskedPhone(maskedP);
+        setMaskedEmail(maskedE);
+        setResetIdentifier(maskedP);
+        setIsContactLocked(true);
+        if (contact.email) {
+          setAccountEmail(contact.email);
         }
-      } catch {}
+        return;
+      }
+    } catch {
+      // Fallback below
+    }
+
+    if (currentEmail) {
+      const maskedE = maskEmail(currentEmail);
+      setMaskedEmail(maskedE);
+      setResetIdentifier(maskedE);
+    } else {
+      setResetIdentifier("");
+      setMaskedPhone("");
+      setMaskedEmail("");
+      setIsContactLocked(false);
     }
   };
 
   const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     const val = resetIdentifier.trim();
-    if (!val) {
+    if (!val && !maskedPhone && !maskedEmail) {
       toast(resetChannel === "sms" ? "Please enter your mobile phone number" : "Please enter your administrator email", "warning");
       return;
     }
-    if (resetChannel === "email") {
-      const emailCheck = validateRealEmail(val);
-      if (!emailCheck.isValid) {
-        toast(emailCheck.error || "Please enter a valid email", "warning");
-        return;
-      }
-    }
+
     setResetLoading(true);
     setResetOtp("");
     setResetNewPassword("");
     setResetConfirmPassword("");
     try {
-      const currentEmail = (savedEmail || (email.includes("@") ? email : "")).trim();
-      const currentPhone = (resetChannel === "sms" ? val : (savedPhone || "")).trim();
-      const res = await api.requestPasswordReset(val, resetChannel, {
-        email: currentEmail || undefined,
-        phone: currentPhone || undefined,
+      const targetIdentifier = accountEmail || (resetIdentifier.includes("@") ? resetIdentifier : (savedEmail || email.trim() || "admin@merihcare.live"));
+      const res = await api.requestPasswordReset(targetIdentifier, resetChannel, {
+        email: accountEmail || savedEmail || (targetIdentifier.includes("@") ? targetIdentifier : undefined),
+        phone: maskedPhone || (resetChannel === "sms" ? val : undefined),
       });
-      const dest = res.destination || val;
+      const dest = res.destination || (resetChannel === "sms" ? (maskedPhone || val) : (maskedEmail || targetIdentifier));
       setResetMaskedDest(dest);
       toast(
         resetChannel === "sms"
@@ -183,14 +242,13 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     if (targetChannel === "sms") setResendingSms(true);
     else setResendingEmail(true);
     try {
-      const currentEmail = (savedEmail || (email.includes("@") ? email : "")).trim();
-      const currentPhone = (targetChannel === "sms" ? resetIdentifier.trim() : (savedPhone || "")).trim();
-      const res = await api.requestPasswordReset(resetIdentifier.trim(), targetChannel, {
-        email: currentEmail || undefined,
-        phone: currentPhone || undefined,
+      const targetIdentifier = accountEmail || (resetIdentifier.includes("@") ? resetIdentifier : (savedEmail || email.trim() || "admin@merihcare.live"));
+      const res = await api.requestPasswordReset(targetIdentifier, targetChannel, {
+        email: accountEmail || savedEmail || (targetIdentifier.includes("@") ? targetIdentifier : undefined),
+        phone: maskedPhone || (targetChannel === "sms" ? resetIdentifier : undefined),
       });
       setResetChannel(targetChannel);
-      const dest = res.destination || resetIdentifier.trim();
+      const dest = res.destination || (targetChannel === "sms" ? (maskedPhone || resetIdentifier) : (maskedEmail || targetIdentifier));
       setResetMaskedDest(dest);
       toast(`New 6-digit OTP code sent via ${targetChannel.toUpperCase()} to ${dest}!`, "success");
     } catch (err: any) {
@@ -217,15 +275,14 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     }
     setResetLoading(true);
     try {
-      const currentEmail = (savedEmail || (email.includes("@") ? email : "")).trim();
-      const currentPhone = (resetChannel === "sms" ? resetIdentifier.trim() : (savedPhone || "")).trim();
-      await api.confirmPasswordReset(resetIdentifier.trim(), resetOtp.trim(), resetNewPassword, {
-        email: currentEmail || undefined,
-        phone: currentPhone || undefined,
+      const targetIdentifier = accountEmail || (resetIdentifier.includes("@") ? resetIdentifier : (savedEmail || email.trim() || "admin@merihcare.live"));
+      await api.confirmPasswordReset(targetIdentifier, resetOtp.trim(), resetNewPassword, {
+        email: accountEmail || savedEmail || (targetIdentifier.includes("@") ? targetIdentifier : undefined),
+        phone: maskedPhone || (resetChannel === "sms" ? resetIdentifier : undefined),
       });
       toast("Password reset successfully! You can now sign in with your new password.", "success");
-      if (resetIdentifier.includes("@")) {
-        setEmail(resetIdentifier.trim());
+      if (accountEmail) {
+        setEmail(accountEmail);
       }
       setPassword(resetNewPassword);
       setOtpModalOpen(false);
@@ -420,20 +477,22 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
                   type="button"
                   onClick={async () => {
                     setResetChannel("sms");
-                    if (savedPhone) {
-                      setResetIdentifier(savedPhone);
+                    if (maskedPhone) {
+                      setResetIdentifier(maskedPhone);
                     } else {
-                      const emailToLookup = savedEmail || (resetIdentifier.includes("@") ? resetIdentifier : "");
-                      if (emailToLookup) {
-                        try {
-                          const contact = await api.lookupContact(emailToLookup);
-                          if (contact && contact.phone) {
-                            setSavedPhone(contact.phone);
-                            setResetIdentifier(contact.phone);
-                            localStorage.setItem("admin_phone", contact.phone);
-                          }
-                        } catch {}
-                      }
+                      const emailToLookup = accountEmail || savedEmail || (resetIdentifier.includes("@") ? resetIdentifier : "admin@merihcare.live");
+                      try {
+                        const contact = await api.lookupContact(emailToLookup);
+                        if (contact && (contact.phone || contact.email)) {
+                          const mPhone = maskPhone(contact.phone || "");
+                          const mEmail = maskEmail(contact.email || emailToLookup);
+                          setMaskedPhone(mPhone);
+                          setMaskedEmail(mEmail);
+                          setResetIdentifier(mPhone);
+                          setIsContactLocked(true);
+                          if (contact.email) setAccountEmail(contact.email);
+                        }
+                      } catch {}
                     }
                   }}
                   className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
@@ -449,7 +508,13 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
                   type="button"
                   onClick={() => {
                     setResetChannel("email");
-                    setResetIdentifier(savedEmail || (resetIdentifier.includes("@") ? resetIdentifier : ""));
+                    if (maskedEmail) {
+                      setResetIdentifier(maskedEmail);
+                    } else {
+                      const mEmail = maskEmail(accountEmail || savedEmail || email || "admin@merihcare.live");
+                      setMaskedEmail(mEmail);
+                      setResetIdentifier(mEmail);
+                    }
                   }}
                   className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
                     resetChannel === "email"
@@ -470,25 +535,77 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
             </p>
 
             {resetChannel === "sms" ? (
-              <Input
-                label="Administrator Mobile Phone"
-                type="tel"
-                value={resetIdentifier}
-                onChange={(e) => setResetIdentifier(e.target.value)}
-                placeholder="0911223344 or +251911223344"
-                required
-                leftIcon={<Smartphone size={16} />}
-              />
+              <div className="space-y-1.5">
+                <Input
+                  label="Administrator Mobile Phone"
+                  type="text"
+                  value={isContactLocked ? (maskedPhone || resetIdentifier) : resetIdentifier}
+                  onChange={(e) => {
+                    if (!isContactLocked) {
+                      setResetIdentifier(e.target.value);
+                    }
+                  }}
+                  readOnly={isContactLocked}
+                  disabled={resetLoading}
+                  placeholder="*******079"
+                  required
+                  leftIcon={<Smartphone size={16} />}
+                  rightIcon={
+                    isContactLocked ? (
+                      <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-800">
+                        <Lock size={12} /> Locked
+                      </span>
+                    ) : undefined
+                  }
+                  className={
+                    isContactLocked
+                      ? "bg-slate-100/80 dark:bg-slate-800/90 cursor-not-allowed select-none font-mono tracking-wider text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600 focus:ring-0 focus:border-slate-300"
+                      : ""
+                  }
+                />
+                {isContactLocked && (
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1 pt-0.5 font-medium">
+                    <ShieldCheck size={13} />
+                    Verified registered phone locked for your security. Cannot be altered.
+                  </p>
+                )}
+              </div>
             ) : (
-              <Input
-                label="Administrator Email"
-                type="email"
-                value={resetIdentifier}
-                onChange={(e) => setResetIdentifier(e.target.value)}
-                placeholder="admin@merihcare.et"
-                required
-                leftIcon={<Mail size={16} />}
-              />
+              <div className="space-y-1.5">
+                <Input
+                  label="Administrator Email"
+                  type="text"
+                  value={isContactLocked ? (maskedEmail || resetIdentifier) : resetIdentifier}
+                  onChange={(e) => {
+                    if (!isContactLocked) {
+                      setResetIdentifier(e.target.value);
+                    }
+                  }}
+                  readOnly={isContactLocked}
+                  disabled={resetLoading}
+                  placeholder="a***@m***.et"
+                  required
+                  leftIcon={<Mail size={16} />}
+                  rightIcon={
+                    isContactLocked ? (
+                      <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-800">
+                        <Lock size={12} /> Locked
+                      </span>
+                    ) : undefined
+                  }
+                  className={
+                    isContactLocked
+                      ? "bg-slate-100/80 dark:bg-slate-800/90 cursor-not-allowed select-none font-mono tracking-wider text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600 focus:ring-0 focus:border-slate-300"
+                      : ""
+                  }
+                />
+                {isContactLocked && (
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1 pt-0.5 font-medium">
+                    <ShieldCheck size={13} />
+                    Verified registered email locked for your security. Cannot be altered.
+                  </p>
+                )}
+              </div>
             )}
 
             <div className="flex justify-end gap-2 pt-2 border-t border-[#f0f4f7] dark:border-slate-700">

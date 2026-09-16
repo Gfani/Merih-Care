@@ -436,7 +436,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   void _showForgotPasswordDialog(BuildContext context) async {
     final emailCtrl = TextEditingController(text: _emailController.text.trim());
-    final phoneCtrl = TextEditingController(text: (_savedPhone != null && _savedPhone != '0991607015') ? _savedPhone! : '');
+    final phoneCtrl = TextEditingController();
     final otpCtrl = TextEditingController();
     final newPassCtrl = TextEditingController();
     final confirmPassCtrl = TextEditingController();
@@ -444,21 +444,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     int step = 1; // 1: request, 2: verify
     String selectedChannel = 'sms'; // 'sms' or 'email'
     String activeIdentifier = '';
+    String activeAccountEmail = _emailController.text.trim();
+    String maskedPhone = '';
+    String maskedEmail = '';
+    bool isContactLocked = false;
     String maskedDestination = '';
     bool loading = false;
     String? errorMsg;
     String? successMsg;
 
-    // Check SecureStorage for saved phone (cleanly purge any legacy 0991607015 dummy test number)
-    if (phoneCtrl.text.isEmpty) {
-      final p = await SecureStorage.instance.readLastPhone();
-      if (p == '0991607015') {
-        await SecureStorage.instance.deleteKey('last_phone');
-        _savedPhone = null;
-      } else if (p != null && p.isNotEmpty) {
-        phoneCtrl.text = p;
-        _savedPhone = p;
+    // Look up registered contact to display masked phone (last 3 digits only) and masked email
+    if (activeAccountEmail.isEmpty) {
+      final savedEmail = await SecureStorage.instance.readLastEmail();
+      if (savedEmail != null && savedEmail.isNotEmpty) {
+        activeAccountEmail = savedEmail;
       }
+    }
+
+    if (activeAccountEmail.isNotEmpty) {
+      try {
+        final contact = await ref.read(authProvider.notifier).lookupContact(activeAccountEmail);
+        if (contact != null && (contact['phone'] != null || contact['email'] != null)) {
+          maskedPhone = contact['phone'] ?? '';
+          maskedEmail = contact['email'] ?? '';
+          isContactLocked = true;
+          phoneCtrl.text = maskedPhone;
+          emailCtrl.text = maskedEmail;
+        }
+      } catch (_) {}
     }
 
     if (!context.mounted) return;
@@ -508,14 +521,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               child: GestureDetector(
                                 onTap: loading
                                     ? null
-                                    : () async {
-                                        setDialogState(() => selectedChannel = 'sms');
-                                        if (phoneCtrl.text.trim().isEmpty) {
-                                          final p = await SecureStorage.instance.readLastPhone() ?? _savedPhone;
-                                          if (p != null && p.isNotEmpty && p != '0991607015') {
-                                            setDialogState(() => phoneCtrl.text = p);
+                                    : () {
+                                        setDialogState(() {
+                                          selectedChannel = 'sms';
+                                          if (maskedPhone.isNotEmpty) {
+                                            phoneCtrl.text = maskedPhone;
                                           }
-                                        }
+                                        });
                                       },
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -552,20 +564,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               child: GestureDetector(
                                 onTap: loading
                                     ? null
-                                    : () async {
-                                        setDialogState(() => selectedChannel = 'email');
-                                        if (emailCtrl.text.trim().isEmpty) {
-                                          final e = await SecureStorage.instance.readLastEmail() ?? _emailController.text.trim();
-                                          if (e.isNotEmpty) {
-                                            setDialogState(() => emailCtrl.text = e);
-                                          } else if (phoneCtrl.text.trim().isNotEmpty) {
-                                            final contact = await ref.read(authProvider.notifier).lookupContact(phoneCtrl.text.trim());
-                                            if (contact != null && contact['email'] != null && contact['email']!.isNotEmpty) {
-                                              setDialogState(() => emailCtrl.text = contact['email']!);
-                                              SecureStorage.instance.writeLastEmail(contact['email']!);
-                                            }
+                                    : () {
+                                        setDialogState(() {
+                                          selectedChannel = 'email';
+                                          if (maskedEmail.isNotEmpty) {
+                                            emailCtrl.text = maskedEmail;
                                           }
-                                        }
+                                        });
                                       },
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -646,21 +651,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       if (selectedChannel == 'sms')
                         TextField(
                           controller: phoneCtrl,
+                          readOnly: isContactLocked,
                           keyboardType: TextInputType.phone,
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             labelText: 'Phone Number',
-                            hintText: '0911223344 or +251911223344',
-                            prefixIcon: Icon(Icons.phone_android),
+                            hintText: '*******079',
+                            prefixIcon: const Icon(Icons.phone_android),
+                            suffixIcon: isContactLocked
+                                ? const Icon(Icons.lock, color: Colors.green, size: 20)
+                                : null,
+                            helperText: isContactLocked
+                                ? '🔒 Registered phone verified and locked'
+                                : null,
                           ),
                         )
                       else
                         TextField(
                           controller: emailCtrl,
+                          readOnly: isContactLocked,
                           keyboardType: TextInputType.emailAddress,
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             labelText: 'Email Address',
-                            hintText: 'name@example.com',
-                            prefixIcon: Icon(Icons.email_outlined),
+                            hintText: 'a***@m***.et',
+                            prefixIcon: const Icon(Icons.email_outlined),
+                            suffixIcon: isContactLocked
+                                ? const Icon(Icons.lock, color: Colors.green, size: 20)
+                                : null,
+                            helperText: isContactLocked
+                                ? '🔒 Registered email verified and locked'
+                                : null,
                           ),
                         ),
                     ] else ...[
@@ -796,17 +815,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   onPressed: loading
                       ? null
                       : () async {
-                          final identifier = selectedChannel == 'sms'
-                              ? phoneCtrl.text.trim()
-                              : emailCtrl.text.trim();
+                          final reqIdentifier = (isContactLocked && activeAccountEmail.isNotEmpty)
+                              ? activeAccountEmail
+                              : (selectedChannel == 'sms' ? phoneCtrl.text.trim() : emailCtrl.text.trim());
 
                           if (selectedChannel == 'sms') {
-                            if (identifier.length < 9) {
+                            if (phoneCtrl.text.trim().length < 9) {
                               setDialogState(() => errorMsg = 'Please enter a valid phone number (e.g. 0911223344)');
                               return;
                             }
                           } else {
-                            if (identifier.isEmpty || !identifier.contains('@')) {
+                            if (!isContactLocked && (emailCtrl.text.trim().isEmpty || !emailCtrl.text.trim().contains('@'))) {
                               setDialogState(() => errorMsg = 'Please enter a valid email address');
                               return;
                             }
@@ -819,9 +838,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           });
 
                           final res = await ref.read(authProvider.notifier).requestPasswordReset(
-                            identifier,
+                            reqIdentifier,
                             channel: selectedChannel,
-                            email: emailCtrl.text.trim().isNotEmpty ? emailCtrl.text.trim() : null,
+                            email: activeAccountEmail.isNotEmpty ? activeAccountEmail : (emailCtrl.text.trim().isNotEmpty ? emailCtrl.text.trim() : null),
                             phone: phoneCtrl.text.trim().isNotEmpty ? phoneCtrl.text.trim() : null,
                           );
 
@@ -829,7 +848,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             loading = false;
                             if (res['success'] == true) {
                               step = 2;
-                              activeIdentifier = identifier;
+                              activeIdentifier = reqIdentifier;
                               maskedDestination = res['destination'] ?? identifier;
                               successMsg = res['message'] ?? 'OTP code sent. Valid for 5 minutes.';
                               if (selectedChannel == 'sms' && phoneCtrl.text.trim().isNotEmpty) {

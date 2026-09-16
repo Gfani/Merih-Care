@@ -777,18 +777,55 @@ export class AuthService {
     return user;
   }
 
-  private maskDestination(str: string): string {
+  maskPhone(phone: string): string {
+    if (!phone) return "";
+    const trimmed = phone.trim();
+    if (!trimmed) return "";
+    if (trimmed.includes("*")) {
+      const digitsOnly = trimmed.replace(/\D/g, "");
+      if (digitsOnly.length >= 3) {
+        const last3 = digitsOnly.slice(-3);
+        const stars = "*".repeat(Math.max(3, digitsOnly.length - 3));
+        return trimmed.startsWith("+") ? `+${stars}${last3}` : `${stars}${last3}`;
+      }
+      return trimmed;
+    }
+    const hasPlus = trimmed.startsWith("+");
+    const digits = trimmed.replace(/\D/g, "");
+    if (digits.length <= 3) return "***";
+    const last3 = digits.slice(-3);
+    const starCount = Math.max(3, digits.length - 3);
+    const stars = "*".repeat(starCount);
+    return hasPlus ? `+${stars}${last3}` : `${stars}${last3}`;
+  }
+
+  maskEmail(email: string): string {
+    if (!email) return "";
+    const trimmed = email.trim();
+    if (!trimmed) return "";
+    if (!trimmed.includes("@")) return "***";
+    if (trimmed.includes("*")) return trimmed;
+    const [name, fullDomain] = trimmed.split("@");
+    const maskedName = name.length > 1 ? `${name[0]}***` : "***";
+    if (fullDomain) {
+      const parts = fullDomain.split(".");
+      if (parts.length >= 2) {
+        const domainName = parts[0];
+        const tld = parts.slice(1).join(".");
+        const maskedDomain = domainName.length > 1 ? `${domainName[0]}***` : "***";
+        return `${maskedName}@${maskedDomain}.${tld}`;
+      }
+      return `${maskedName}@***`;
+    }
+    return `${maskedName}@***`;
+  }
+
+  maskDestination(str: string): string {
     if (!str) return "";
     if (str.includes("@")) {
-      const [name, domain] = str.split("@");
-      if (name.length <= 2) return `${name}***@${domain}`;
-      return `${name.substring(0, 2)}***${name.slice(-1)}@${domain}`;
+      return this.maskEmail(str);
     }
-    const clean = str.replace(/[^\d+]/g, "");
-    if (clean.length > 6) {
-      return `${clean.substring(0, 4)}****${clean.slice(-2)}`;
-    }
-    return clean;
+    return this.maskPhone(str);
   }
 
   async lookupContact(identifier: string): Promise<{ found: boolean; email?: string; phone?: string; message?: string }> {
@@ -807,16 +844,37 @@ export class AuthService {
     }
     return {
       found: true,
-      email: user.email ? this.maskDestination(user.email) : undefined,
-      phone: user.phone ? this.maskDestination(user.phone) : undefined,
+      email: user.email ? this.maskEmail(user.email) : undefined,
+      phone: user.phone ? this.maskPhone(user.phone) : undefined,
       message: "If an account matches the provided identifier, instructions have been prepared."
     };
   }
 
   isSamePhoneNumber(phoneA?: string, phoneB?: string): boolean {
     if (!phoneA || !phoneB) return false;
-    const digitsA = phoneA.replace(/\D/g, "");
-    const digitsB = phoneB.replace(/\D/g, "");
+    const cleanA = phoneA.trim();
+    const cleanB = phoneB.trim();
+    if (!cleanA || !cleanB) return false;
+    if (cleanA === cleanB) return true;
+
+    // Handle masked comparison where either phone has '*'
+    if (cleanA.includes("*") || cleanB.includes("*")) {
+      const masked = cleanA.includes("*") ? cleanA : cleanB;
+      const target = cleanA.includes("*") ? cleanB : cleanA;
+      const targetDigits = target.replace(/\D/g, "");
+      const match = masked.match(/\*+(\d+)$/);
+      if (match && match[1]) {
+        return targetDigits.endsWith(match[1]);
+      }
+      const maskedDigits = masked.replace(/\D/g, "");
+      if (maskedDigits.length >= 3) {
+        return targetDigits.endsWith(maskedDigits.slice(-3));
+      }
+      return false;
+    }
+
+    const digitsA = cleanA.replace(/\D/g, "");
+    const digitsB = cleanB.replace(/\D/g, "");
     if (!digitsA || !digitsB) return false;
     if (digitsA === digitsB) return true;
     if (digitsA.length >= 9 && digitsB.length >= 9) {
@@ -860,8 +918,9 @@ export class AuthService {
     // Never fall back to legacy dummy test phone 0991607015
     const cleanUserPhone = (user?.phone && user.phone.replace(/\D/g, "") !== "0991607015" && user.phone !== "0991607015") ? user.phone : undefined;
 
-    // The SMS OTP MUST strictly go to the requested phone number
-    const targetPhone = phoneCandidate || cleanUserPhone;
+    // The SMS OTP MUST strictly go to the real registered phone number or unmasked candidate
+    const isPhoneCandidateMasked = phoneCandidate && phoneCandidate.includes("*");
+    const targetPhone = isPhoneCandidateMasked ? cleanUserPhone : (phoneCandidate || cleanUserPhone);
     const targetEmail = emailCandidate || user?.email;
 
     let channel: "email" | "sms" = requestedChannel || (targetPhone ? "sms" : "email");
@@ -880,8 +939,8 @@ export class AuthService {
       };
     }
 
-    // Ensure the registered account and requested phone number match
-    if (phoneCandidate) {
+    // Ensure the registered account and requested phone number match - NEVER save masked phone with *!
+    if (phoneCandidate && !phoneCandidate.includes("*")) {
       user.phone = phoneCandidate;
     }
 
@@ -955,7 +1014,9 @@ export class AuthService {
       ) {
         throw new BadRequestException("The entered phone number is not associated with this user account");
       }
-      user.phone = phoneCandidate;
+      if (!phoneCandidate.includes("*")) {
+        user.phone = phoneCandidate;
+      }
     }
     if (emailCandidate && user.email.toLowerCase() !== emailCandidate.toLowerCase()) {
       throw new BadRequestException("The entered email address is not associated with this user account");
