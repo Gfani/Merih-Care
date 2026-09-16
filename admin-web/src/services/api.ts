@@ -732,7 +732,15 @@ export const api = {
   async getNotifications(page = 1, limit = 10): Promise<AdminNotification[]> {
     try {
       const res = await axios.get(`${API_URL}/notifications`, { headers: getHeaders(), params: { page, limit } });
-      return res.data;
+      const items = Array.isArray(res.data) ? res.data : (res.data?.notifications || []);
+      return items.map((n: any) => ({
+        id: n.id,
+        title: n.title,
+        message: n.body || n.message || "",
+        type: n.type || "general",
+        read: n.isRead ?? n.read ?? false,
+        createdAt: n.createdAt ? new Date(n.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Just now",
+      }));
     } catch (error) {
       if (isDemoMode()) {
         return [
@@ -747,7 +755,7 @@ export const api = {
   async getUnreadCount(): Promise<number> {
     try {
       const res = await axios.get(`${API_URL}/notifications/unread-count`, { headers: getHeaders() });
-      return res.data?.count ?? 0;
+      return res.data?.unread ?? res.data?.count ?? 0;
     } catch {
       return isDemoMode() ? 2 : 0;
     }

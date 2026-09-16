@@ -207,7 +207,8 @@ function AppContent() {
       const count = await api.getUnreadCount();
       setUnreadCount(count);
       const list = await api.getNotifications(1, 10);
-      setNotifications(list);
+      const notifs = Array.isArray(list) ? list : (list as any)?.notifications || [];
+      setNotifications(notifs);
     } catch {
       // Ignored in background
     }
@@ -259,8 +260,9 @@ function AppContent() {
       toast(`🔔 New Service Request: ${serviceType} for ${patientName}`, "info");
       loadBadgeCounts();
       loadNotifications();
-    } else if (event === "appointment_status_update") {
+    } else if (event === "appointment_status_update" || event === "notification") {
       loadBadgeCounts();
+      loadNotifications();
     }
   }, []);
 
@@ -508,9 +510,19 @@ function AppContent() {
                         <div className="p-4 text-center text-xs text-[#8a9aaa]">No notifications</div>
                       ) : (
                         notifications.map((n) => (
-                          <div key={n.id} className="p-3 hover:bg-[#f8fafc] dark:hover:bg-slate-700/50">
-                            <p className="text-xs font-bold text-[#18232e] dark:text-white">{n.title}</p>
-                            <p className="text-[11px] text-[#4a5a6a] dark:text-slate-300 mt-0.5">{n.message}</p>
+                          <div
+                            key={n.id}
+                            className={`p-3 hover:bg-[#f8fafc] dark:hover:bg-slate-700/50 transition-colors ${
+                              !n.read ? "bg-[#f0fdf4] dark:bg-emerald-950/20 border-l-2 border-[#0d7c6a]" : ""
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-1">
+                              <p className="text-xs font-bold text-[#18232e] dark:text-white truncate">{n.title}</p>
+                              {!n.read && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#0d7c6a] shrink-0" />
+                              )}
+                            </div>
+                            <p className="text-[11px] text-[#4a5a6a] dark:text-slate-300 mt-0.5 leading-relaxed">{n.message || n.body}</p>
                             <span className="text-[9px] text-[#8a9aaa] mt-1 block">{n.createdAt}</span>
                           </div>
                         ))

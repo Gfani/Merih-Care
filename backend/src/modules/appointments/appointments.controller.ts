@@ -177,12 +177,12 @@ export class AppointmentsController {
   constructor(private readonly appointmentsService: AppointmentsService) {}
 
   @Get()
-  async getAppointments(@Query() query: any) {
+  async getAppointments(@Query() query: any, @Req() req: any) {
     const limit = query?.limit ? Number(query.limit) : 50;
     const page = query?.page ? Number(query.page) : 1;
     const offset = (page - 1) * limit;
     const patientId = query?.patientId;
-    return this.appointmentsService.getAllAppointments(limit, offset, patientId);
+    return this.appointmentsService.getAllAppointments(limit, offset, patientId, req?.user);
   }
 
   @Get(":appointmentId")

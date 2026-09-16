@@ -25,11 +25,36 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
   List<dynamic> _activeSchedule = [];
   bool _loading = true;
   Timer? _pollTimer;
+  StreamSubscription? _serviceReqSub;
+  StreamSubscription? _appointmentSub;
 
   @override
   void initState() {
     super.initState();
     _loadDashboardData();
+
+    // Listen to live realtime dispatches from backend
+    _serviceReqSub = ref.read(realtimeServiceProvider).serviceRequestsStream.listen((data) {
+      if (mounted && _isOnline) {
+        _loadDashboardData();
+        final serviceName = data['service'] ?? data['serviceType'] ?? 'Care Service';
+        final patientName = data['patientName'] ?? 'Patient';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('🔔 New Patient Care Request: $serviceName for $patientName'),
+            backgroundColor: AppTheme.primaryColor,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    });
+
+    _appointmentSub = ref.read(realtimeServiceProvider).appointmentUpdatesStream.listen((_) {
+      if (mounted && _isOnline) {
+        _loadDashboardData();
+      }
+    });
+
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       if (mounted && _isOnline) {
         _loadDashboardData();
@@ -39,6 +64,8 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
 
   @override
   void dispose() {
+    _serviceReqSub?.cancel();
+    _appointmentSub?.cancel();
     _pollTimer?.cancel();
     super.dispose();
   }

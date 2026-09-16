@@ -156,7 +156,18 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
     const roomsSet = new Set([personalRoom]);
     if (role === "admin" || role === "super_admin") roomsSet.add("admin");
-    if (role === "provider") roomsSet.add("providers");
+    if (role === "provider") {
+      roomsSet.add("providers");
+      if (this.dataSource && this.dataSource.isInitialized) {
+        this.dataSource.getRepository(ProviderEntity).findOne({ where: { userId } }).then((prov) => {
+          if (prov) {
+            const provRoom = `provider:${prov.id}`;
+            socket.join(provRoom);
+            roomsSet.add(provRoom);
+          }
+        }).catch(() => {});
+      }
+    }
 
     socketUserMap.set(socket.id, {
       userId, role,

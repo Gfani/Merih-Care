@@ -26,6 +26,7 @@ describe("Appointment Lifecycle Tests", () => {
 
   const mockRealtimeService = {
     emitAppointmentUpdate: jest.fn(),
+    emitProviderResponse: jest.fn(),
   };
 
   const mockDataSource = {

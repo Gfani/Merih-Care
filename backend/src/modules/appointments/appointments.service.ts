@@ -26,18 +26,74 @@ export class AppointmentsService {
     private readonly notificationsService?: NotificationsService,
   ) {}
 
-  async getAllAppointments(limit = 50, offset = 0, patientId?: string): Promise<AppointmentEntity[]> {
-    const where: any = {};
-    if (patientId) {
-      where.patientId = patientId;
+  async getAllAppointments(limit = 50, offset = 0, patientId?: string, caller?: any): Promise<AppointmentEntity[]> {
+    let apts: AppointmentEntity[] = [];
+
+    // Role-aware filtering
+    const isProvider = caller?.role === "provider";
+    const isPatient = caller?.role === "patient";
+
+    if (isProvider) {
+      let provId = caller?.providerId;
+      if (!provId && this.dataSource) {
+        try {
+          const provRepo = this.dataSource.getRepository(ProviderEntity);
+          const prov = await provRepo.findOne({ where: { userId: caller.id || caller.sub } });
+          if (prov) provId = prov.id;
+        } catch (_) {}
+      }
+
+      // Providers see:
+      // 1. Unassigned incoming requests searching for clinician (status IN ('requested', 'searching', 'pending'))
+      // 2. Appointments assigned to this provider
+      const qb = this.appointmentRepo
+        .createQueryBuilder("apt")
+        .leftJoinAndSelect("apt.patient", "patient")
+        .leftJoinAndSelect("apt.provider", "provider")
+        .leftJoinAndSelect("provider.user", "providerUser")
+        .leftJoinAndSelect("apt.serviceRelation", "serviceRelation");
+
+      if (provId) {
+        qb.where(
+          "(apt.providerId = :provId OR provider.userId = :userId) OR (apt.providerId IS NULL AND apt.status IN (:...pendingStatuses))",
+          {
+            provId,
+            userId: caller.id || caller.sub,
+            pendingStatuses: ["requested", "searching", "pending"],
+          }
+        );
+      } else {
+        qb.where(
+          "(provider.userId = :userId) OR (apt.providerId IS NULL AND apt.status IN (:...pendingStatuses))",
+          {
+            userId: caller.id || caller.sub,
+            pendingStatuses: ["requested", "searching", "pending"],
+          }
+        );
+      }
+
+      apts = await qb
+        .orderBy("apt.createdAt", "DESC")
+        .take(limit)
+        .skip(offset)
+        .getMany();
+    } else {
+      const where: any = {};
+      if (patientId) {
+        where.patientId = patientId;
+      } else if (isPatient && (caller?.id || caller?.sub)) {
+        where.patientId = caller.id || caller.sub;
+      }
+
+      apts = await this.appointmentRepo.find({
+        where: Object.keys(where).length > 0 ? where : undefined,
+        relations: ["patient", "provider", "provider.user", "serviceRelation"],
+        take: limit,
+        skip: offset,
+        order: { date: "DESC" as any, time: "DESC" as any },
+      });
     }
-    const apts = await this.appointmentRepo.find({
-      where: Object.keys(where).length > 0 ? where : undefined,
-      relations: ["patient", "provider", "provider.user", "serviceRelation"],
-      take: limit,
-      skip: offset,
-      order: { date: "DESC" as any, time: "DESC" as any },
-    });
+
     for (const apt of apts) {
       if (!apt.providerPhone) {
         let phone = apt.provider?.phone || apt.provider?.user?.phone || "";
@@ -193,34 +249,110 @@ export class AppointmentsService {
         createdAt: result.createdAt,
       };
 
+      // 1. Real-time broadcast to rooms: providers, admin, and global
       this.realtimeService.emitNewServiceRequest(eventPayload);
       this.realtimeService.emitAppointmentUpdate(result.id, result.status, eventPayload);
-
-      // Explicitly notify admin room for instant UI card addition
       this.realtimeService.emitToRoom("admin", "new_service_request", eventPayload);
       this.realtimeService.emitToRoom("admin", "appointment_status_update", eventPayload);
 
-      // Direct notification to assigned provider room if known
-      if (result.providerId) {
-        this.realtimeService.emitToRoom(`provider:${result.providerId}`, "new_service_request", eventPayload);
-      }
+      // 2. Persist notification and notify all Platform Administrators
+      try {
+        const userRepo = this.dataSource.getRepository(UserEntity);
+        const admins = await userRepo
+          .createQueryBuilder("u")
+          .where("u.role LIKE :adm OR u.adminRole IS NOT NULL", { adm: "%admin%" })
+          .getMany();
 
-      // Send in-app notification to the assigned provider
-      if (this.notificationsService && result.providerId) {
-        const provUserId = result.provider?.userId || result.providerId;
-        this.notificationsService.sendNotification(provUserId, {
-          type: "appointment_update",
-          title: "New Patient Care Request",
-          body: `${result.patientName} requested ${result.service} on ${result.date} at ${result.time}.`,
-          priority: "critical",
-          data: {
-            appointmentId: result.id,
-            type: "appointment_request",
-            patientName: result.patientName,
-            location: result.location,
-          },
-        }).catch(() => {});
-      }
+        for (const admin of admins) {
+          this.realtimeService.emitToRoom(`admin:${admin.id}`, "new_service_request", eventPayload);
+          if (this.notificationsService) {
+            this.notificationsService.sendNotification(admin.id, {
+              type: "appointment_update",
+              title: "New Service Request",
+              body: `${result.patientName} requested ${result.service} (${result.location || "Addis Ababa"}).`,
+              priority: "critical",
+              data: {
+                appointmentId: result.id,
+                type: "service_request",
+                patientName: result.patientName,
+                service: result.service,
+                location: result.location,
+                amount: result.amount,
+              },
+            }).catch(() => {});
+          }
+        }
+      } catch (_) {}
+
+      // 3. Notify Providers
+      try {
+        const provRepo = this.dataSource.getRepository(ProviderEntity);
+
+        if (result.providerId) {
+          // Direct booking for a specific provider
+          const prov = await provRepo.findOne({ where: { id: result.providerId }, relations: ["user"] });
+          const provUserId = prov?.userId || prov?.user?.id || result.providerId;
+
+          this.realtimeService.emitToRoom(`provider:${result.providerId}`, "new_service_request", eventPayload);
+          if (prov?.userId) {
+            this.realtimeService.emitToRoom(`provider:${prov.userId}`, "new_service_request", eventPayload);
+          }
+
+          if (this.notificationsService && provUserId) {
+            this.notificationsService.sendNotification(provUserId, {
+              type: "appointment_update",
+              title: "New Patient Care Request",
+              body: `${result.patientName} requested ${result.service} on ${result.date} at ${result.time}.`,
+              priority: "critical",
+              data: {
+                appointmentId: result.id,
+                type: "appointment_request",
+                patientName: result.patientName,
+                service: result.service,
+                location: result.location,
+                amount: result.amount,
+              },
+            }).catch(() => {});
+          }
+        } else {
+          // On-demand request: dispatch to all nearby/active/verified providers
+          const activeProviders = await provRepo
+            .createQueryBuilder("prov")
+            .leftJoinAndSelect("prov.user", "user")
+            .where("prov.status IN (:...statuses) OR prov.available = :avail", {
+              statuses: ["verified", "active"],
+              avail: true,
+            })
+            .getMany();
+
+          const notifiedUserIds = new Set<string>();
+          for (const prov of activeProviders) {
+            const targetUserId = prov.userId || prov.user?.id;
+            if (!targetUserId || notifiedUserIds.has(targetUserId)) continue;
+            notifiedUserIds.add(targetUserId);
+
+            this.realtimeService.emitToRoom(`provider:${targetUserId}`, "new_service_request", eventPayload);
+            this.realtimeService.emitToRoom(`provider:${prov.id}`, "new_service_request", eventPayload);
+
+            if (this.notificationsService) {
+              this.notificationsService.sendNotification(targetUserId, {
+                type: "appointment_update",
+                title: "New Care Request Nearby",
+                body: `${result.patientName} requested ${result.service} near ${result.location || "your area"}. Tap to review and accept.`,
+                priority: "critical",
+                data: {
+                  appointmentId: result.id,
+                  type: "appointment_request",
+                  patientName: result.patientName,
+                  service: result.service,
+                  location: result.location,
+                  amount: result.amount,
+                },
+              }).catch(() => {});
+            }
+          }
+        }
+      } catch (_) {}
     } catch (_) {}
 
     return result;
@@ -240,6 +372,23 @@ export class AppointmentsService {
       throw new BadRequestException(`Invalid status transition from ${apt.status} to ${newStatus}`);
     }
 
+    // Auto-assign accepting clinician if appointment was unassigned
+    if (newStatus === "accepted" && !apt.providerId && actorId && actorId !== "unknown" && actorId !== "patient") {
+      try {
+        const provRepo = this.dataSource.getRepository(ProviderEntity);
+        const prov = await provRepo.findOne({
+          where: [{ id: actorId }, { userId: actorId }],
+          relations: ["user"],
+        });
+        if (prov) {
+          apt.providerId = prov.id;
+          apt.providerName = prov.name;
+          apt.providerPhone = prov.phone || prov.user?.phone || apt.providerPhone;
+          apt.providerAvatar = prov.avatar || apt.providerAvatar;
+        }
+      } catch (_) {}
+    }
+
     apt.status = newStatus;
     if (visitNotes) apt.visitNotes = visitNotes;
     if (disputeReason) apt.disputeReason = disputeReason;
@@ -256,12 +405,44 @@ export class AppointmentsService {
     history.createdAt = new Date().toISOString();
     await this.historyRepo.save(history);
 
-    // Emit realtime status update to appointment room
+    // Emit realtime status update to appointment room & admin portal
     this.realtimeService.emitAppointmentUpdate(id, newStatus, {
+      appointmentId: id,
       patientId: savedApt.patientId,
       providerId: savedApt.providerId,
+      providerName: savedApt.providerName,
+      providerPhone: savedApt.providerPhone,
+      status: newStatus,
       visitNotes,
     });
+
+    // Notify patient in real-time
+    if (savedApt.patientId && typeof this.realtimeService?.emitProviderResponse === "function") {
+      this.realtimeService.emitProviderResponse(savedApt.patientId, {
+        appointmentId: id,
+        status: newStatus,
+        providerId: savedApt.providerId,
+        providerName: savedApt.providerName,
+        providerPhone: savedApt.providerPhone,
+        providerAvatar: savedApt.providerAvatar,
+      });
+
+      if (newStatus === "accepted" && this.notificationsService) {
+        this.notificationsService.sendNotification(savedApt.patientId, {
+          type: "appointment_update",
+          title: "Care Request Accepted! 🩺",
+          body: `${savedApt.providerName || "Your clinician"} has accepted your ${savedApt.service} request and is on the way.`,
+          priority: "critical",
+          data: {
+            appointmentId: id,
+            status: "accepted",
+            providerId: savedApt.providerId,
+            providerName: savedApt.providerName,
+            providerPhone: savedApt.providerPhone,
+          },
+        }).catch(() => {});
+      }
+    }
 
     return savedApt;
   }

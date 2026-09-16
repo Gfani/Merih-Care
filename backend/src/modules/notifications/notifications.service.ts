@@ -465,9 +465,13 @@ export class NotificationsService {
     await this.notificationRepo.save(notification);
 
     // Push instant in-app notification via WebSocket to user's personal room
-    // Role is unknown here; RealtimeService checks both patient and provider rooms
+    // Emit to patient, provider, and admin rooms so all roles receive their notifications
     this.realtimeService.emitToRoom(`patient:${userId}`, "notification", notification);
     this.realtimeService.emitToRoom(`provider:${userId}`, "notification", notification);
+    this.realtimeService.emitToRoom(`admin:${userId}`, "notification", notification);
+    if (opts.type === "appointment_update" || opts.type === "emergency" || opts.type === "verification_update") {
+      this.realtimeService.emitToRoom("admin", "notification", notification);
+    }
 
     // 2. Load user preferences (critical alerts bypass prefs)
     const isCritical = opts.priority === "critical";

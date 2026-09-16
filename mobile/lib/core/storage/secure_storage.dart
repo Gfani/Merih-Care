@@ -1,7 +1,5 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../notifications/notification_service.dart';
-import '../network/api_client.dart';
 
 class SecureStorage {
   SecureStorage._privateConstructor();
@@ -102,5 +100,20 @@ class SecureStorage {
       }
     } catch (_) {}
     return _emailFallback;
+  }
+
+  Future<void> deleteLastPhone() async {
+    _phoneFallback = null;
+    try {
+      await _storage.delete(key: _phoneKey);
+    } catch (_) {}
+  }
+
+  Future<void> deleteKey(String key) async {
+    if (key == _phoneKey || key == 'last_phone') _phoneFallback = null;
+    if (key == _emailKey) _emailFallback = null;
+    try {
+      await _storage.delete(key: key);
+    } catch (_) {}
   }
 }

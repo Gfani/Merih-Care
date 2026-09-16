@@ -112,25 +112,42 @@ class MobileRealtimeService {
       _realtimeSocket?.emit('pong');
     });
 
+    // Helper to unwrap versioned envelope or raw payload
+    Map<String, dynamic> unwrap(dynamic raw) {
+      if (raw is Map) {
+        final map = Map<String, dynamic>.from(raw);
+        if (map['data'] is Map) {
+          return Map<String, dynamic>.from(map['data']);
+        }
+        return map;
+      }
+      return {};
+    }
+
     // Domain event listeners
     _realtimeSocket!.on('appointment_status_update', (data) {
-      if (data is Map<String, dynamic>) _appointmentUpdatesController.add(data);
+      final payload = unwrap(data);
+      if (payload.isNotEmpty) _appointmentUpdatesController.add(payload);
     });
 
     _realtimeSocket!.on('new_service_request', (data) {
-      if (data is Map<String, dynamic>) _serviceRequestsController.add(data);
+      final payload = unwrap(data);
+      if (payload.isNotEmpty) _serviceRequestsController.add(payload);
     });
 
     _realtimeSocket!.on('provider_response', (data) {
-      if (data is Map<String, dynamic>) _providerResponsesController.add(data);
+      final payload = unwrap(data);
+      if (payload.isNotEmpty) _providerResponsesController.add(payload);
     });
 
     _realtimeSocket!.on('location_update', (data) {
-      if (data is Map<String, dynamic>) _locationUpdatesController.add(data);
+      final payload = unwrap(data);
+      if (payload.isNotEmpty) _locationUpdatesController.add(payload);
     });
 
     _realtimeSocket!.on('emergency_alert', (data) {
-      if (data is Map<String, dynamic>) _emergencyAlertsController.add(data);
+      final payload = unwrap(data);
+      if (payload.isNotEmpty) _emergencyAlertsController.add(payload);
     });
 
     // Initialize /chat socket

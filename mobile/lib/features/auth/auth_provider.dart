@@ -72,6 +72,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
           token: token,
           user: response.data,
         );
+        try {
+          _ref.read(realtimeServiceProvider).connect(token: token);
+        } catch (_) {}
       } catch (e) {
         print('[AUTH] _checkToken error: $e');
         if (state.status == AuthStatus.authenticated) {
@@ -113,6 +116,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
       if (token.isNotEmpty) {
         await SecureStorage.instance.writeToken(token);
+        try {
+          _ref.read(realtimeServiceProvider).connect(token: token);
+        } catch (_) {}
       }
       if (refreshToken.isNotEmpty) {
         await SecureStorage.instance.writeRefreshToken(refreshToken);
@@ -619,6 +625,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } catch (_) {
       // Best-effort network session revocation
     } finally {
+      try {
+        _ref.read(realtimeServiceProvider).disconnect();
+      } catch (_) {}
       await SecureStorage.instance.deleteToken();
       state = AuthState(status: AuthStatus.unauthenticated);
     }
