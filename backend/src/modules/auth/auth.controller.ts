@@ -298,7 +298,7 @@ export class AuthController {
     try {
       const user = await this.authService.validateUser(body.email, body.password);
       if (!user) {
-        throw new UnauthorizedException("Invalid credentials");
+        throw new UnauthorizedException("Account not registered: No account found with this email or username. Please check your credentials or register.");
       }
 
       if (user.mfaEnabled) {

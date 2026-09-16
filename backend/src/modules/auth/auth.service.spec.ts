@@ -106,8 +106,8 @@ describe("AuthService Unit Tests", () => {
       mockUserRepo.findOne.mockResolvedValue(mockUser);
       mockUserRepo.save.mockImplementation((u) => Promise.resolve(u));
 
-      const result = await service.validateUser("patient@merihcare.et", "WrongPassword!");
-      expect(result).toBeNull();
+      await expect(service.validateUser("patient@merihcare.et", "WrongPassword!"))
+        .rejects.toThrow(/Incorrect password/);
       expect(mockUser.loginAttempts).toBe(5);
       expect(mockUser.lockoutUntil).toBeDefined();
     });

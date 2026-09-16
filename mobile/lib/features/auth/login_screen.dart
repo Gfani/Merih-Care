@@ -174,11 +174,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   ),
                                 );
                               } else {
+                                final isNotRegistered = err.toLowerCase().contains('not registered');
+                                final isWrongPass = err.toLowerCase().contains('incorrect password');
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(err),
                                     backgroundColor: Colors.red.shade700,
                                     behavior: SnackBarBehavior.floating,
+                                    duration: const Duration(seconds: 5),
+                                    action: isNotRegistered
+                                        ? SnackBarAction(
+                                            label: 'Register',
+                                            textColor: Colors.amber,
+                                            onPressed: () => context.push('/signup'),
+                                          )
+                                        : (isWrongPass
+                                            ? SnackBarAction(
+                                                label: 'Reset',
+                                                textColor: Colors.amber,
+                                                onPressed: () => _showForgotPasswordDialog(context),
+                                              )
+                                            : null),
                                   ),
                                 );
                               }

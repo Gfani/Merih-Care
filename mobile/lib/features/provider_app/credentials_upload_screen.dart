@@ -101,8 +101,13 @@ class _CredentialsUploadScreenState extends ConsumerState<CredentialsUploadScree
         }
       });
     } catch (e) {
+      String msg = 'Upload failed: $e';
+      if (e is DioException && e.response?.data is Map) {
+        final data = e.response!.data as Map;
+        msg = data['message']?.toString() ?? msg;
+      }
       setState(() {
-        _errorMessage = 'Upload failed: $e';
+        _errorMessage = msg;
       });
     } finally {
       setState(() {

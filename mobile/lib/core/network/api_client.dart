@@ -17,7 +17,9 @@ class ApiClient {
           if (token != null) {
             options.headers['Authorization'] = 'Bearer $token';
           }
-          options.headers['Content-Type'] = 'application/json';
+          if (options.data is! FormData) {
+            options.headers['Content-Type'] = 'application/json';
+          }
           return handler.next(options);
         },
         onResponse: (response, handler) {

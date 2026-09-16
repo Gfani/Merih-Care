@@ -12,18 +12,22 @@ import {
   NotFoundException,
   ForbiddenException,
   Req,
+  Optional,
 } from "@nestjs/common";
 import { Response } from "express";
+import { JwtService } from "@nestjs/jwt";
 import { UploadsService } from "./uploads.service";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 import { FileInterceptor } from "@nestjs/platform-express";
 
 @Controller("uploads")
 export class UploadsController {
-  constructor(private readonly uploadsService: UploadsService) {}
+  constructor(
+    private readonly uploadsService: UploadsService,
+    @Optional() private readonly jwtService?: JwtService
+  ) {}
 
   @Post("credential")
-  @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor("file"))
   async uploadCredential(@UploadedFile() file: any, @Req() req?: any) {
     if (!file) {
@@ -54,7 +58,16 @@ export class UploadsController {
     this.uploadsService.scanForMalware(file.originalname, file.buffer);
 
     const sanitizedName = this.uploadsService.sanitizeFilename(file.originalname);
-    const userId = req?.user?.id || "credentials";
+    let userId = req?.user?.id || "credentials";
+    if (userId === "credentials" && req?.headers?.authorization?.startsWith("Bearer ")) {
+      try {
+        const token = req.headers.authorization.split(" ")[1];
+        const payload: any = this.jwtService?.decode(token);
+        if (payload?.sub || payload?.id) {
+          userId = payload.sub || payload.id;
+        }
+      } catch (_) {}
+    }
     return this.uploadsService.handleUpload(sanitizedName, file.buffer, file.mimetype, userId);
   }
 

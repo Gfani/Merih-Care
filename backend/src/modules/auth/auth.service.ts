@@ -247,7 +247,8 @@ export class AuthService {
   }
 
   async validateUser(email: string, pass: string): Promise<any> {
-    const normalizedEmail = (email || "").trim().toLowerCase();
+    const rawIdentifier = (email || "").trim();
+    const normalizedEmail = rawIdentifier.toLowerCase();
     let user = await this.userRepo.findOne({ where: { email: normalizedEmail } });
     if (!user && typeof this.userRepo.createQueryBuilder === "function") {
       user = await this.userRepo
@@ -255,15 +256,34 @@ export class AuthService {
         .where("LOWER(user.email) = :email", { email: normalizedEmail })
         .getOne();
     }
+    // Also check by phone or username/name in case identifier was provided as phone or username
     if (!user) {
-      return null;
+      user = await this.userRepo.findOne({ where: { phone: rawIdentifier } });
+    }
+    if (!user) {
+      const cleanPhone = rawIdentifier.replace(/\D/g, "");
+      if (cleanPhone.length >= 9) {
+        user = await this.userRepo.findOne({ where: { phone: cleanPhone } });
+        if (!user && cleanPhone.startsWith("0")) {
+          user = await this.userRepo.findOne({ where: { phone: "251" + cleanPhone.slice(1) } });
+        }
+      }
+    }
+    if (!user) {
+      user = await this.userRepo.findOne({ where: { name: rawIdentifier } });
+    }
+
+    if (!user) {
+      throw new UnauthorizedException(
+        "Account not registered: No account found with this email, username, or phone number. Please check your spelling or register a new account."
+      );
     }
 
     // Check account lockout
     if (user.lockoutUntil) {
       const lockTime = new Date(user.lockoutUntil).getTime();
       if (Date.now() < lockTime) {
-        throw new Error(`Account locked. Try again after ${user.lockoutUntil}`);
+        throw new UnauthorizedException(`Account locked: Too many failed attempts. Try again after ${user.lockoutUntil}`);
       } else {
         user.lockoutUntil = null;
         user.loginAttempts = 0;
@@ -274,17 +294,17 @@ export class AuthService {
     // Check approval status: Healthcare providers must be approved by admin first
     if (user.role === "provider") {
       if (!user.isApproved || user.status === "pending_verification") {
-        throw new Error("Account is pending administrator approval");
+        throw new UnauthorizedException("Account is pending administrator approval: Please wait for your medical credentials to be verified.");
       }
 
       if (this.providerRepo) {
         const provider = await this.providerRepo.findOne({ where: { userId: user.id } });
         if (provider && (!provider.verified || provider.status === "pending_verification")) {
-          throw new Error("Account is pending administrator approval");
+          throw new UnauthorizedException("Account is pending administrator approval: Please wait for your medical credentials to be verified.");
         }
       }
     } else if (!user.isApproved) {
-      throw new Error("Account is pending administrator approval");
+      throw new UnauthorizedException("Account is pending administrator approval: Please wait for your account to be approved.");
     }
 
     if (user.status === "suspended") {
@@ -293,7 +313,7 @@ export class AuthService {
       );
     }
     if (user.status !== "active") {
-      throw new UnauthorizedException("Account is inactive");
+      throw new UnauthorizedException("Account is inactive: Please verify your account or contact administration.");
     }
 
     const matched = await bcrypt.compare(pass, user.password || "");
@@ -304,7 +324,9 @@ export class AuthService {
         user.lockoutUntil = lockoutTime.toISOString();
       }
       await this.userRepo.save(user);
-      return null;
+      throw new UnauthorizedException(
+        "Incorrect password: The password you entered is incorrect. Please check your password or use 'Forgot Password' to reset it."
+      );
     }
 
     user.loginAttempts = 0;
