@@ -63,7 +63,7 @@ export class DatabaseSeedService implements OnModuleInit {
         superAdmin.id = "u-superadmin-" + adminEmail.split("@")[0].replace(/[^a-zA-Z0-9]/g, "");
         superAdmin.email = adminEmail;
         superAdmin.name = process.env.SUPER_ADMIN_NAME || "System Administrator";
-        superAdmin.phone = process.env.SUPER_ADMIN_PHONE || "+251 91 111 2233";
+        superAdmin.phone = process.env.SUPER_ADMIN_PHONE || "0939044079";
         superAdmin.dateJoined = new Date().toISOString().split("T")[0];
         superAdmin.password = await bcrypt.hash(bootstrapPassword, 10);
         superAdmin.role = "admin";
