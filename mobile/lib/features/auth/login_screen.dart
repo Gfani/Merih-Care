@@ -17,7 +17,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _loading = false;
-  String? _savedPhone;
 
   @override
   void initState() {
@@ -27,13 +26,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _loadSavedCredentials() async {
     final email = await SecureStorage.instance.readLastEmail();
-    final phone = await SecureStorage.instance.readLastPhone();
     if (mounted) {
       setState(() {
         if (email != null && email.isNotEmpty && _emailController.text.isEmpty) {
           _emailController.text = email;
         }
-        _savedPhone = phone;
       });
     }
   }
@@ -849,11 +846,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             if (res['success'] == true) {
                               step = 2;
                               activeIdentifier = reqIdentifier;
-                              maskedDestination = res['destination'] ?? identifier;
+                              maskedDestination = res['destination'] ?? reqIdentifier;
                               successMsg = res['message'] ?? 'OTP code sent. Valid for 5 minutes.';
                               if (selectedChannel == 'sms' && phoneCtrl.text.trim().isNotEmpty) {
                                 SecureStorage.instance.writeLastPhone(phoneCtrl.text.trim());
-                                _savedPhone = phoneCtrl.text.trim();
                               }
                             } else {
                               errorMsg = res['message'] ?? 'Failed to send OTP';

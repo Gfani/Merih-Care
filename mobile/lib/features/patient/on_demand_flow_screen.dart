@@ -509,7 +509,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
   // ─── 4. SUMMARY ──────────────────────────────────────────────────────────────
   Widget _buildSummary() {
     final price = _selectedService?['price'] ?? 800;
-    final transportFee = 100;
+    const transportFee = 100;
     final total = price + transportFee;
 
     return Padding(
