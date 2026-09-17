@@ -167,8 +167,10 @@ export default function RequestsSection() {
             label=""
             options={[
               { value: "all", label: "All Status" },
+              { value: "requested", label: "Requested (Awaiting Confirmation)" },
               { value: "searching", label: "Searching Provider" },
               { value: "pending", label: "Pending" },
+              { value: "accepted", label: "Accepted" },
               { value: "scheduled", label: "Scheduled" },
               { value: "in_progress", label: "In Progress" },
               { value: "completed", label: "Completed" },

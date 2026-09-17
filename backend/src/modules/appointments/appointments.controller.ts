@@ -221,7 +221,7 @@ export class AppointmentsController {
       data.time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     }
     if (!data.status) {
-      data.status = data.providerId ? "accepted" : "requested";
+      data.status = "requested";
     }
     return this.appointmentsService.createAppointment(data);
   }
@@ -256,7 +256,7 @@ export class AppointmentsController {
       data.time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     }
     if (!data.status) {
-      data.status = data.providerId ? "accepted" : "requested";
+      data.status = "requested";
     }
     return this.appointmentsService.createAppointment(data);
   }

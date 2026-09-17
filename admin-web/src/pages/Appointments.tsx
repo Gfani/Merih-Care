@@ -78,24 +78,21 @@ export default function AppointmentsSection() {
     return () => clearInterval(timer);
   }, []);
 
-  // Real-time socket events for immediate service request and appointment updates
+  // Real-time socket events for confirmed appointment updates
   useRealtimeSocket({
-    new_service_request: (data: any) => {
-      const apt = data?.data || data;
-      if (apt?.appointmentId || apt?.id) {
-        const id = apt.appointmentId || apt.id;
-        setAppointments((prev) => [{ ...apt, id }, ...prev.filter((a) => a.id !== id)]);
-      } else {
-        loadData();
-      }
-    },
     appointment_status_update: (data: any) => {
       const apt = data?.data || data;
       const targetId = apt?.appointmentId || apt?.id;
       if (targetId) {
-        setAppointments((prev) =>
-          prev.map((a) => (a.id === targetId ? { ...a, ...apt, id: targetId } : a))
-        );
+        setAppointments((prev) => {
+          const index = prev.findIndex((a) => a.id === targetId);
+          if (index >= 0) {
+            const updated = [...prev];
+            updated[index] = { ...updated[index], ...apt, id: targetId };
+            return updated;
+          }
+          return [{ ...apt, id: targetId }, ...prev];
+        });
       } else {
         loadData();
       }
@@ -182,7 +179,10 @@ export default function AppointmentsSection() {
       pName.toLowerCase().includes(search.toLowerCase()) ||
       prName.toLowerCase().includes(search.toLowerCase()) ||
       sName.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === "all" || apt.status === statusFilter;
+    // Confirmed appointments only in Appointments tab by default
+    const statusStr = (apt.status || "") as string;
+    const isConfirmed = statusStr !== "requested" && statusStr !== "searching" && statusStr !== "pending";
+    const matchStatus = statusFilter === "all" ? isConfirmed : apt.status === statusFilter;
     return matchSearch && matchStatus;
   });
 

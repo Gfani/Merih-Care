@@ -269,6 +269,27 @@ class _ProviderAppointmentDetailsScreenState extends ConsumerState<ProviderAppoi
 
   Widget _buildActionButtons(String status, ThemeData theme) {
     switch (status) {
+      case 'requested':
+      case 'searching':
+      case 'pending':
+        return Column(
+          children: [
+            ElevatedButton(
+              onPressed: () => _changeStatus('accepted'),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0D7C6A)),
+              child: const Text('Accept Care Request'),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: () => _changeStatus('cancelled', notes: 'Provider declined request'),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFFEF4444)),
+                foregroundColor: const Color(0xFFDC2626),
+              ),
+              child: const Text('Decline Request'),
+            ),
+          ],
+        );
       case 'accepted':
       case 'scheduled':
         return Column(

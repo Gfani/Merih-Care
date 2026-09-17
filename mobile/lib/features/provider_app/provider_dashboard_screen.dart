@@ -114,6 +114,30 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
     }
   }
 
+  Future<void> _declineIncomingRequest(dynamic req) async {
+    try {
+      final client = ref.read(apiClientProvider);
+      final aptId = req['id']?.toString() ?? req['appointmentId']?.toString() ?? 'apt-1';
+      await client.dio.put('/appointments/$aptId/status', data: {
+        'status': 'cancelled',
+        'visitNotes': 'Provider declined incoming request',
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Care request declined.'),
+          backgroundColor: Color(0xFFDC2626),
+        ),
+      );
+      _loadDashboardData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to decline request: $e')),
+      );
+    }
+  }
+
   Future<void> _toggleOnline() async {
     final next = !_isOnline;
     setState(() => _isOnline = next);
@@ -351,14 +375,29 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text('Gross Fee: ETB ${req['price']}', style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
-                                  ElevatedButton(
-                                    onPressed: () => _acceptIncomingRequest(req),
-                                    style: ElevatedButton.styleFrom(
-                                      minimumSize: const Size(90, 36),
-                                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                                    ),
-                                    child: const Text('Accept', style: TextStyle(fontSize: 12)),
+                                  Text('Gross Fee: ETB ${req['price'] ?? req['amount'] ?? 800}', style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
+                                  Row(
+                                    children: [
+                                      OutlinedButton(
+                                        onPressed: () => _declineIncomingRequest(req),
+                                        style: OutlinedButton.styleFrom(
+                                          minimumSize: const Size(70, 36),
+                                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                                          side: const BorderSide(color: Color(0xFFEF4444)),
+                                          foregroundColor: const Color(0xFFDC2626),
+                                        ),
+                                        child: const Text('Decline', style: TextStyle(fontSize: 12)),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      ElevatedButton(
+                                        onPressed: () => _acceptIncomingRequest(req),
+                                        style: ElevatedButton.styleFrom(
+                                          minimumSize: const Size(70, 36),
+                                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                                        ),
+                                        child: const Text('Accept', style: TextStyle(fontSize: 12)),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),

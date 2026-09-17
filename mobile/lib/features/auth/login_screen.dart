@@ -898,8 +898,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           final res = await ref.read(authProvider.notifier).requestPasswordReset(
                             reqIdentifier,
                             channel: selectedChannel,
-                            email: activeAccountEmail.isNotEmpty ? activeAccountEmail : (emailCtrl.text.trim().isNotEmpty ? emailCtrl.text.trim() : null),
-                            phone: phoneCtrl.text.trim().isNotEmpty ? phoneCtrl.text.trim() : null,
+                            email: (activeAccountEmail.isNotEmpty && !activeAccountEmail.contains('*'))
+                                ? activeAccountEmail
+                                : (emailCtrl.text.trim().isNotEmpty && !emailCtrl.text.contains('*') ? emailCtrl.text.trim() : null),
+                            phone: (phoneCtrl.text.trim().isNotEmpty && !phoneCtrl.text.contains('*')) ? phoneCtrl.text.trim() : null,
                           );
 
                           setDialogState(() {
@@ -960,8 +962,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 activeIdentifier,
                                 otp,
                                 newPass,
-                                email: emailCtrl.text.trim().isNotEmpty ? emailCtrl.text.trim() : null,
-                                phone: phoneCtrl.text.trim().isNotEmpty ? phoneCtrl.text.trim() : null,
+                                email: (emailCtrl.text.trim().isNotEmpty && !emailCtrl.text.contains('*'))
+                                    ? emailCtrl.text.trim()
+                                    : ((activeAccountEmail.isNotEmpty && !activeAccountEmail.contains('*')) ? activeAccountEmail : null),
+                                phone: (phoneCtrl.text.trim().isNotEmpty && !phoneCtrl.text.contains('*')) ? phoneCtrl.text.trim() : null,
                               );
 
                           setDialogState(() => loading = false);

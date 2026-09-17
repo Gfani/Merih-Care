@@ -137,7 +137,7 @@ export class AppointmentsService {
   // Finite State Machine Status Transition Validator
   isValidTransition(from: string, to: string): boolean {
     const transitions: Record<string, string[]> = {
-      requested: ["searching", "cancelled", "expired"],
+      requested: ["accepted", "scheduled", "searching", "cancelled", "expired"],
       searching: ["accepted", "scheduled", "cancelled", "expired"],
       accepted: ["scheduled", "on_the_way", "cancelled"],
       scheduled: ["on_the_way", "cancelled"],
@@ -459,28 +459,51 @@ export class AppointmentsService {
     });
 
     // Notify patient in real-time
-    if (savedApt.patientId && typeof this.realtimeService?.emitProviderResponse === "function") {
-      this.realtimeService.emitProviderResponse(savedApt.patientId, {
-        appointmentId: id,
-        status: newStatus,
-        providerId: savedApt.providerId,
-        providerName: savedApt.providerName,
-        providerPhone: savedApt.providerPhone,
-        providerAvatar: savedApt.providerAvatar,
-      });
+    if (savedApt.patientId) {
+      if (typeof this.realtimeService?.emitProviderResponse === "function") {
+        this.realtimeService.emitProviderResponse(savedApt.patientId, {
+          appointmentId: id,
+          status: newStatus,
+          providerId: savedApt.providerId,
+          providerName: savedApt.providerName,
+          providerPhone: savedApt.providerPhone,
+          providerAvatar: savedApt.providerAvatar,
+        });
+      }
+      if (typeof this.realtimeService?.emitToRoom === "function") {
+        this.realtimeService.emitToRoom(`patient:${savedApt.patientId}`, "appointment_status_update", {
+          appointmentId: id,
+          status: newStatus,
+          providerId: savedApt.providerId,
+          providerName: savedApt.providerName,
+          providerPhone: savedApt.providerPhone,
+        });
+      }
 
-      if (newStatus === "accepted" && this.notificationsService) {
+      if ((newStatus === "accepted" || newStatus === "scheduled") && this.notificationsService) {
         this.notificationsService.sendNotification(savedApt.patientId, {
           type: "appointment_update",
           title: "Care Request Accepted! 🩺",
-          body: `${savedApt.providerName || "Your clinician"} has accepted your ${savedApt.service} request and is on the way.`,
+          body: `${savedApt.providerName || "Your clinician"} has accepted your ${savedApt.service} request for ${savedApt.date} at ${savedApt.time}.`,
           priority: "critical",
           data: {
             appointmentId: id,
-            status: "accepted",
+            status: newStatus,
             providerId: savedApt.providerId,
             providerName: savedApt.providerName,
             providerPhone: savedApt.providerPhone,
+          },
+        }).catch(() => {});
+      } else if (newStatus === "cancelled" && this.notificationsService) {
+        this.notificationsService.sendNotification(savedApt.patientId, {
+          type: "appointment_update",
+          title: "Care Request Declined ❌",
+          body: `Your appointment request for ${savedApt.service} on ${savedApt.date} was declined by the provider. Please choose an alternate slot or clinician.`,
+          priority: "critical",
+          data: {
+            appointmentId: id,
+            status: "cancelled",
+            providerId: savedApt.providerId,
           },
         }).catch(() => {});
       }
@@ -535,6 +558,36 @@ export class AppointmentsService {
         cancelledBy: actorId,
         cancellationReason: reason,
       });
+
+      if (savedApt.patientId) {
+        if (typeof this.realtimeService?.emitProviderResponse === "function") {
+          this.realtimeService.emitProviderResponse(savedApt.patientId, {
+            appointmentId: id,
+            status: "cancelled",
+            reason,
+          });
+        }
+        if (typeof this.realtimeService?.emitToRoom === "function") {
+          this.realtimeService.emitToRoom(`patient:${savedApt.patientId}`, "appointment_status_update", {
+            appointmentId: id,
+            status: "cancelled",
+            reason,
+          });
+        }
+        if (this.notificationsService) {
+          this.notificationsService.sendNotification(savedApt.patientId, {
+            type: "appointment_update",
+            title: "Care Request Declined ❌",
+            body: `Your appointment request for ${savedApt.service} was declined: ${reason}`,
+            priority: "critical",
+            data: {
+              appointmentId: id,
+              status: "cancelled",
+              reason,
+            },
+          }).catch(() => {});
+        }
+      }
     } catch (_) {}
 
     return savedApt;
