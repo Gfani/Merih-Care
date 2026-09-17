@@ -135,7 +135,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final dynamic body = e.response?.data;
       String msg = 'Login failed';
       if (body is Map<String, dynamic>) {
-        msg = (body['message'] ?? body['error'] ?? 'Invalid email or password').toString();
+        final rawMsg = body['message'] ?? body['error'] ?? 'Invalid email or password';
+        msg = rawMsg is List ? rawMsg.join(', ') : rawMsg.toString();
       } else if (e.message != null) {
         msg = e.message!;
       }
@@ -154,7 +155,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final formData = FormData.fromMap({
         'file': MultipartFile.fromBytes(bytes, filename: fileName),
       });
-      final response = await client.dio.post('/uploads/credential', data: formData);
+      final response = await client.dio.post(
+        '/uploads/credential',
+        data: formData,
+        options: Options(contentType: 'multipart/form-data'),
+      );
       final dynamic rawData = response.data;
       final Map<String, dynamic> data = (rawData is Map<String, dynamic> && rawData.containsKey('data'))
           ? (rawData['data'] as Map<String, dynamic>)

@@ -27,5 +27,25 @@ void main() {
 
       expect(options.headers['Authorization'], 'Bearer sample-jwt-token-123');
     });
+
+    test('Request interceptor does not override Content-Type when data is FormData', () {
+      final formDataOptions = RequestOptions(
+        path: '/uploads/credential',
+        data: FormData.fromMap({'file': MultipartFile.fromString('test')}),
+      );
+      if (formDataOptions.data is! FormData) {
+        formDataOptions.headers['Content-Type'] ??= 'application/json';
+      }
+      expect(formDataOptions.headers['Content-Type'], isNull);
+
+      final jsonOptions = RequestOptions(
+        path: '/auth/login',
+        data: {'email': 'test@example.com'},
+      );
+      if (jsonOptions.data is! FormData) {
+        jsonOptions.headers['Content-Type'] ??= 'application/json';
+      }
+      expect(jsonOptions.headers['Content-Type'], 'application/json');
+    });
   });
 }

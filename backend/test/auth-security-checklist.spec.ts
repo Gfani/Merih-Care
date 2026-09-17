@@ -210,8 +210,9 @@ describe("Auth & User Security Checklist Tests", () => {
 
       mockUserRepo.findOne.mockResolvedValue(mockUser);
 
-      const result = await authService.validateUser("test@merihcare.et", "wrong-pass");
-      expect(result).toBeNull();
+      await expect(
+        authService.validateUser("test@merihcare.et", "wrong-pass")
+      ).rejects.toThrow("Incorrect password");
       expect(mockUser.loginAttempts).toBe(5);
       expect(mockUser.lockoutUntil).toBeDefined();
     });

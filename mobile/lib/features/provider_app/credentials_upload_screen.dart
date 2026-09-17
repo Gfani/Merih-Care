@@ -32,6 +32,7 @@ class _CredentialsUploadScreenState extends ConsumerState<CredentialsUploadScree
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg', 'docx'],
+        withData: true,
       );
 
       if (result != null && result.files.isNotEmpty) {
@@ -76,7 +77,11 @@ class _CredentialsUploadScreenState extends ConsumerState<CredentialsUploadScree
         final formData = FormData.fromMap({
           'file': MultipartFile.fromBytes(bytes, filename: _pickedFile!.name),
         });
-        await client.dio.post('/uploads/credential', data: formData);
+        await client.dio.post(
+          '/uploads/credential',
+          data: formData,
+          options: Options(contentType: 'multipart/form-data'),
+        );
       }
 
       // Inform backend that credentials have been uploaded
