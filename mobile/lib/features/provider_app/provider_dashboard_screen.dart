@@ -19,8 +19,10 @@ class ProviderDashboardScreen extends ConsumerStatefulWidget {
 class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScreen> {
   int _currentNavIndex = 0;
   bool _isOnline = true;
-  double _todayEarnings = 2500.0;
-  int _completedVisits = 3;
+  double _todayEarnings = 0.0;
+  int _completedVisits = 0;
+  double? _rating;
+  int _reviewCount = 0;
   List<dynamic> _incomingRequests = [];
   List<dynamic> _activeSchedule = [];
   bool _loading = true;
@@ -74,14 +76,56 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
   Future<void> _loadDashboardData() async {
     try {
       final client = ref.read(apiClientProvider);
+      final now = DateTime.now();
+      final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+
       final response = await client.dio.get('/appointments');
       final dynamic raw = response.data;
       final List all = (raw is List)
           ? raw
           : (raw is Map<String, dynamic> && raw['data'] is List ? raw['data'] as List : []);
 
+      // Fetch actual provider rating and review count from backend
+      double ratingVal = 0.0;
+      int reviews = 0;
+      try {
+        final provRes = await client.dio.get('/providers/me');
+        final dynamic pData = provRes.data is Map<String, dynamic> ? provRes.data : {};
+        if (pData['rating'] != null) {
+          ratingVal = (pData['rating'] as num).toDouble();
+        }
+        if (pData['reviewCount'] != null) {
+          reviews = (pData['reviewCount'] as num).toInt();
+        }
+      } catch (_) {
+        final authUser = ref.read(authProvider).user;
+        if (authUser != null && authUser['rating'] != null) {
+          ratingVal = (authUser['rating'] as num).toDouble();
+        }
+        if (authUser != null && authUser['reviewCount'] != null) {
+          reviews = (authUser['reviewCount'] as num).toInt();
+        }
+      }
+
+      // Compute actual completed visits and today's earnings
+      final completedAppts = all.where((a) => a['status'] == 'completed').toList();
+      final completedToday = completedAppts.where((a) {
+        final date = (a['date'] ?? '').toString();
+        return date.startsWith(todayStr);
+      }).toList();
+
+      double earningsToday = 0.0;
+      for (final a in completedToday) {
+        final amt = a['amount'] ?? a['price'] ?? 0;
+        if (amt is num) earningsToday += amt.toDouble();
+      }
+
       if (mounted) {
         setState(() {
+          _todayEarnings = earningsToday;
+          _completedVisits = completedAppts.length;
+          _rating = ratingVal;
+          _reviewCount = reviews;
           _incomingRequests = all.where((a) => a['status'] == 'requested' || a['status'] == 'searching' || a['status'] == 'pending').toList();
           _activeSchedule = all.where((a) => a['status'] == 'accepted' || a['status'] == 'scheduled' || a['status'] == 'in_progress').toList();
           _loading = false;
@@ -326,7 +370,11 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
                             children: [
                               _buildStat('ETB ${_todayEarnings.toInt()}', 'Earned Today', AppTheme.primaryColor),
                               _buildStat('$_completedVisits', 'Visits Done', AppTheme.secondaryColor),
-                              _buildStat('4.9 ★', 'Rating (42)', AppTheme.warningColor),
+                              _buildStat(
+                                _rating == null || _rating == 0.0 ? '0.0 ★' : '${_rating!.toStringAsFixed(1)} ★',
+                                _reviewCount == 0 ? 'No ratings' : 'Rating ($_reviewCount)',
+                                AppTheme.warningColor,
+                              ),
                             ],
                           ),
                         ],

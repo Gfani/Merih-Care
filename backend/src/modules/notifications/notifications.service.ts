@@ -15,6 +15,7 @@ export type NotificationType =
   | "chat_message"
   | "verification_update"
   | "emergency"
+  | "new_service_request"
   | "general";
 
 export interface SendNotificationOptions {
@@ -469,7 +470,12 @@ export class NotificationsService {
     this.realtimeService.emitToRoom(`patient:${userId}`, "notification", notification);
     this.realtimeService.emitToRoom(`provider:${userId}`, "notification", notification);
     this.realtimeService.emitToRoom(`admin:${userId}`, "notification", notification);
-    if (opts.type === "appointment_update" || opts.type === "emergency" || opts.type === "verification_update") {
+    if (
+      opts.type === "appointment_update" ||
+      opts.type === "new_service_request" ||
+      opts.type === "emergency" ||
+      opts.type === "verification_update"
+    ) {
       this.realtimeService.emitToRoom("admin", "notification", notification);
     }
 

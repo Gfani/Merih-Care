@@ -293,6 +293,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               }
                             } else {
                               final err = result.message ?? 'Google Sign-in failed.';
+                              if (err.toLowerCase().contains('cancel')) {
+                                return;
+                              }
                               final isSuspended = err.toLowerCase().contains('suspended');
                               if (isSuspended) {
                                 showDialog(

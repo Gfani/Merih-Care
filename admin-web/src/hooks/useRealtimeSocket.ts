@@ -118,7 +118,10 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
       }
     });
 
-    socket.on("connect", () => setConnected(true));
+    socket.on("connect", () => {
+      setConnected(true);
+      socket.emit("join_admin", {});
+    });
 
     socket.on("disconnect", () => {
       setConnected(false);

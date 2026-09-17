@@ -126,7 +126,9 @@ class _CredentialsUploadScreenState extends ConsumerState<CredentialsUploadScree
     final theme = Theme.of(context);
     final auth = ref.watch(authProvider);
     final user = auth.user ?? {};
-    final status = user['status'] ?? 'pending_verification';
+    final rawStatus = (user['verification_status'] ?? user['status'] ?? 'pending_verification').toString();
+    final isVerified = rawStatus == 'verified' || user['verified'] == true || user['isApproved'] == true;
+    final displayStatus = isVerified ? 'verified' : rawStatus;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Credential Verification')),
@@ -144,12 +146,12 @@ class _CredentialsUploadScreenState extends ConsumerState<CredentialsUploadScree
                     child: Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: _getStatusBgColor(status),
+                        color: _getStatusBgColor(displayStatus),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
                         children: [
-                          Icon(_getStatusIcon(status), color: _getStatusTextColor(status)),
+                          Icon(_getStatusIcon(displayStatus), color: _getStatusTextColor(displayStatus)),
                           const SizedBox(width: 16),
                           Expanded(
                             child: Column(
@@ -161,8 +163,8 @@ class _CredentialsUploadScreenState extends ConsumerState<CredentialsUploadScree
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  _getStatusLabel(status),
-                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: _getStatusTextColor(status)),
+                                  _getStatusLabel(displayStatus),
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: _getStatusTextColor(displayStatus)),
                                 ),
                               ],
                             ),
@@ -172,71 +174,159 @@ class _CredentialsUploadScreenState extends ConsumerState<CredentialsUploadScree
                     ),
                   ),
                   const SizedBox(height: 32),
-                  const Text(
-                    'Upload Certification/ID',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'To verify your medical license or credentials, please upload a valid PDF or Image copy of your credentials (maximum size: 10MB).',
-                    style: TextStyle(color: Color(0xFF64748B), height: 1.5, fontSize: 13),
-                  ),
-                  const SizedBox(height: 24),
-                  if (_errorMessage != null) ...[
+
+                  if (isVerified) ...[
+                    // Verified Success State View
                     Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(8)),
-                      child: Text(_errorMessage!, style: const TextStyle(color: Color(0xFF991B1B), fontSize: 13)),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  if (_successMessage != null) ...[
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(8)),
-                      child: Text(_successMessage!, style: const TextStyle(color: Color(0xFF166534), fontSize: 13)),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  InkWell(
-                    onTap: _uploading ? null : _pickCredentialFile,
-                    child: Container(
                       width: double.infinity,
-                      height: 180,
+                      padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                        color: Colors.white,
-                        border: Border.all(color: const Color(0xFFE2E8EE), style: BorderStyle.solid),
-                        borderRadius: BorderRadius.circular(12),
+                        color: const Color(0xFFF0FDF4),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFBBF7D0)),
                       ),
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.cloud_upload_outlined, size: 48, color: theme.primaryColor),
-                          const SizedBox(height: 16),
-                          Text(
-                            _pickedFileName ?? 'Click to Select Document',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF4A5A6A)),
+                          Container(
+                            width: 64,
+                            height: 64,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFDCFCE7),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.verified_rounded,
+                              color: Color(0xFF16A34A),
+                              size: 40,
+                            ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 16),
                           const Text(
-                            'Support: PDF, PNG, JPG, DOCX (Max 10MB)',
-                            style: TextStyle(fontSize: 11, color: Color(0xFF8A9AAA)),
+                            'Credentials Verified',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF166534),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Your medical license and certifications have been fully approved by the Merihcare administration. Your profile is active and eligible to receive and fulfill patient care appointments.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF15803D),
+                              height: 1.5,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFF86EFAC)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.check_circle, size: 16, color: Color(0xFF16A34A)),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Active Verified Clinician',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF166534),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 32),
-                  Semantics(
-                    button: true,
-                    label: 'Submit credentials for review',
-                    child: ElevatedButton(
-                      onPressed: _pickedFile == null || _uploading ? null : _uploadCredential,
-                      child: _uploading
-                          ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Text('Submit Credentials'),
+                    const SizedBox(height: 32),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: theme.primaryColor,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: const Text('Back to Dashboard', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      ),
                     ),
-                  ),
+                  ] else ...[
+                    // Upload Form for unverified / pending / rejected providers
+                    const Text(
+                      'Upload Certification/ID',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'To verify your medical license or credentials, please upload a valid PDF or Image copy of your credentials (maximum size: 10MB).',
+                      style: TextStyle(color: Color(0xFF64748B), height: 1.5, fontSize: 13),
+                    ),
+                    const SizedBox(height: 24),
+                    if (_errorMessage != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(8)),
+                        child: Text(_errorMessage!, style: const TextStyle(color: Color(0xFF991B1B), fontSize: 13)),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    if (_successMessage != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(8)),
+                        child: Text(_successMessage!, style: const TextStyle(color: Color(0xFF166534), fontSize: 13)),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    InkWell(
+                      onTap: _uploading ? null : _pickCredentialFile,
+                      child: Container(
+                        width: double.infinity,
+                        height: 180,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          border: Border.all(color: const Color(0xFFE2E8EE), style: BorderStyle.solid),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.cloud_upload_outlined, size: 48, color: theme.primaryColor),
+                            const SizedBox(height: 16),
+                            Text(
+                              _pickedFileName ?? 'Click to Select Document',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF4A5A6A)),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Support: PDF, PNG, JPG, DOCX (Max 10MB)',
+                              style: TextStyle(fontSize: 11, color: Color(0xFF8A9AAA)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    Semantics(
+                      button: true,
+                      label: 'Submit credentials for review',
+                      child: ElevatedButton(
+                        onPressed: _pickedFile == null || _uploading ? null : _uploadCredential,
+                        child: _uploading
+                            ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Text('Submit Credentials'),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

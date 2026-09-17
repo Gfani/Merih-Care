@@ -30,7 +30,7 @@ export class ProviderEntity {
   @Column()
   title: string;
 
-  @Column("float", { default: 5.0 })
+  @Column("float", { default: 0.0 })
   rating: number;
 
   @Column({ default: 0 })
@@ -91,6 +91,9 @@ export class ProviderEntity {
   @Column("text", { nullable: true })
   servicesRaw: string;
 
+  @Column("text", { nullable: true })
+  availabilityRaw: string;
+
   get services(): string[] {
     try {
       return this.servicesRaw ? JSON.parse(this.servicesRaw) : [];
@@ -101,6 +104,18 @@ export class ProviderEntity {
 
   set services(val: string[]) {
     this.servicesRaw = JSON.stringify(val);
+  }
+
+  get customAvailability(): Record<string, boolean> {
+    try {
+      return this.availabilityRaw ? JSON.parse(this.availabilityRaw) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  set customAvailability(val: Record<string, boolean>) {
+    this.availabilityRaw = JSON.stringify(val);
   }
 
   // Audits

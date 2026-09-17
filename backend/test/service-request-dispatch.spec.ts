@@ -161,6 +161,7 @@ describe("Service Request Dispatch & Notification Flow", () => {
     // 2. Check that persistent notification was created for platform admin
     const adminNotification = sentNotifications.find((n) => n.userId === "admin-1");
     expect(adminNotification).toBeDefined();
+    expect(adminNotification.type).toBe("new_service_request");
     expect(adminNotification.title).toBe("New Service Request");
     expect(adminNotification.body).toContain("Abebe Bikila");
 

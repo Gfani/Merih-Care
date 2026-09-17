@@ -270,27 +270,47 @@ export class AppointmentsService {
         const userRepo = this.dataSource.getRepository(UserEntity);
         const admins = await userRepo
           .createQueryBuilder("u")
-          .where("u.role LIKE :adm OR u.adminRole IS NOT NULL", { adm: "%admin%" })
+          .where("u.role LIKE :adm OR u.role IN ('admin', 'super_admin') OR u.adminRole IS NOT NULL", { adm: "%admin%" })
           .getMany();
 
-        for (const admin of admins) {
-          this.realtimeService.emitToRoom(`admin:${admin.id}`, "new_service_request", eventPayload);
-          if (this.notificationsService) {
-            this.notificationsService.sendNotification(admin.id, {
-              type: "appointment_update",
-              title: "New Service Request",
-              body: `${result.patientName} requested ${result.service} (${result.location || "Addis Ababa"}).`,
-              priority: "critical",
-              data: {
-                appointmentId: result.id,
-                type: "service_request",
-                patientName: result.patientName,
-                service: result.service,
-                location: result.location,
-                amount: result.amount,
-              },
-            }).catch(() => {});
+        if (admins.length > 0) {
+          for (const admin of admins) {
+            this.realtimeService.emitToRoom(`admin:${admin.id}`, "new_service_request", eventPayload);
+            if (this.notificationsService) {
+              this.notificationsService.sendNotification(admin.id, {
+                type: "new_service_request",
+                title: "New Service Request",
+                body: `${result.patientName} requested ${result.service} (${result.location || "Addis Ababa"}).`,
+                priority: "critical",
+                idempotencyKey: `service-req-${result.id}-${admin.id}`,
+                data: {
+                  appointmentId: result.id,
+                  type: "service_request",
+                  patientName: result.patientName,
+                  service: result.service,
+                  location: result.location,
+                  amount: result.amount,
+                },
+              }).catch(() => {});
+            }
           }
+        } else if (this.notificationsService) {
+          // Fallback if no specific admin records exist in DB
+          this.notificationsService.sendNotification("admin", {
+            type: "new_service_request",
+            title: "New Service Request",
+            body: `${result.patientName} requested ${result.service} (${result.location || "Addis Ababa"}).`,
+            priority: "critical",
+            idempotencyKey: `service-req-${result.id}-admin`,
+            data: {
+              appointmentId: result.id,
+              type: "service_request",
+              patientName: result.patientName,
+              service: result.service,
+              location: result.location,
+              amount: result.amount,
+            },
+          }).catch(() => {});
         }
       } catch (_) {}
 

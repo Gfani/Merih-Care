@@ -90,7 +90,7 @@ export class ProvidersController {
         title: "Healthcare Specialist",
         available: true,
         pricePerVisit: 800,
-        rating: 5.0,
+        rating: 0.0,
         reviewCount: 0,
         experience: 0,
         verified: false,

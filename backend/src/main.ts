@@ -20,9 +20,17 @@ async function bootstrap() {
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", "data:", "https:"],
         connectSrc: ["'self'", "https:", "wss:"],
+        frameAncestors: [
+          "'self'",
+          "https://*.merihcare.live",
+          "https://merihcare.live",
+          "http://localhost:*",
+          "http://127.0.0.1:*",
+        ],
       },
     },
     crossOriginEmbedderPolicy: false,
+    frameguard: false,
   }));
 
   app.setGlobalPrefix("api/v1");

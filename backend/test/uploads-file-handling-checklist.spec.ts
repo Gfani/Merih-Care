@@ -62,5 +62,15 @@ describe("Uploads & File Handling Checklist Tests", () => {
       expect(res.fileSize).toBe(validBuffer.length);
       expect(res.url).toContain("signature=");
     });
+
+    it("should resolve fallback official PDF certificate when physical file is missing on container disk", () => {
+      const resolved = service.resolveFile("credentials/unknown-dr-fannnnnnn-cv.pdf");
+      expect(resolved).toBeDefined();
+      expect(resolved.buffer).toBeDefined();
+      expect(resolved.buffer!.toString("ascii")).toContain("%PDF-1.4");
+      expect(resolved.fileName).toContain(".pdf");
+      expect(resolved.mimeType).toBe("application/pdf");
+    });
   });
 });
+

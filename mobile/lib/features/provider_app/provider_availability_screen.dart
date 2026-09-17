@@ -25,11 +25,14 @@ class _ProviderAvailabilityScreenState extends ConsumerState<ProviderAvailabilit
 
   Future<void> _loadAvailability() async {
     setState(() { _loading = true; _error = null; });
+    final now = DateTime.now();
+    final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+
     try {
       final auth = ref.read(authProvider);
       final providerId = auth.user?['id'] ?? 'p-1';
       final client = ref.read(apiClientProvider);
-      final response = await client.dio.get('/availability/$providerId');
+      final response = await client.dio.get('/availability/$providerId?date=$todayStr');
       if (mounted) {
         setState(() {
           _timeSlots = response.data['timeSlots'] ?? [];
@@ -40,10 +43,12 @@ class _ProviderAvailabilityScreenState extends ConsumerState<ProviderAvailabilit
       if (mounted) {
         setState(() {
           _timeSlots = [
-            { 'id': 'slot1', 'date': '2026-08-29', 'time': '09:00 - 10:00', 'available': true },
-            { 'id': 'slot2', 'date': '2026-08-29', 'time': '10:00 - 11:00', 'available': false },
-            { 'id': 'slot3', 'date': '2026-08-29', 'time': '14:00 - 15:00', 'available': true },
-            { 'id': 'slot4', 'date': '2026-08-30', 'time': '11:00 - 12:00', 'available': true },
+            { 'id': 'slot-0900', 'date': todayStr, 'time': '09:00 - 10:00', 'available': true },
+            { 'id': 'slot-1000', 'date': todayStr, 'time': '10:00 - 11:00', 'available': true },
+            { 'id': 'slot-1100', 'date': todayStr, 'time': '11:00 - 12:00', 'available': true },
+            { 'id': 'slot-1400', 'date': todayStr, 'time': '14:00 - 15:00', 'available': true },
+            { 'id': 'slot-1500', 'date': todayStr, 'time': '15:00 - 16:00', 'available': true },
+            { 'id': 'slot-1600', 'date': todayStr, 'time': '16:00 - 17:00', 'available': true },
           ];
           _loading = false;
         });
@@ -54,6 +59,8 @@ class _ProviderAvailabilityScreenState extends ConsumerState<ProviderAvailabilit
   Future<void> _toggleSlot(int index) async {
     final slot = _timeSlots[index];
     final updatedVal = !slot['available'];
+    final now = DateTime.now();
+    final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
     // Optimistically update UI
     setState(() {
@@ -61,11 +68,24 @@ class _ProviderAvailabilityScreenState extends ConsumerState<ProviderAvailabilit
     });
 
     try {
-      // In production: send update slot to server
-      // final client = ref.read(apiClientProvider);
-      // await client.dio.put('/availability/slots/${slot['id']}', data: {'available': updatedVal});
-    } catch (_) {
-      // Keep optimistic update or show offline banner warning
+      final client = ref.read(apiClientProvider);
+      final auth = ref.read(authProvider);
+      final providerId = auth.user?['id'] ?? 'p-1';
+      await client.dio.put('/availability/$providerId/slots', data: {
+        'slotId': slot['id'],
+        'time': slot['time'],
+        'date': slot['date'] ?? todayStr,
+        'available': updatedVal,
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _timeSlots[index]['available'] = !updatedVal;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to update slot availability on server.')),
+        );
+      }
     }
   }
 

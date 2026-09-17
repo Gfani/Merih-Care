@@ -17,7 +17,7 @@ import { RealtimeModule } from "../realtime/realtime.module";
     forwardRef(() => RealtimeModule),
     JwtModule.register({
       secret: process.env.JWT_SECRET || "super_secret_jwt_key_change_me_in_production",
-      signOptions: { expiresIn: "15m" },
+      signOptions: { expiresIn: process.env.JWT_EXPIRATION_TIME || "1d" },
     }),
   ],
   controllers: [AuthController],

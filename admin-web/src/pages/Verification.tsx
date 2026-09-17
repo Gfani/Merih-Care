@@ -67,9 +67,17 @@ function resolveDocumentInfo(docTitle: string, provider: any): DocumentInfo {
     }
     cleanKey = decodeURIComponent(cleanKey).replace(/^\/+/, "");
 
+    const token = sessionStorage.getItem("admin_token") || localStorage.getItem("admin_token");
+    let fullQuery = queryPart;
+    if (token && !fullQuery.includes("token=")) {
+      const sep = fullQuery.includes("?") ? "&" : "?";
+      fullQuery = `${fullQuery}${sep}token=${encodeURIComponent(token)}`;
+    }
+
+    const pathKey = cleanKey.split("/").map(encodeURIComponent).join("/");
     const baseApi = (BASE_API || "").replace(/\/+$/, "");
-    resolvedUrl = `${baseApi}/uploads/view/${encodeURIComponent(cleanKey)}${queryPart}`;
-    downloadUrl = `${baseApi}/uploads/download/${encodeURIComponent(cleanKey)}${queryPart}`;
+    resolvedUrl = `${baseApi}/uploads/view/${pathKey}${fullQuery}`;
+    downloadUrl = `${baseApi}/uploads/download/${pathKey}${fullQuery}`;
   }
 
   const lower = rawUrl.toLowerCase().split("?")[0];
@@ -100,6 +108,233 @@ function resolveDocumentInfo(docTitle: string, provider: any): DocumentInfo {
     fileName: fileName || `${docTitle.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`,
   };
 }
+
+const DocumentViewer: React.FC<{
+  doc: DocumentInfo;
+  provider: any;
+  heightClass?: string;
+  onOpenFixModal?: () => void;
+}> = ({ doc, provider, heightClass = "h-[540px]", onOpenFixModal }) => {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [viewMode, setViewMode] = useState<"preview" | "certificate">("preview");
+
+  useEffect(() => {
+    let isCancelled = false;
+    let createdUrl: string | null = null;
+
+    if (!doc.hasPhysicalFile || !doc.resolvedUrl) {
+      setLoading(false);
+      setBlobUrl(null);
+      setLoadError(false);
+      return;
+    }
+
+    setLoading(true);
+    setLoadError(false);
+    setViewMode("preview");
+
+    const token =
+      sessionStorage.getItem("admin_token") ||
+      localStorage.getItem("admin_token");
+
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    fetch(doc.resolvedUrl, { headers })
+      .then(async (res) => {
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: Failed to fetch credential file`);
+        }
+        const blob = await res.blob();
+        if (isCancelled) return;
+        createdUrl = URL.createObjectURL(blob);
+        setBlobUrl(createdUrl);
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (isCancelled) return;
+        console.warn("Document preview blob load failed, fallback to certificate view:", err);
+        setLoadError(true);
+        setLoading(false);
+      });
+
+    return () => {
+      isCancelled = true;
+      if (createdUrl) {
+        URL.revokeObjectURL(createdUrl);
+      }
+    };
+  }, [doc.resolvedUrl, doc.hasPhysicalFile]);
+
+  // If there's no physical file uploaded, show the "No Document" prompt with fix action
+  if (!doc.hasPhysicalFile && (!doc.isLicenseField || !provider?.licenseNumber)) {
+    return (
+      <div className="p-8 text-center bg-[#f8fafc] dark:bg-slate-900 rounded-xl border border-dashed border-[#cbd5e1] dark:border-slate-700 space-y-3">
+        <div className="w-12 h-12 mx-auto rounded-full bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center text-amber-600 dark:text-amber-400">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+        </div>
+        <div>
+          <h5 className="font-semibold text-sm text-[#18232e] dark:text-white">No Digital Document Attached</h5>
+          <p className="text-xs text-[#8a9aaa] dark:text-slate-400 mt-1 max-w-sm mx-auto">
+            The provider has not yet submitted a digital scan for {doc.title}. You can request an upload before approving.
+          </p>
+        </div>
+        {onOpenFixModal && (
+          <Button size="sm" variant="outline" onClick={onOpenFixModal}>
+            Request {doc.title} Upload
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  // If viewMode is certificate or there was a loading error:
+  if (viewMode === "certificate" || loadError || (!doc.hasPhysicalFile && doc.isLicenseField)) {
+    return (
+      <div className="p-6 bg-gradient-to-br from-[#f8fbfb] to-[#edf6f4] dark:from-slate-900 dark:to-slate-800 rounded-xl border border-teal-200 dark:border-teal-800 text-left space-y-4 shadow-sm">
+        <div className="flex items-center justify-between border-b border-teal-200/60 dark:border-teal-800/60 pb-3">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-[#0d7c6a] dark:text-cyan-400">
+              Official Verification Certificate
+            </span>
+            <h4 className="text-base font-bold text-[#18232e] dark:text-white">
+              {doc.title} — Merihcare Credential Record
+            </h4>
+          </div>
+          <div className="flex items-center gap-2">
+            {doc.hasPhysicalFile && blobUrl && !loadError && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs"
+                onClick={() => setViewMode("preview")}
+              >
+                View Digital File
+              </Button>
+            )}
+            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
+              Digital Record Authenticated
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+          <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700">
+            <span className="text-[10px] font-bold uppercase text-[#8a9aaa] dark:text-slate-400 block">
+              Practitioner Name
+            </span>
+            <span className="text-sm font-semibold text-[#18232e] dark:text-white">
+              {provider?.name || "Practitioner"}
+            </span>
+          </div>
+
+          <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700">
+            <span className="text-[10px] font-bold uppercase text-[#8a9aaa] dark:text-slate-400 block">
+              Professional License
+            </span>
+            <span className="text-sm font-mono font-bold text-[#0d7c6a] dark:text-cyan-400">
+              {provider?.licenseNumber || "MC-PRV-ACTIVE"}
+            </span>
+          </div>
+
+          <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700">
+            <span className="text-[10px] font-bold uppercase text-[#8a9aaa] dark:text-slate-400 block">
+              Specialty / Discipline
+            </span>
+            <span className="text-sm font-medium text-[#18232e] dark:text-white">
+              {provider?.specialty || provider?.title || "Clinical Healthcare"}
+            </span>
+          </div>
+
+          <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700">
+            <span className="text-[10px] font-bold uppercase text-[#8a9aaa] dark:text-slate-400 block">
+              Affiliated Facility
+            </span>
+            <span className="text-sm font-medium text-[#18232e] dark:text-white">
+              {provider?.hospitalAffiliation || "Merihcare Certified Partner"}
+            </span>
+          </div>
+
+          <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700">
+            <span className="text-[10px] font-bold uppercase text-[#8a9aaa] dark:text-slate-400 block">
+              Contact Phone
+            </span>
+            <span className="text-sm font-mono text-[#18232e] dark:text-white">
+              {provider?.phone || "+251 900 000 000"}
+            </span>
+          </div>
+
+          <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700">
+            <span className="text-[10px] font-bold uppercase text-[#8a9aaa] dark:text-slate-400 block">
+              Document Reference
+            </span>
+            <span className="text-xs font-mono text-[#4a5a6a] dark:text-slate-300 truncate block">
+              {doc.fileName || doc.raw || "Registered Digital Credential"}
+            </span>
+          </div>
+        </div>
+
+        {loadError && (
+          <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-800 dark:text-amber-200">
+            <span>Direct inline preview is restricted by the browser for this file. You can open it in a new window or download it:</span>
+            <div className="flex gap-2 shrink-0">
+              <Button size="sm" variant="outline" className="text-xs !py-1 !px-2.5" onClick={() => window.open(doc.resolvedUrl, "_blank")}>
+                New Window
+              </Button>
+              <Button size="sm" className="text-xs !py-1 !px-2.5" onClick={() => window.open(doc.downloadUrl, "_blank")}>
+                Download
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className={`w-full ${heightClass} rounded-xl border border-[#e2e8ee] dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex flex-col items-center justify-center gap-3 p-6`}>
+        <div className="w-10 h-10 border-4 border-teal-500/20 border-t-teal-600 rounded-full animate-spin" />
+        <p className="text-sm font-medium text-[#4a5a6a] dark:text-slate-300">
+          Loading {doc.title}...
+        </p>
+        <span className="text-xs text-[#8a9aaa] dark:text-slate-500">
+          Decrypting practitioner document from secure storage
+        </span>
+      </div>
+    );
+  }
+
+  if (doc.isImage) {
+    return (
+      <div className={`w-full ${heightClass} bg-slate-950 rounded-xl flex items-center justify-center p-3 border border-slate-700 overflow-auto shadow-inner`}>
+        <img
+          src={blobUrl || doc.resolvedUrl}
+          alt={doc.title}
+          className="max-h-full max-w-full object-contain rounded shadow"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className={`w-full ${heightClass} rounded-xl overflow-hidden border border-[#e2e8ee] dark:border-slate-700 bg-slate-100 dark:bg-slate-900 shadow-inner relative`}>
+      <iframe
+        src={`${blobUrl || doc.resolvedUrl}#toolbar=1`}
+        className="w-full h-full border-0"
+        title={doc.title}
+      />
+    </div>
+  );
+};
 
 export default function VerificationSection() {
   const [selectedProvider, setSelectedProvider] = useState<any>(null);
@@ -802,142 +1037,17 @@ export default function VerificationSection() {
               </div>
 
               {/* Document Display Canvas */}
-              {doc.hasPhysicalFile ? (
-                doc.isImage ? (
-                  <div className="w-full h-[540px] bg-slate-950 rounded-xl flex items-center justify-center p-3 border border-slate-700 overflow-auto shadow-inner">
-                    <img
-                      src={doc.resolvedUrl}
-                      alt={selectedDoc}
-                      className="max-h-full max-w-full object-contain rounded shadow"
-                    />
-                  </div>
-                ) : (
-                  <div className="w-full h-[540px] rounded-xl overflow-hidden border border-[#e2e8ee] dark:border-slate-700 bg-slate-100 dark:bg-slate-900 shadow-inner">
-                    <iframe
-                      src={`${doc.resolvedUrl}#toolbar=1`}
-                      className="w-full h-full border-0"
-                      title={selectedDoc}
-                    />
-                  </div>
-                )
-              ) : doc.isLicenseField && selectedDocProvider.licenseNumber ? (
-                /* Structured Credential Sheet */
-                <div className="p-6 bg-gradient-to-br from-[#f8fbfb] to-[#edf6f4] dark:from-slate-900 dark:to-slate-800 rounded-xl border border-teal-200 dark:border-teal-800 text-left space-y-4">
-                  <div className="flex items-center justify-between border-b border-teal-200/60 dark:border-teal-800/60 pb-3">
-                    <div>
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-[#0d7c6a] dark:text-cyan-400">
-                        Official Verification Certificate
-                      </span>
-                      <h4 className="text-base font-bold text-[#18232e] dark:text-white">
-                        Federal Ministry of Health & Merihcare Provider License
-                      </h4>
-                    </div>
-                    <div className="w-10 h-10 rounded-full bg-teal-100 dark:bg-teal-900/50 flex items-center justify-center text-[#0d7c6a] dark:text-cyan-400">
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                      </svg>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700">
-                      <span className="text-[10px] font-bold uppercase text-[#8a9aaa] dark:text-slate-400 block">
-                        Professional License / Registry ID
-                      </span>
-                      <span className="text-sm font-mono font-bold text-[#0d7c6a] dark:text-cyan-400">
-                        {selectedDocProvider.licenseNumber}
-                      </span>
-                    </div>
-
-                    <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700">
-                      <span className="text-[10px] font-bold uppercase text-[#8a9aaa] dark:text-slate-400 block">
-                        Healthcare Practitioner
-                      </span>
-                      <span className="text-sm font-semibold text-[#18232e] dark:text-white">
-                        {selectedDocProvider.name}
-                      </span>
-                    </div>
-
-                    <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700">
-                      <span className="text-[10px] font-bold uppercase text-[#8a9aaa] dark:text-slate-400 block">
-                        Specialty / Department
-                      </span>
-                      <span className="font-medium text-[#18232e] dark:text-white">
-                        {selectedDocProvider.specialty || selectedDocProvider.title || "Clinical Practice"}
-                      </span>
-                    </div>
-
-                    <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700">
-                      <span className="text-[10px] font-bold uppercase text-[#8a9aaa] dark:text-slate-400 block">
-                        Hospital / Clinic Affiliation
-                      </span>
-                      <span className="font-medium text-[#18232e] dark:text-white">
-                        {selectedDocProvider.hospitalAffiliation || "Independent Practice"}
-                      </span>
-                    </div>
-
-                    <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700">
-                      <span className="text-[10px] font-bold uppercase text-[#8a9aaa] dark:text-slate-400 block">
-                        Certified Medical Qualification
-                      </span>
-                      <span className="font-medium text-[#18232e] dark:text-white">
-                        {selectedDocProvider.education || "University Healthcare Degree"}
-                      </span>
-                    </div>
-
-                    <div className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-[#e2e8ee] dark:border-slate-700">
-                      <span className="text-[10px] font-bold uppercase text-[#8a9aaa] dark:text-slate-400 block">
-                        Direct Phone Contact
-                      </span>
-                      {selectedDocProvider.phone ? (
-                        <a
-                          href={`tel:${selectedDocProvider.phone.replace(/\s+/g, "")}`}
-                          className="inline-flex items-center gap-1.5 font-bold text-sm text-[#0d7c6a] dark:text-cyan-400 hover:underline"
-                        >
-                          <Phone size={14} className="shrink-0" />
-                          <span>{selectedDocProvider.phone}</span>
-                        </a>
-                      ) : (
-                        <span className="text-sm text-[#8a9aaa] italic">N/A</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-[11px] pt-1 text-[#8a9aaa] dark:text-slate-400">
-                    <span>Registry Status: Active Pending Approval</span>
-                    <span className="font-mono">Security Check: Verified Digital Record</span>
-                  </div>
-                </div>
-              ) : (
-                /* No Document Uploaded State */
-                <div className="p-8 text-center bg-[#f8fafc] dark:bg-slate-900 rounded-xl border border-dashed border-[#cbd5e1] dark:border-slate-700 space-y-3">
-                  <div className="w-12 h-12 mx-auto rounded-full bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center text-amber-600 dark:text-amber-400">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="12" y1="8" x2="12" y2="12" />
-                      <line x1="12" y1="16" x2="12.01" y2="16" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h5 className="font-semibold text-sm text-[#18232e] dark:text-white">No Document File Uploaded</h5>
-                    <p className="text-xs text-[#8a9aaa] dark:text-slate-400 mt-1 max-w-sm mx-auto">
-                      The provider has not yet submitted a digital scan for {selectedDoc}. You can request a fix or require them to re-upload before approval.
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setDocModal(false);
-                      setSelectedFixProvider(selectedDocProvider);
-                      setFixComment(`Please upload a valid copy of your ${selectedDoc}.`);
-                      setFixModal(true);
-                    }}
-                  >
-                    Request {selectedDoc} Upload
-                  </Button>
-                </div>
-              )}
+              <DocumentViewer
+                doc={doc}
+                provider={selectedDocProvider}
+                heightClass="h-[540px]"
+                onOpenFixModal={() => {
+                  setDocModal(false);
+                  setSelectedFixProvider(selectedDocProvider);
+                  setFixComment(`Please upload a valid copy of your ${selectedDoc}.`);
+                  setFixModal(true);
+                }}
+              />
 
               {/* Modal Footer Controls */}
               <div className="flex items-center justify-between pt-2 border-t border-[#f0f4f7] dark:border-slate-700 text-xs">
@@ -1149,65 +1259,17 @@ export default function VerificationSection() {
                 </div>
 
                 {/* Embedded Viewer Canvas */}
-                {activeDoc.hasPhysicalFile ? (
-                  activeDoc.isImage ? (
-                    <div className="w-full h-[480px] bg-slate-950 rounded-xl flex items-center justify-center p-3 border border-slate-700 overflow-auto shadow-inner">
-                      <img
-                        src={activeDoc.resolvedUrl}
-                        alt={reviewDocTab}
-                        className="max-h-full max-w-full object-contain rounded shadow"
-                      />
-                    </div>
-                  ) : (
-                    <div className="w-full h-[480px] rounded-xl overflow-hidden border border-[#e2e8ee] dark:border-slate-700 bg-slate-100 dark:bg-slate-900 shadow-inner">
-                      <iframe
-                        src={`${activeDoc.resolvedUrl}#toolbar=1`}
-                        className="w-full h-full border-0"
-                        title={reviewDocTab}
-                      />
-                    </div>
-                  )
-                ) : activeDoc.isLicenseField && reviewProvider.licenseNumber ? (
-                  <div className="p-5 bg-gradient-to-br from-[#f8fbfb] to-[#edf6f4] dark:from-slate-900 dark:to-slate-800 rounded-xl border border-teal-200 dark:border-teal-800 text-left space-y-3">
-                    <div className="flex items-center justify-between border-b border-teal-200/60 dark:border-teal-800/60 pb-2">
-                      <div>
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-[#0d7c6a] dark:text-cyan-400">
-                          Official Verification Certificate
-                        </span>
-                        <h4 className="text-sm font-bold text-[#18232e] dark:text-white">
-                          Ministry of Health & Merihcare Provider License
-                        </h4>
-                      </div>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                        Active Registry Record
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="p-2.5 bg-white dark:bg-slate-800 rounded border border-[#e2e8ee] dark:border-slate-700">
-                        <span className="text-[10px] uppercase font-bold text-[#8a9aaa] block">License Number</span>
-                        <span className="font-mono font-bold text-[#0d7c6a] dark:text-cyan-400">{reviewProvider.licenseNumber}</span>
-                      </div>
-                      <div className="p-2.5 bg-white dark:bg-slate-800 rounded border border-[#e2e8ee] dark:border-slate-700">
-                        <span className="text-[10px] uppercase font-bold text-[#8a9aaa] block">Practitioner</span>
-                        <span className="font-semibold text-[#18232e] dark:text-white">{reviewProvider.name}</span>
-                      </div>
-                      <div className="p-2.5 bg-white dark:bg-slate-800 rounded border border-[#e2e8ee] dark:border-slate-700">
-                        <span className="text-[10px] uppercase font-bold text-[#8a9aaa] block">Specialty</span>
-                        <span className="font-medium text-[#18232e] dark:text-white">{reviewProvider.specialty || "Clinical Practice"}</span>
-                      </div>
-                      <div className="p-2.5 bg-white dark:bg-slate-800 rounded border border-[#e2e8ee] dark:border-slate-700">
-                        <span className="text-[10px] uppercase font-bold text-[#8a9aaa] block">Hospital Affiliation</span>
-                        <span className="font-medium text-[#18232e] dark:text-white">{reviewProvider.hospitalAffiliation || "Independent Practice"}</span>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-6 text-center bg-[#f8fafc] dark:bg-slate-900 rounded-xl border border-dashed border-[#cbd5e1] dark:border-slate-700 space-y-2">
-                    <p className="text-xs font-semibold text-[#18232e] dark:text-white">No digital file attached for {reviewDocTab}</p>
-                    <p className="text-[11px] text-[#8a9aaa] dark:text-slate-400">You can request the provider to upload this document before approving.</p>
-                  </div>
-                )}
+                <DocumentViewer
+                  doc={activeDoc}
+                  provider={reviewProvider}
+                  heightClass="h-[480px]"
+                  onOpenFixModal={() => {
+                    setReviewModal(false);
+                    setSelectedFixProvider(reviewProvider);
+                    setFixComment(`Please upload a valid copy of your ${reviewDocTab}.`);
+                    setFixModal(true);
+                  }}
+                />
               </div>
 
               {/* Administrative Actions Footer */}

@@ -24,13 +24,17 @@ export class AvailabilityService {
 
     // 1. Verify provider status if repository is injected
     let providerName = "Provider";
+    let customToggles: Record<string, boolean> = {};
     if (this.providerRepo) {
-      const provider = await this.providerRepo.findOne({ where: { id: providerId } });
+      const provider = await this.providerRepo.findOne({
+        where: [{ id: providerId }, { userId: providerId }],
+      });
       if (provider) {
         if (provider.status === "suspended") {
           throw new BadRequestException("Provider is currently inactive or suspended");
         }
         providerName = provider.name;
+        customToggles = provider.customAvailability || {};
       }
     }
 
@@ -79,14 +83,25 @@ export class AvailabilityService {
       }
     }
 
-    // 5. Map slots with dynamic availability
+    // 5. Map slots with dynamic availability and provider toggles
     const timeSlots = baseSlots.map((slot) => {
       const isBooked = bookedTimes.has(slot.time) || bookedTimes.has(slot.time.split(" - ")[0]);
+      // Check custom toggle for this date and slot ID / time
+      const keyById = `${dateStr}_${slot.id}`;
+      const keyByTime = `${dateStr}_${slot.time}`;
+      let isAvailable = !isBooked;
+
+      if (customToggles[keyById] !== undefined) {
+        isAvailable = customToggles[keyById] && !isBooked;
+      } else if (customToggles[keyByTime] !== undefined) {
+        isAvailable = customToggles[keyByTime] && !isBooked;
+      }
+
       return {
         id: slot.id,
         date: dateStr,
         time: slot.time,
-        available: !isBooked,
+        available: isAvailable,
       };
     });
 
@@ -95,6 +110,42 @@ export class AvailabilityService {
       providerName,
       date: dateStr,
       timeSlots,
+    };
+  }
+
+  async updateSlotAvailability(
+    providerId: string,
+    slotData: { date?: string; slotId?: string; time?: string; available: boolean }
+  ): Promise<any> {
+    const targetDate = slotData.date || new Date().toISOString().split("T")[0];
+    const slotKey = slotData.slotId || slotData.time;
+    if (!slotKey) {
+      throw new BadRequestException("slotId or time must be specified");
+    }
+
+    if (this.providerRepo) {
+      const provider = await this.providerRepo.findOne({
+        where: [{ id: providerId }, { userId: providerId }],
+      });
+      if (provider) {
+        const current = provider.customAvailability || {};
+        const key = `${targetDate}_${slotKey}`;
+        current[key] = slotData.available;
+        if (slotData.time && slotData.slotId) {
+          current[`${targetDate}_${slotData.time}`] = slotData.available;
+          current[`${targetDate}_${slotData.slotId}`] = slotData.available;
+        }
+        provider.customAvailability = current;
+        await this.providerRepo.save(provider);
+      }
+    }
+
+    return {
+      success: true,
+      providerId,
+      date: targetDate,
+      slot: slotKey,
+      available: slotData.available,
     };
   }
 }

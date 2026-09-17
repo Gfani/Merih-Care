@@ -29,7 +29,12 @@ export class RealtimeService {
 
   /** Emit to a specific user's personal room */
   emitToUser(userId: string, role: "patient" | "provider" | string, event: string, data: any) {
-    const room = role === "provider" ? `provider:${userId}` : `patient:${userId}`;
+    const room =
+      role === "provider"
+        ? `provider:${userId}`
+        : role && role.includes("admin")
+        ? `admin:${userId}`
+        : `patient:${userId}`;
     this.emitToRoom(room, event, data);
   }
 

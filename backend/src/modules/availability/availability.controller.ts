@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, UseGuards } from "@nestjs/common";
+import { Controller, Get, Put, Param, Query, Body, Req, UseGuards } from "@nestjs/common";
 import { AvailabilityService } from "./availability.service";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 
@@ -13,5 +13,22 @@ export class AvailabilityController {
     @Query("date") date?: string,
   ) {
     return this.availabilityService.getAvailability(providerId, date);
+  }
+
+  @Put(":providerId/slots")
+  async updateSlotForProvider(
+    @Param("providerId") providerId: string,
+    @Body() body: { slotId?: string; time?: string; date?: string; available: boolean }
+  ) {
+    return this.availabilityService.updateSlotAvailability(providerId, body);
+  }
+
+  @Put("slots")
+  async updateSlotForSelf(
+    @Req() req: any,
+    @Body() body: { slotId?: string; time?: string; date?: string; available: boolean }
+  ) {
+    const providerId = req.user?.sub || req.user?.id || req.user?.providerId;
+    return this.availabilityService.updateSlotAvailability(providerId, body);
   }
 }

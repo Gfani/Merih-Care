@@ -46,4 +46,14 @@ describe("AvailabilityController", () => {
     expect(result.date).toBe(today);
     expect(result.timeSlots.length).toBeGreaterThan(0);
   });
+
+  it("should handle updateSlotAvailability properly", async () => {
+    const res = await service.updateSlotAvailability("p-1", {
+      date: "2026-09-17",
+      slotId: "slot-0900",
+      available: false,
+    });
+    expect(res.success).toBe(true);
+    expect(res.available).toBe(false);
+  });
 });

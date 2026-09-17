@@ -277,6 +277,25 @@ function AppContent() {
     }
   };
 
+  const playNotificationChime = React.useCallback(() => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const ctx = new AudioContextClass();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.12); // A5
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.35);
+    } catch (_) {}
+  }, []);
+
   const handleRealtimeEvent = React.useCallback((event: string, payload: any) => {
     if (event === "approval_requested") {
       const data = payload?.data || payload;
@@ -292,14 +311,32 @@ function AppContent() {
       const data = payload?.data || payload;
       const patientName = data?.patientName || data?.patient?.name || "Patient";
       const serviceType = data?.serviceType || data?.service || "Care Service";
-      toast(`🔔 New Service Request: ${serviceType} for ${patientName}`, "info");
+      const location = data?.location ? ` (${data.location})` : "";
+      playNotificationChime();
+      toast(`🚨 New Patient Service Request: ${serviceType} for ${patientName}${location}`, "info");
+      setBadgeCounts((prev) => ({ ...prev, requests: (prev.requests || 0) + 1 }));
       loadBadgeCounts();
       loadNotifications();
-    } else if (event === "appointment_status_update" || event === "notification") {
+    } else if (event === "appointment_status_update") {
+      const data = payload?.data || payload;
+      if (data?.status === "requested" || data?.status === "searching") {
+        playNotificationChime();
+        toast(`🚨 New Care Request: ${data.service || "Care Service"} by ${data.patientName || "Patient"}`, "info");
+        setBadgeCounts((prev) => ({ ...prev, requests: (prev.requests || 0) + 1 }));
+      }
+      loadBadgeCounts();
+      loadNotifications();
+    } else if (event === "notification") {
+      const data = payload?.data || payload;
+      if (data?.type === "new_service_request" || data?.title?.toLowerCase().includes("request")) {
+        playNotificationChime();
+        toast(`🚨 ${data?.title || "New Service Request"}: ${data?.body || ""}`, "info");
+        setBadgeCounts((prev) => ({ ...prev, requests: (prev.requests || 0) + 1 }));
+      }
       loadBadgeCounts();
       loadNotifications();
     }
-  }, []);
+  }, [playNotificationChime]);
 
   // Real-time socket health monitor
   const { isLive, connectionState } = useRealtimeSocket({ token, onEvent: handleRealtimeEvent });

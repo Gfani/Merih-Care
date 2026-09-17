@@ -212,6 +212,13 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> with Si
     );
   }
 
+  Future<void> _openBooking() async {
+    await context.push('/booking');
+    if (mounted) {
+      _loadAppointments();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -234,7 +241,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> with Si
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/booking'),
+        onPressed: _openBooking,
         backgroundColor: theme.primaryColor,
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text('Schedule Care', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -462,7 +469,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> with Si
                 ],
               ),
               OutlinedButton.icon(
-                onPressed: () => context.push('/booking'),
+                onPressed: _openBooking,
                 icon: const Icon(Icons.add, size: 16),
                 label: const Text('Schedule', style: TextStyle(fontSize: 12)),
                 style: OutlinedButton.styleFrom(
@@ -502,7 +509,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> with Si
                       ),
                       const SizedBox(height: 14),
                       ElevatedButton(
-                        onPressed: () => context.push('/booking'),
+                        onPressed: _openBooking,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: theme.primaryColor,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),

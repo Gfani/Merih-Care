@@ -1195,6 +1195,17 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                               } else {
                                 context.go('/dashboard');
                               }
+                            } else {
+                              final err = result.message ?? 'Google sign-in failed.';
+                              if (!err.toLowerCase().contains('cancel')) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(err),
+                                    backgroundColor: Colors.red.shade700,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
                             }
                           },
                     style: OutlinedButton.styleFrom(

@@ -722,7 +722,12 @@ export class AuthService {
       hasPatientAccount: true,
     };
 
-    const accessToken = await this.jwtService.signAsync(payload, { expiresIn: process.env.JWT_EXPIRATION_TIME || "15m" });
+    const isAdmin = rolesSet.has("admin") || user.role === "admin" || !!user.adminRole;
+    const tokenExpiry = isAdmin
+      ? (process.env.ADMIN_JWT_EXPIRATION_TIME || "7d")
+      : (process.env.JWT_EXPIRATION_TIME || "1d");
+
+    const accessToken = await this.jwtService.signAsync(payload, { expiresIn: tokenExpiry });
     const refreshToken = await this.jwtService.signAsync({ sub: user.id, tokenVersion: user.tokenVersion || 0 }, { expiresIn: "30d" });
 
     const session = new SessionEntity();
@@ -1491,6 +1496,9 @@ export class AuthService {
     // Support verified Google tokens or structured OAuth tokens for mobile clients
     const isMock = idToken.startsWith("test-google-") || idToken.startsWith("mock-google-");
     if (isMock) {
+      if (process.env.NODE_ENV === "production") {
+        throw new UnauthorizedException("Mock Google tokens are prohibited in production environment");
+      }
       const parts = idToken.split(":");
       const mockEmail = parts[1] || "test.user@gmail.com";
       const mockName = parts[2] || "Google Verified User";
@@ -1698,6 +1706,9 @@ export class AuthService {
     // 1. Verify Apple Token
     const isMock = identityToken.startsWith("test-apple-") || identityToken.startsWith("mock-apple-");
     if (isMock) {
+      if (process.env.NODE_ENV === "production") {
+        throw new UnauthorizedException("Mock Apple tokens are prohibited in production environment");
+      }
       const parts = identityToken.split(":");
       const mockEmail = parts[1] && parts[1].trim().length > 0 ? parts[1].trim() : (parts.length > 2 ? undefined : "apple.user@icloud.com");
       const mockName = parts[2] || userName || "Apple Verified User";

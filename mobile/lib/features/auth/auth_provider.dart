@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import '../../core/constants/auth_constants.dart';
 import '../../core/storage/secure_storage.dart';
 import '../../core/network/network_providers.dart';
 import 'package:dio/dio.dart';
@@ -48,6 +50,14 @@ class SignupResult {
 
 class AuthNotifier extends StateNotifier<AuthState> {
   final Ref _ref;
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    serverClientId: AuthConstants.googleWebClientId,
+    scopes: const <String>[
+      'email',
+      'profile',
+      'openid',
+    ],
+  );
 
   AuthNotifier(this._ref) : super(AuthState(status: AuthStatus.unknown)) {
     _checkToken();
@@ -260,17 +270,51 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<SignupResult> signInWithGoogle({
     String role = 'patient',
     Map<String, dynamic>? providerData,
+    String? email,
     String? testIdToken,
   }) async {
     try {
       state = state.copyWith(errorMessage: null);
 
-      String email = 'user.${DateTime.now().millisecondsSinceEpoch}@gmail.com';
-      final savedEmail = await SecureStorage.instance.readLastEmail();
-      if (savedEmail != null && savedEmail.isNotEmpty && savedEmail.contains('@')) {
-        email = savedEmail;
+      String? token = testIdToken;
+
+      if (token == null) {
+        GoogleSignInAccount? account;
+        try {
+          // Launch native Google OAuth / device account picker popup
+          account = await _googleSignIn.signIn();
+        } catch (e) {
+          debugPrint('[GOOGLE_AUTH] Native Google Sign-In error: $e');
+          final errStr = e.toString().toLowerCase();
+          if (errStr.contains('canceled') || errStr.contains('cancelled') || errStr.contains('cancel')) {
+            return const SignupResult(success: false, message: 'Google sign-in canceled');
+          }
+          // Fallback in dev/test environment if Google Play Services / SHA-1 is not yet mapped
+          if (kDebugMode && email != null && email.isNotEmpty) {
+            token = 'test-google-token:$email:MerihCare User';
+          } else {
+            return SignupResult(
+              success: false,
+              message: 'Google Sign-In failed ($e). Ensure Google Play Services is available.',
+            );
+          }
+        }
+
+        if (account == null && token == null) {
+          return const SignupResult(success: false, message: 'Google sign-in canceled');
+        }
+
+        if (account != null) {
+          final GoogleSignInAuthentication auth = await account.authentication;
+          token = auth.idToken;
+          if (token == null || token.isEmpty) {
+            token = auth.accessToken;
+          }
+          if (token == null || token.isEmpty) {
+            return const SignupResult(success: false, message: 'Could not obtain Google identity token.');
+          }
+        }
       }
-      final String token = testIdToken ?? 'test-google-token:$email:MerihCare User';
 
       final payload = <String, dynamic>{
         'idToken': token,
@@ -621,6 +665,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } finally {
       try {
         _ref.read(realtimeServiceProvider).disconnect();
+      } catch (_) {}
+      try {
+        await _googleSignIn.signOut();
       } catch (_) {}
       await SecureStorage.instance.deleteToken();
       state = AuthState(status: AuthStatus.unauthenticated);

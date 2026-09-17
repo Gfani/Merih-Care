@@ -6,7 +6,7 @@ import { Roles } from "../../shared/decorators/roles.decorator";
 
 @Controller("requests")
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles("admin")
+@Roles("admin", "super_admin")
 export class ServiceRequestsController {
   constructor(private readonly serviceRequestsService: ServiceRequestsService) {}
 

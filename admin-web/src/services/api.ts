@@ -68,51 +68,30 @@ export const API_URL = resolveApiUrl();
 
 const getStoredToken = (): string | null => {
   if (typeof window === "undefined") return null;
-  let token = sessionStorage.getItem("admin_token");
-  if (!token) {
-    const legacy = localStorage.getItem("admin_token");
-    if (legacy) {
-      sessionStorage.setItem("admin_token", legacy);
-      localStorage.removeItem("admin_token");
-      token = legacy;
-    }
-  }
-  return token;
+  return localStorage.getItem("admin_token") || sessionStorage.getItem("admin_token");
 };
 
 const getStoredRefreshToken = (): string | null => {
   if (typeof window === "undefined") return null;
-  let token = sessionStorage.getItem("admin_refresh_token");
-  if (!token) {
-    const legacy = localStorage.getItem("admin_refresh_token");
-    if (legacy) {
-      sessionStorage.setItem("admin_refresh_token", legacy);
-      localStorage.removeItem("admin_refresh_token");
-      token = legacy;
-    }
-  }
-  return token;
+  return localStorage.getItem("admin_refresh_token") || sessionStorage.getItem("admin_refresh_token");
 };
 
 const getStoredUser = (): string | null => {
   if (typeof window === "undefined") return null;
-  let user = sessionStorage.getItem("admin_user");
-  if (!user) {
-    const legacy = localStorage.getItem("admin_user");
-    if (legacy) {
-      sessionStorage.setItem("admin_user", legacy);
-      localStorage.removeItem("admin_user");
-      user = legacy;
-    }
-  }
-  return user;
+  return localStorage.getItem("admin_user") || sessionStorage.getItem("admin_user");
 };
 
 const setSessionTokens = (token: string, user: any, refreshToken?: string) => {
   if (typeof window === "undefined") return;
+  localStorage.setItem("admin_token", token);
   sessionStorage.setItem("admin_token", token);
-  sessionStorage.setItem("admin_user", JSON.stringify(user));
+  if (user) {
+    const userStr = typeof user === "string" ? user : JSON.stringify(user);
+    localStorage.setItem("admin_user", userStr);
+    sessionStorage.setItem("admin_user", userStr);
+  }
   if (refreshToken) {
+    localStorage.setItem("admin_refresh_token", refreshToken);
     sessionStorage.setItem("admin_refresh_token", refreshToken);
   }
 };
@@ -122,7 +101,6 @@ const clearSessionTokens = () => {
   sessionStorage.removeItem("admin_token");
   sessionStorage.removeItem("admin_refresh_token");
   sessionStorage.removeItem("admin_user");
-  // Clean up any legacy localStorage entries
   localStorage.removeItem("admin_token");
   localStorage.removeItem("admin_refresh_token");
   localStorage.removeItem("admin_user");
@@ -146,6 +124,46 @@ const isDemoMode = (): boolean => {
   return enabledByEnv && stored === "true";
 };
 
+let isRefreshing = false;
+let refreshSubscribers: Array<(token: string) => void> = [];
+
+const subscribeTokenRefresh = (cb: (token: string) => void) => {
+  refreshSubscribers.push(cb);
+};
+
+const onRefreshed = (token: string) => {
+  refreshSubscribers.forEach((cb) => cb(token));
+  refreshSubscribers = [];
+};
+
+const performSilentRefresh = async (): Promise<string | null> => {
+  const refreshToken = getStoredRefreshToken();
+  if (!refreshToken) return null;
+  try {
+    const res = await axios.post(`${API_URL}/auth/refresh`, {
+      refresh_token: refreshToken,
+    });
+    const data = res.data?.data || res.data;
+    const newToken = data.access_token || data.token;
+    const newRefreshToken = data.refresh_token || refreshToken;
+    const rawUser = getStoredUser();
+    let user = data.user;
+    if (!user && rawUser) {
+      try {
+        user = JSON.parse(rawUser);
+      } catch (_) {}
+    }
+    if (newToken) {
+      setSessionTokens(newToken, user, newRefreshToken);
+      return newToken;
+    }
+    return null;
+  } catch (error) {
+    console.warn("Silent token refresh failed:", error);
+    return null;
+  }
+};
+
 // Global unwrapper for NestJS StandardResponse envelope { success: true, data: T }
 axios.interceptors.response.use(
   (response) => {
@@ -157,14 +175,50 @@ axios.interceptors.response.use(
     }
     return response;
   },
-  (error) => {
-    if (error?.response?.status === 401 && typeof window !== "undefined") {
-      const isLoginRequest = error.config?.url?.includes("/auth/login");
-      if (!isLoginRequest) {
-        clearSessionTokens();
-        if (window.location.pathname !== "/login") {
-          window.location.href = "/login";
+  async (error) => {
+    const originalRequest = error?.config;
+    if (
+      error?.response?.status === 401 &&
+      originalRequest &&
+      !originalRequest._retry &&
+      !originalRequest.url?.includes("/auth/login") &&
+      !originalRequest.url?.includes("/auth/refresh") &&
+      typeof window !== "undefined"
+    ) {
+      const storedRefresh = getStoredRefreshToken();
+      if (storedRefresh) {
+        if (isRefreshing) {
+          return new Promise((resolve) => {
+            subscribeTokenRefresh((token: string) => {
+              originalRequest.headers = originalRequest.headers || {};
+              originalRequest.headers.Authorization = `Bearer ${token}`;
+              resolve(axios(originalRequest));
+            });
+          });
         }
+
+        originalRequest._retry = true;
+        isRefreshing = true;
+
+        try {
+          const newToken = await performSilentRefresh();
+          if (newToken) {
+            onRefreshed(newToken);
+            originalRequest.headers = originalRequest.headers || {};
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            return axios(originalRequest);
+          }
+        } catch (refreshErr) {
+          console.warn("Silent token refresh error:", refreshErr);
+        } finally {
+          isRefreshing = false;
+        }
+      }
+
+      clearSessionTokens();
+      window.dispatchEvent(new CustomEvent("merihcare:session_expired"));
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
       }
     }
     return Promise.reject(error);
@@ -294,6 +348,10 @@ export const api = {
           });
       p.catch((e) => console.warn("Backend session revocation completed or offline:", e));
     }
+  },
+
+  async refreshToken(): Promise<string | null> {
+    return performSilentRefresh();
   },
 
   async getAdminProfile(): Promise<{ name: string; email: string }> {
@@ -448,7 +506,17 @@ export const api = {
   },
 
   async getRequests(params?: any): Promise<any[]> {
-    return this.getAppointments(params);
+    try {
+      const res = await axios.get(`${API_URL}/requests`, { headers: getHeaders(), params });
+      return Array.isArray(res.data) ? res.data : (res.data?.data || []);
+    } catch (error) {
+      try {
+        return await this.getAppointments(params);
+      } catch {
+        if (isDemoMode()) return mockRequests as any;
+        return [];
+      }
+    }
   },
 
   async getAppointmentById(id: string): Promise<Appointment> {

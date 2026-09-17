@@ -14,7 +14,7 @@ export class ServiceRequestsService {
     try {
       const live = await this.appointmentRepo.find({
         relations: ["patient", "provider", "serviceRelation"],
-        order: { date: "DESC" as any, time: "DESC" as any },
+        order: { createdAt: "DESC" as any, date: "DESC" as any, time: "DESC" as any },
         take: 100,
       });
 

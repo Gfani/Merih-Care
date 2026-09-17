@@ -142,7 +142,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     if (!userId) { socket.disconnect(); return; }
 
     const isProvider = role === "provider" || roles.includes("provider") || (socket as any).hasProviderAccount;
-    const isAdmin = role === "admin" || role === "super_admin" || roles.includes("admin") || (socket as any).hasAdminAccount;
+    const isAdmin =
+      role === "admin" ||
+      role === "super_admin" ||
+      roles.includes("admin") ||
+      (socket as any).hasAdminAccount ||
+      !!(socket as any).adminRole ||
+      (typeof role === "string" && role.includes("admin"));
 
     // Auto-join personal room
     const personalRoom = isProvider ? `provider:${userId}` : (isAdmin ? `admin:${userId}` : `patient:${userId}`);
@@ -298,7 +304,16 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   @SubscribeMessage("join_admin")
   handleJoinAdmin(@ConnectedSocket() socket: Socket) {
     const role = (socket as any).role;
-    if (role !== "admin" && role !== "super_admin") {
+    const roles: string[] = (socket as any).roles || [];
+    const isAdmin =
+      role === "admin" ||
+      role === "super_admin" ||
+      roles.includes("admin") ||
+      (socket as any).hasAdminAccount ||
+      !!(socket as any).adminRole ||
+      (typeof role === "string" && role.includes("admin"));
+
+    if (!isAdmin) {
       socket.emit("error", { message: "Admin role required" });
       return { ok: false, error: "Forbidden" };
     }
