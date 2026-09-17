@@ -103,6 +103,7 @@ export class VerificationService {
         pricePerVisit: p.pricePerVisit,
         email,
         phone,
+        providerCode: p.providerCode || null,
         emailVerified: user?.emailVerified ?? false,
         isApproved: user?.isApproved ?? false,
         joinedDate: user?.dateJoined || (p.createdAt ? p.createdAt.toISOString().split("T")[0] : ""),
