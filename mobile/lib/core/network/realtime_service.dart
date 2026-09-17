@@ -194,6 +194,12 @@ class MobileRealtimeService {
     _realtimeSocket?.emit('join_emergency', {'emergencyId': emergencyId});
   }
 
+  /// Join providers broadcast room for receiving incoming care requests
+  void joinProviders() {
+    _joinedRooms.add('providers');
+    _realtimeSocket?.emit('join_providers');
+  }
+
   /// Join chat conversation room
   void joinConversation(String conversationId) {
     _chatSocket?.emit('join_conversation', {'conversationId': conversationId});

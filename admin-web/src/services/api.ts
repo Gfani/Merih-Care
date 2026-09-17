@@ -437,35 +437,31 @@ export const api = {
   },
 
   // ─── APPOINTMENTS & REQUESTS ───────────────────────────────────────────────
-  async getAppointments(params?: { status?: string; search?: string; patientId?: string }): Promise<Appointment[]> {
+  async getAppointments(params?: { status?: string; search?: string; patientId?: string; [key: string]: any }): Promise<Appointment[]> {
     try {
       const res = await axios.get(`${API_URL}/appointments`, { headers: getHeaders(), params });
-      return res.data;
+      return Array.isArray(res.data) ? res.data : (res.data?.data || []);
     } catch (error) {
       if (isDemoMode()) return mockAppointments as any;
       throw error;
     }
   },
 
-  async getRequests(): Promise<any[]> {
-    return this.getAppointments();
+  async getRequests(params?: any): Promise<any[]> {
+    return this.getAppointments(params);
   },
 
-  async createAppointment(data: {
-    patientId?: string;
-    patientName?: string;
-    patientPhone?: string;
-    providerId?: string;
-    providerName?: string;
-    providerPhone?: string;
-    serviceId: string;
-    service?: string;
-    date: string;
-    time: string;
-    location: string;
-    amount?: number;
-    status?: string;
-  }): Promise<any> {
+  async getAppointmentById(id: string): Promise<Appointment> {
+    try {
+      const res = await axios.get(`${API_URL}/appointments/${id}`, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return mockAppointments[0] as any;
+      throw error;
+    }
+  },
+
+  async createAppointment(data: any): Promise<any> {
     try {
       const res = await axios.post(`${API_URL}/appointments`, data, { headers: getHeaders() });
       return res.data;
@@ -475,12 +471,52 @@ export const api = {
     }
   },
 
-  async updateAppointmentStatus(id: string, status: Appointment["status"], reason?: string): Promise<any> {
+  async bookAppointment(data: any): Promise<any> {
     try {
-      const res = await axios.put(`${API_URL}/appointments/${id}/status`, { status, reason }, { headers: getHeaders() });
+      const res = await axios.post(`${API_URL}/appointments/book`, data, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { ...data, id: `apt-${Date.now()}` };
+      throw error;
+    }
+  },
+
+  async updateAppointmentStatus(id: string, status: Appointment["status"] | string, reason?: string, disputeReason?: string): Promise<any> {
+    try {
+      const res = await axios.put(`${API_URL}/appointments/${id}/status`, { status, visitNotes: reason, reason, disputeReason }, { headers: getHeaders() });
       return res.data;
     } catch (error) {
       if (isDemoMode()) return { id, status, reason };
+      throw error;
+    }
+  },
+
+  async assignProvider(id: string, providerId: string, providerName: string): Promise<any> {
+    try {
+      const res = await axios.post(`${API_URL}/appointments/${id}/assign`, { providerId, providerName }, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { id, providerId, providerName };
+      throw error;
+    }
+  },
+
+  async cancelAppointment(id: string, reason: string): Promise<any> {
+    try {
+      const res = await axios.post(`${API_URL}/appointments/${id}/cancel`, { reason }, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { id, status: "cancelled", reason };
+      throw error;
+    }
+  },
+
+  async adminOverride(id: string, status: string, notes: string): Promise<any> {
+    try {
+      const res = await axios.post(`${API_URL}/appointments/${id}/override`, { status, notes }, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { id, status, notes };
       throw error;
     }
   },

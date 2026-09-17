@@ -31,6 +31,7 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
   @override
   void initState() {
     super.initState();
+    ref.read(realtimeServiceProvider).joinProviders();
     _loadDashboardData();
 
     // Listen to live realtime dispatches from backend

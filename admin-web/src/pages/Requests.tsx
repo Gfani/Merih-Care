@@ -51,15 +51,17 @@ export default function RequestsSection() {
   const handleRealtimeEvent = useCallback((event: string, payload: any) => {
     if (event === "new_service_request" || event === "appointment_status_update") {
       const data = payload?.data || payload;
-      if (data && data.id) {
+      const targetId = data?.id || data?.appointmentId;
+      if (data && targetId) {
+        const item = { ...data, id: targetId };
         setAppointments((prev) => {
-          const index = prev.findIndex((p) => p.id === data.id);
+          const index = prev.findIndex((p) => p.id === targetId || p.appointmentId === targetId);
           if (index >= 0) {
             const updated = [...prev];
-            updated[index] = { ...updated[index], ...data };
+            updated[index] = { ...updated[index], ...item };
             return updated;
           }
-          return [data, ...prev];
+          return [item, ...prev];
         });
       } else {
         loadData();

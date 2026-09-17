@@ -7,10 +7,10 @@ import { IsNotEmpty, IsString, IsOptional, IsNumber, IsDateString, Matches, MaxL
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class CreateAppointmentDto {
-  @ApiProperty({ description: "Patient ID" })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ description: "Patient ID" })
+  @IsOptional()
   @IsString()
-  patientId: string;
+  patientId?: string;
 
   @ApiPropertyOptional({ description: "Patient Display Name" })
   @IsOptional()
@@ -47,32 +47,35 @@ export class CreateAppointmentDto {
   @IsString()
   patientPhone?: string;
 
-  @ApiProperty({ description: "Service Category/ID" })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ description: "Service Category/ID" })
+  @IsOptional()
   @IsString()
-  serviceId: string;
+  serviceId?: string;
 
   @ApiPropertyOptional({ description: "Service Display Name" })
   @IsOptional()
   @IsString()
   service?: string;
 
-  @ApiProperty({ description: "Booking Date (YYYY-MM-DD)" })
-  @IsNotEmpty()
-  @IsDateString()
-  date: string;
-
-  @ApiProperty({ description: "Booking Time (HH:MM or HH:MM AM/PM)" })
-  @IsNotEmpty()
-  @Matches(/^([0-9]|0[0-9]|1[0-9]|2[0-3]):[0-5][0-9](\s*(AM|PM|am|pm))?$/i, { 
-    message: "Time must be in HH:MM or HH:MM AM/PM format" 
-  })
-  time: string;
-
-  @ApiProperty({ description: "Visit Location Address" })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ description: "Booking Date (YYYY-MM-DD)" })
+  @IsOptional()
   @IsString()
-  location: string;
+  date?: string;
+
+  @ApiPropertyOptional({ description: "Booking Time (HH:MM or HH:MM AM/PM)" })
+  @IsOptional()
+  @IsString()
+  time?: string;
+
+  @ApiPropertyOptional({ description: "Visit Location Address" })
+  @IsOptional()
+  @IsString()
+  location?: string;
+
+  @ApiPropertyOptional({ description: "Visit Location Address Alternative" })
+  @IsOptional()
+  @IsString()
+  address?: string;
 
   @ApiPropertyOptional({ description: "Total Payment Amount" })
   @IsOptional()
@@ -198,6 +201,28 @@ export class AppointmentsController {
       data.patientId = req.user.id || req.user.sub;
       data.patientName = data.patientName || req.user.name;
     }
+    if (data.address && !data.location) {
+      data.location = data.address;
+    }
+    if (!data.location) {
+      data.location = "Addis Ababa";
+    }
+    if (!data.serviceId) {
+      data.serviceId = "srv-1";
+    }
+    if (!data.service) {
+      data.service = "Doctor Home Visit";
+    }
+    const now = new Date();
+    if (!data.date) {
+      data.date = now.toISOString().split("T")[0];
+    }
+    if (!data.time) {
+      data.time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    }
+    if (!data.status) {
+      data.status = data.providerId ? "accepted" : "requested";
+    }
     return this.appointmentsService.createAppointment(data);
   }
 
@@ -211,11 +236,27 @@ export class AppointmentsController {
     if (data.address && !data.location) {
       data.location = data.address;
     }
+    if (!data.location) {
+      data.location = "Addis Ababa";
+    }
     if (data.notes && !data.visitNotes) {
       data.visitNotes = data.notes;
     }
     if (!data.serviceId) {
       data.serviceId = "srv-1";
+    }
+    if (!data.service) {
+      data.service = "Doctor Home Visit";
+    }
+    const now = new Date();
+    if (!data.date) {
+      data.date = now.toISOString().split("T")[0];
+    }
+    if (!data.time) {
+      data.time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    }
+    if (!data.status) {
+      data.status = data.providerId ? "accepted" : "requested";
     }
     return this.appointmentsService.createAppointment(data);
   }

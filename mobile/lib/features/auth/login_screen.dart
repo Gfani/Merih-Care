@@ -116,17 +116,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: TextButton(
                     onPressed: () => _showForgotPasswordDialog(context),
                     style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                       minimumSize: const Size(50, 30),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    child: Text(
-                      'Forgot Password?',
-                      style: TextStyle(
-                        color: theme.primaryColor,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.lock_reset_outlined,
+                          size: 16,
+                          color: theme.primaryColor,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Forgot Password?',
+                          style: TextStyle(
+                            color: theme.primaryColor,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),

@@ -30,8 +30,15 @@ export class AppointmentsService {
     let apts: AppointmentEntity[] = [];
 
     // Role-aware filtering
-    const isProvider = caller?.role === "provider";
-    const isPatient = caller?.role === "patient";
+    const isProvider =
+      caller?.role === "provider" ||
+      caller?.roles?.includes("provider") ||
+      caller?.hasProviderAccount;
+    const isPatient =
+      caller?.role === "patient" &&
+      !caller?.roles?.includes("provider") &&
+      !caller?.roles?.includes("admin") &&
+      caller?.role !== "super_admin";
 
     if (isProvider) {
       let provId = caller?.providerId;
@@ -53,20 +60,21 @@ export class AppointmentsService {
         .leftJoinAndSelect("provider.user", "providerUser")
         .leftJoinAndSelect("apt.serviceRelation", "serviceRelation");
 
+      const userId = caller?.id || caller?.sub;
       if (provId) {
         qb.where(
-          "(apt.providerId = :provId OR provider.userId = :userId) OR (apt.providerId IS NULL AND apt.status IN (:...pendingStatuses))",
+          "(apt.providerId = :provId OR provider.userId = :userId) OR ((apt.providerId IS NULL OR apt.providerId = '') AND apt.status IN (:...pendingStatuses))",
           {
             provId,
-            userId: caller.id || caller.sub,
+            userId,
             pendingStatuses: ["requested", "searching", "pending"],
           }
         );
       } else {
         qb.where(
-          "(provider.userId = :userId) OR (apt.providerId IS NULL AND apt.status IN (:...pendingStatuses))",
+          "(provider.userId = :userId) OR ((apt.providerId IS NULL OR apt.providerId = '') AND apt.status IN (:...pendingStatuses))",
           {
-            userId: caller.id || caller.sub,
+            userId,
             pendingStatuses: ["requested", "searching", "pending"],
           }
         );
@@ -90,7 +98,7 @@ export class AppointmentsService {
         relations: ["patient", "provider", "provider.user", "serviceRelation"],
         take: limit,
         skip: offset,
-        order: { date: "DESC" as any, time: "DESC" as any },
+        order: { createdAt: "DESC" as any, date: "DESC" as any, time: "DESC" as any },
       });
     }
 
@@ -254,6 +262,8 @@ export class AppointmentsService {
       this.realtimeService.emitAppointmentUpdate(result.id, result.status, eventPayload);
       this.realtimeService.emitToRoom("admin", "new_service_request", eventPayload);
       this.realtimeService.emitToRoom("admin", "appointment_status_update", eventPayload);
+      this.realtimeService.emitToRoom("providers", "new_service_request", eventPayload);
+      this.realtimeService.emitToRoom("providers", "appointment_status_update", eventPayload);
 
       // 2. Persist notification and notify all Platform Administrators
       try {
@@ -319,9 +329,10 @@ export class AppointmentsService {
           const activeProviders = await provRepo
             .createQueryBuilder("prov")
             .leftJoinAndSelect("prov.user", "user")
-            .where("prov.status IN (:...statuses) OR prov.available = :avail", {
-              statuses: ["verified", "active"],
+            .where("prov.status IN (:...statuses) OR prov.available = :avail OR prov.verified = :verif", {
+              statuses: ["verified", "active", "approved"],
               avail: true,
+              verif: true,
             })
             .getMany();
 
@@ -351,6 +362,37 @@ export class AppointmentsService {
               }).catch(() => {});
             }
           }
+
+          // Also alert any users with provider role directly
+          try {
+            const userRepo = this.dataSource.getRepository(UserEntity);
+            const provUsers = await userRepo
+              .createQueryBuilder("u")
+              .where("u.role = :pRole OR u.roles LIKE :pRoles", { pRole: "provider", pRoles: "%provider%" })
+              .getMany();
+            for (const u of provUsers) {
+              if (!notifiedUserIds.has(u.id)) {
+                notifiedUserIds.add(u.id);
+                this.realtimeService.emitToRoom(`provider:${u.id}`, "new_service_request", eventPayload);
+                if (this.notificationsService) {
+                  this.notificationsService.sendNotification(u.id, {
+                    type: "appointment_update",
+                    title: "New Care Request Nearby",
+                    body: `${result.patientName} requested ${result.service} near ${result.location || "your area"}. Tap to review and accept.`,
+                    priority: "critical",
+                    data: {
+                      appointmentId: result.id,
+                      type: "appointment_request",
+                      patientName: result.patientName,
+                      service: result.service,
+                      location: result.location,
+                      amount: result.amount,
+                    },
+                  }).catch(() => {});
+                }
+              }
+            }
+          } catch (_) {}
         }
       } catch (_) {}
     } catch (_) {}

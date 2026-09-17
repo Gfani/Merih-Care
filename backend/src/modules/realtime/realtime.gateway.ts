@@ -102,6 +102,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
         (socket as any).userId = userId;
         (socket as any).role = role;
+        (socket as any).roles = payload.roles || [];
+        (socket as any).hasProviderAccount = payload.hasProviderAccount;
+        (socket as any).hasAdminAccount = payload.hasAdminAccount;
         next();
       } catch {
         next(new Error("Unauthorized: invalid token"));
@@ -135,18 +138,26 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   handleConnection(socket: Socket) {
     const userId = (socket as any).userId;
     const role = (socket as any).role;
+    const roles: string[] = (socket as any).roles || [];
     if (!userId) { socket.disconnect(); return; }
 
+    const isProvider = role === "provider" || roles.includes("provider") || (socket as any).hasProviderAccount;
+    const isAdmin = role === "admin" || role === "super_admin" || roles.includes("admin") || (socket as any).hasAdminAccount;
+
     // Auto-join personal room
-    const personalRoom = role === "provider" ? `provider:${userId}` : (role === "admin" || role === "super_admin" ? `admin:${userId}` : `patient:${userId}`);
+    const personalRoom = isProvider ? `provider:${userId}` : (isAdmin ? `admin:${userId}` : `patient:${userId}`);
     socket.join(personalRoom);
 
     // Join providers broadcast room
-    if (role === "provider") socket.join("providers");
+    if (isProvider) {
+      socket.join("providers");
+      socket.join(`provider:${userId}`);
+    }
 
     // Auto-join admin room for immediate real-time dashboard events
-    if (role === "admin" || role === "super_admin") {
+    if (isAdmin) {
       socket.join("admin");
+      socket.join(`admin:${userId}`);
       adminSocketCount.count += 1;
       if (!adminMetricsInterval) {
         adminMetricsInterval = setInterval(() => this.broadcastAdminMetrics(), 10000);
@@ -155,8 +166,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     }
 
     const roomsSet = new Set([personalRoom]);
-    if (role === "admin" || role === "super_admin") roomsSet.add("admin");
-    if (role === "provider") {
+    if (isAdmin) roomsSet.add("admin");
+    if (isProvider) {
       roomsSet.add("providers");
       if (this.dataSource && this.dataSource.isInitialized) {
         this.dataSource.getRepository(ProviderEntity).findOne({ where: { userId } }).then((prov) => {
@@ -304,6 +315,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     }
 
     return { ok: true, room: "admin", ts: new Date().toISOString() };
+  }
+
+  @SubscribeMessage("join_providers")
+  handleJoinProviders(@ConnectedSocket() socket: Socket) {
+    socket.join("providers");
+    socketUserMap.get(socket.id)?.rooms.add("providers");
+    return { ok: true, room: "providers", ts: new Date().toISOString() };
   }
 
   // ─── Provider Location Updates ───────────────────────────────────
