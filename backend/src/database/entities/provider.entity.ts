@@ -65,6 +65,11 @@ export class ProviderEntity {
   @Column({ nullable: true })
   distance: string;
 
+  // Unique sequential MerihCare provider code (e.g. MCH-0001) — never repeats
+  @Column({ nullable: true, unique: true })
+  @Index()
+  providerCode: string;
+
   @Column({ nullable: true })
   @Index()
   licenseNumber: string;

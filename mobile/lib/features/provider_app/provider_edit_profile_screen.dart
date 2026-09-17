@@ -22,6 +22,7 @@ class _ProviderEditProfileScreenState extends ConsumerState<ProviderEditProfileS
   late TextEditingController _bioController;
 
   String? _providerId;
+  String? _providerCode;
   bool _available = true;
   bool _verified = false;
   double _rating = 5.0;
@@ -75,6 +76,7 @@ class _ProviderEditProfileScreenState extends ConsumerState<ProviderEditProfileS
       if (data != null && mounted) {
         setState(() {
           _providerId = data['id']?.toString();
+          _providerCode = data['providerCode']?.toString();
           _nameController.text = (data['name'] ?? ref.read(authProvider).user?['name'] ?? '').toString();
           _titleController.text = (data['title'] ?? 'General Practitioner (MD)').toString();
           _feeController.text = ((data['pricePerVisit'] ?? 800) as num).toString();
@@ -242,6 +244,25 @@ class _ProviderEditProfileScreenState extends ConsumerState<ProviderEditProfileS
                             style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
                           ),
                           const SizedBox(height: 6),
+                          if (_providerCode != null)
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 4),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF6FF),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: const Color(0xFFBFDBFE)),
+                              ),
+                              child: Text(
+                                'ID: $_providerCode',
+                                style: const TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF1D4ED8),
+                                ),
+                              ),
+                            ),
                           Row(
                             children: [
                               Container(

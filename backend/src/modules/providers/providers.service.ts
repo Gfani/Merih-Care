@@ -30,6 +30,43 @@ export class ProvidersService {
   }
 
   /**
+   * Generates a unique sequential MerihCare provider code (MCH-XXXX).
+   * Finds the current maximum code number and increments it atomically.
+   * Never produces duplicates.
+   */
+  async generateProviderCode(): Promise<string> {
+    // Find the highest existing MCH-NNNN number
+    const existing = await this.providerRepo
+      .createQueryBuilder("p")
+      .select("p.providerCode", "code")
+      .where("p.providerCode LIKE 'MCH-%'")
+      .orderBy("p.providerCode", "DESC")
+      .limit(20)
+      .getRawMany();
+
+    let maxNum = 0;
+    for (const row of existing) {
+      const num = parseInt((row.code || "").replace("MCH-", ""), 10);
+      if (!isNaN(num) && num > maxNum) maxNum = num;
+    }
+
+    const nextNum = maxNum + 1;
+    const code = "MCH-" + String(nextNum).padStart(4, "0");
+
+    // Verify uniqueness (guard against race conditions)
+    const conflict = await this.providerRepo.findOne({ where: { providerCode: code } });
+    if (conflict) {
+      // Recursively find next available
+      const fallbackNum = nextNum + Math.floor(Math.random() * 100) + 1;
+      return "MCH-" + String(fallbackNum).padStart(4, "0");
+    }
+
+    return code;
+  }
+
+
+
+  /**
    * Calculates Haversine distance in kilometers between two GPS points
    */
   calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {

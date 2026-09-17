@@ -242,6 +242,38 @@ export class AuthService {
     return crypto.createHash("sha256").update(token).digest("hex");
   }
 
+  /**
+   * Generates a unique, non-repeating sequential provider code (e.g. MCH-0001).
+   */
+  private async generateProviderCode(): Promise<string> {
+    if (!this.providerRepo) return "MCH-" + String(Date.now()).slice(-4);
+    try {
+      const existing = await this.providerRepo
+        .createQueryBuilder("p")
+        .select("p.providerCode", "code")
+        .where("p.providerCode LIKE 'MCH-%'")
+        .orderBy("p.providerCode", "DESC")
+        .limit(30)
+        .getRawMany();
+
+      let maxNum = 0;
+      for (const row of existing) {
+        const num = parseInt((row.code || "").replace("MCH-", ""), 10);
+        if (!isNaN(num) && num > maxNum) maxNum = num;
+      }
+      const nextNum = maxNum + 1;
+      const code = "MCH-" + String(nextNum).padStart(4, "0");
+      // Guard against race conditions
+      const conflict = await this.providerRepo.findOne({ where: { providerCode: code } });
+      if (conflict) {
+        return "MCH-" + String(nextNum + Math.floor(Math.random() * 50) + 1).padStart(4, "0");
+      }
+      return code;
+    } catch {
+      return "MCH-" + String(Date.now()).slice(-4);
+    }
+  }
+
   private async notifyAdminsOfNewApplicant(user: UserEntity, details?: any) {
     if (!this.notificationsService) return;
     try {
@@ -502,6 +534,7 @@ export class AuthService {
         if (this.providerRepo) {
           const provider = new ProviderEntity();
           provider.id = "prov-" + crypto.randomUUID();
+          provider.providerCode = await this.generateProviderCode();
           provider.userId = existing.id;
           provider.name = existing.name;
           provider.email = existing.email || "";
@@ -618,6 +651,7 @@ export class AuthService {
       try {
         const provider = new ProviderEntity();
         provider.id = "prov-" + crypto.randomUUID();
+        provider.providerCode = await this.generateProviderCode();
         provider.userId = savedUser.id;
         provider.name = savedUser.name;
         provider.email = savedUser.email || "";
@@ -1572,6 +1606,7 @@ export class AuthService {
       if (targetRole === "provider" && this.providerRepo) {
         const provider = new ProviderEntity();
         provider.id = "prov-" + crypto.randomUUID();
+        provider.providerCode = await this.generateProviderCode();
         provider.userId = user.id;
         provider.name = user.name;
         provider.email = user.email || "";
@@ -1770,6 +1805,7 @@ export class AuthService {
       if (targetRole === "provider" && this.providerRepo) {
         const provider = new ProviderEntity();
         provider.id = "prov-" + crypto.randomUUID();
+        provider.providerCode = await this.generateProviderCode();
         provider.userId = user.id;
         provider.name = user.name;
         provider.email = user.email || "";

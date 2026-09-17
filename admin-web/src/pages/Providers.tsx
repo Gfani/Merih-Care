@@ -331,6 +331,11 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
                     <div>
                       <p className="font-medium text-sm text-[#18232e] dark:text-white">{row.name as string}</p>
                       <p className="text-xs text-[#8a9aaa] dark:text-slate-400">{(row.title as string) || "Health Professional"}</p>
+                      {(row as any).providerCode && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-[#0d7c6a] border border-teal-200 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-800 mt-0.5">
+                          ID: {(row as any).providerCode}
+                        </span>
+                      )}
                       {(row.phone || (row as any).user?.phone) && (
                         <a
                           href={`tel:${row.phone || (row as any).user?.phone}`}

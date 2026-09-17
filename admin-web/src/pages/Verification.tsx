@@ -637,6 +637,11 @@ export default function VerificationSection() {
                       </p>
                       <div className="mt-1.5 flex flex-wrap items-center gap-2">
                         <StatusBadge status={provider.status === "needs_fix" ? "needs_fix" : "pending"} />
+                        {provider.providerCode && (
+                          <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                            {provider.providerCode}
+                          </span>
+                        )}
                         {provider.licenseNumber && (
                           <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-teal-50 dark:bg-teal-900/40 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
                             License: {provider.licenseNumber}
@@ -745,7 +750,14 @@ export default function VerificationSection() {
               <DataTable
                 columns={[
                   { key: "provider", header: "Provider", render: (row) => (
-                    <div className="flex items-center gap-2"><Avatar name={row.name as string} src={row.avatar as string} size="sm" /><span className="font-medium text-sm">{row.name as string}</span></div>
+                    <div className="flex items-center gap-2"><Avatar name={row.name as string} src={row.avatar as string} size="sm" />
+                      <div>
+                        <span className="font-medium text-sm block">{row.name as string}</span>
+                        {(row as any).providerCode && (
+                          <span className="text-[10px] font-mono font-bold px-1 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">{(row as any).providerCode}</span>
+                        )}
+                      </div>
+                    </div>
                   )},
                   { key: "title", header: "Profession" },
                   { key: "status", header: "Status", render: (row) => <StatusBadge status={row.status as any} /> },
