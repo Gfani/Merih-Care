@@ -60,7 +60,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
 
   final List<Map<String, dynamic>> _onDemandServices = [
     {
-      'id': 'srv-1',
+      'id': 'doctor-visit',
       'name': 'Doctor Home Visit',
       'description': 'Comprehensive medical checkup and consultation at your doorstep.',
       'icon': Icons.medical_services_outlined,
@@ -69,7 +69,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
       'duration': '45 min',
     },
     {
-      'id': 'srv-2',
+      'id': 'home-nursing',
       'name': 'Urgent Nursing Care',
       'description': 'Wound dressing, IV therapy, vitals checking and injections.',
       'icon': Icons.favorite_border,
@@ -78,7 +78,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
       'duration': '30 min',
     },
     {
-      'id': 'srv-3',
+      'id': 'physiotherapy',
       'name': 'Physiotherapy Session',
       'description': 'Mobility recovery, rehabilitation, and pain relief therapy.',
       'icon': Icons.directions_run,
@@ -87,7 +87,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
       'duration': '60 min',
     },
     {
-      'id': 'srv-4',
+      'id': 'elderly-care',
       'name': 'Elderly & Palliative Care',
       'description': 'Assistance with mobility, hygiene, and daily medical monitoring.',
       'icon': Icons.elderly_outlined,
@@ -127,21 +127,26 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
       final client = ref.read(apiClientProvider);
       final authState = ref.read(authProvider);
       final user = authState.user;
-      final patientId = user?['id']?.toString() ?? 'pat-user';
+      final patientId = user?['id']?.toString();
       final patientName = user?['name']?.toString() ?? (user?['email']?.toString().split('@')[0] ?? 'Patient');
+      final patientPhone = user?['phone']?.toString();
       final now = DateTime.now();
 
-      final res = await client.dio.post('/appointments', data: {
-        'patientId': patientId,
+      final payload = <String, dynamic>{
+        if (patientId != null && patientId.isNotEmpty && patientId != 'pat-user') 'patientId': patientId,
         'patientName': patientName,
-        'serviceId': _selectedService?['id'] ?? 'srv-1',
+        if (patientPhone != null && patientPhone.isNotEmpty) 'patientPhone': patientPhone,
+        'serviceId': _selectedService?['id'] ?? 'doctor-visit',
         'service': _selectedService?['name'] ?? 'Doctor Home Visit',
         'date': now.toIso8601String().split('T')[0],
         'time': '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
         'location': _locationAddress,
+        'notes': _notesController.text.trim(),
         'amount': (_selectedService?['price'] ?? 800) is num ? (_selectedService?['price'] as num).toDouble() : 800.0,
         'status': 'searching',
-      });
+      };
+
+      final res = await client.dio.post('/appointments', data: payload);
 
       final dynamic data = res.data;
       if (data is Map<String, dynamic> && data['id'] != null) {

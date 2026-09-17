@@ -197,7 +197,7 @@ export class AppointmentsController {
   @Post()
   async createAppointment(@Body() body: CreateAppointmentDto, @Req() req: any) {
     const data: any = { ...body };
-    if (!data.patientId && req.user) {
+    if ((!data.patientId || data.patientId === "pat-user") && req.user) {
       data.patientId = req.user.id || req.user.sub;
       data.patientName = data.patientName || req.user.name;
     }
@@ -207,9 +207,12 @@ export class AppointmentsController {
     if (!data.location) {
       data.location = "Addis Ababa";
     }
-    if (!data.serviceId) {
-      data.serviceId = "srv-1";
-    }
+    if (data.serviceId === "srv-1") data.serviceId = "doctor-visit";
+    else if (data.serviceId === "srv-2") data.serviceId = "home-nursing";
+    else if (data.serviceId === "srv-3") data.serviceId = "physiotherapy";
+    else if (data.serviceId === "srv-4") data.serviceId = "elderly-care";
+    else if (!data.serviceId) data.serviceId = "doctor-visit";
+
     if (!data.service) {
       data.service = "Doctor Home Visit";
     }
@@ -229,7 +232,7 @@ export class AppointmentsController {
   @Post("book")
   async bookAppointment(@Body() body: any, @Req() req: any) {
     const data: any = { ...body };
-    if (!data.patientId && req.user) {
+    if ((!data.patientId || data.patientId === "pat-user") && req.user) {
       data.patientId = req.user.id || req.user.sub;
       data.patientName = data.patientName || req.user.name;
     }
@@ -242,9 +245,12 @@ export class AppointmentsController {
     if (data.notes && !data.visitNotes) {
       data.visitNotes = data.notes;
     }
-    if (!data.serviceId) {
-      data.serviceId = "srv-1";
-    }
+    if (data.serviceId === "srv-1") data.serviceId = "doctor-visit";
+    else if (data.serviceId === "srv-2") data.serviceId = "home-nursing";
+    else if (data.serviceId === "srv-3") data.serviceId = "physiotherapy";
+    else if (data.serviceId === "srv-4") data.serviceId = "elderly-care";
+    else if (!data.serviceId) data.serviceId = "doctor-visit";
+
     if (!data.service) {
       data.service = "Doctor Home Visit";
     }

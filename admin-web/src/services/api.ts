@@ -115,13 +115,7 @@ const getHeaders = () => {
 };
 
 const isDemoMode = (): boolean => {
-  // Disallow demo mode in production builds
-  if (import.meta.env.PROD) {
-    return false;
-  }
-  const enabledByEnv = import.meta.env.VITE_ENABLE_DEMO_MODE === "true" || import.meta.env.DEV;
-  const stored = localStorage.getItem("demo_mode");
-  return enabledByEnv && stored === "true";
+  return false;
 };
 
 let isRefreshing = false;

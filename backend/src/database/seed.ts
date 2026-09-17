@@ -122,6 +122,11 @@ export class DatabaseSeedService implements OnModuleInit {
       { id: "medication", name: "Medication Assist", icon: "💊", description: "Medication administration and management", providerCount: 0, priceFrom: 400, status: "active" },
       { id: "lab-services", name: "Lab Services", icon: "🧪", description: "Home specimen collection", providerCount: 0, priceFrom: 350, status: "active" },
       { id: "telemedicine", name: "Telemedicine", icon: "📱", description: "Remote consultations with specialists", providerCount: 0, priceFrom: 300, status: "active" },
+      // Aliases for mobile app on-demand requests
+      { id: "srv-1", name: "Doctor Home Visit", icon: "👨‍⚕️", description: "Comprehensive medical checkup and consultation at your doorstep.", providerCount: 0, priceFrom: 800, status: "active" },
+      { id: "srv-2", name: "Urgent Nursing Care", icon: "🏥", description: "Wound dressing, IV therapy, vitals checking and injections.", providerCount: 0, priceFrom: 450, status: "active" },
+      { id: "srv-3", name: "Physiotherapy Session", icon: "🦿", description: "Mobility recovery, rehabilitation, and pain relief therapy.", providerCount: 0, priceFrom: 600, status: "active" },
+      { id: "srv-4", name: "Elderly & Palliative Care", icon: "🧓", description: "Assistance with mobility, hygiene, and daily medical monitoring.", providerCount: 0, priceFrom: 500, status: "active" },
     ];
 
     for (const s of mockServices) {

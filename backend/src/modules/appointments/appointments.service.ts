@@ -29,16 +29,20 @@ export class AppointmentsService {
   async getAllAppointments(limit = 50, offset = 0, patientId?: string, caller?: any): Promise<AppointmentEntity[]> {
     let apts: AppointmentEntity[] = [];
 
-    // Role-aware filtering
+    // Role-aware filtering: Administrators see ALL appointments across the entire platform
+    const isAdmin =
+      caller?.role === "admin" ||
+      caller?.role === "super_admin" ||
+      caller?.adminRole != null;
     const isProvider =
-      caller?.role === "provider" ||
-      caller?.roles?.includes("provider") ||
-      caller?.hasProviderAccount;
+      !isAdmin &&
+      (caller?.role === "provider" ||
+        caller?.roles?.includes("provider") ||
+        caller?.hasProviderAccount);
     const isPatient =
-      caller?.role === "patient" &&
-      !caller?.roles?.includes("provider") &&
-      !caller?.roles?.includes("admin") &&
-      caller?.role !== "super_admin";
+      !isAdmin &&
+      !isProvider &&
+      (caller?.role === "patient");
 
     if (isProvider) {
       let provId = caller?.providerId;
@@ -138,31 +142,50 @@ export class AppointmentsService {
   isValidTransition(from: string, to: string): boolean {
     const transitions: Record<string, string[]> = {
       requested: ["accepted", "scheduled", "searching", "cancelled", "expired"],
-      searching: ["accepted", "scheduled", "cancelled", "expired"],
+      searching: ["accepted", "scheduled", "requested", "cancelled", "expired"],
       accepted: ["scheduled", "on_the_way", "cancelled"],
-      scheduled: ["on_the_way", "cancelled"],
-      on_the_way: ["arrived", "cancelled"],
+      scheduled: ["on_the_way", "arrived", "in_progress", "rescheduled", "cancelled", "no_show"],
+      on_the_way: ["arrived", "cancelled", "in_progress"],
       arrived: ["in_progress", "cancelled"],
       in_progress: ["completed", "disputed"],
+      rescheduled: ["scheduled", "cancelled"],
       completed: ["disputed"],
       cancelled: [],
-      expired: [],
+      no_show: ["rescheduled", "cancelled"],
       disputed: ["completed", "cancelled"],
+      expired: ["requested"],
     };
 
-    const allowed = transitions[from] || [];
-    return allowed.includes(to);
+    const allowed = transitions[from];
+    return allowed ? allowed.includes(to) : false;
   }
 
   // Atomic database transaction for bookings
   async createAppointment(data: any): Promise<AppointmentEntity> {
     const result = await this.dataSource.transaction(async (manager) => {
-      // Prevent double booking if provider is pre-assigned
+      // 1. Resolve and validate provider
+      let validProviderId: string | null = null;
       if (data.providerId) {
-        // Acquire pessimistic lock on provider row to serialize concurrent booking transactions
+        const matchedProvider = await manager.findOne(ProviderEntity, {
+          where: [{ id: data.providerId }, { userId: data.providerId }],
+          relations: ["user"],
+        });
+        if (matchedProvider) {
+          validProviderId = matchedProvider.id;
+          data.providerId = matchedProvider.id;
+          if (!data.providerName) data.providerName = matchedProvider.name;
+          if (!data.providerPhone) data.providerPhone = matchedProvider.phone || matchedProvider.user?.phone;
+          if (!data.providerAvatar) data.providerAvatar = matchedProvider.avatar;
+        } else {
+          validProviderId = null;
+        }
+      }
+
+      // Prevent double booking if provider is pre-assigned and valid
+      if (validProviderId) {
         try {
           await manager.findOne(ProviderEntity, {
-            where: { id: data.providerId },
+            where: { id: validProviderId },
             lock: { mode: "pessimistic_write" },
           });
         } catch {
@@ -171,7 +194,7 @@ export class AppointmentsService {
 
         const collision = await manager.findOne(AppointmentEntity, {
           where: {
-            providerId: data.providerId,
+            providerId: validProviderId,
             date: data.date,
             time: data.time,
             status: In(["requested", "scheduled", "accepted", "on_the_way", "arrived", "in_progress"]),
@@ -182,45 +205,61 @@ export class AppointmentsService {
         }
       }
 
+      // 2. Resolve and validate patient
+      let validPatientId: string | null = null;
+      if (data.patientId && data.patientId !== "pat-user") {
+        const pat = await manager.findOne(UserEntity, { where: { id: data.patientId } });
+        if (pat) {
+          validPatientId = pat.id;
+          if (!data.patientName || data.patientName === "Patient") data.patientName = pat.name;
+          if (!data.patientPhone) data.patientPhone = pat.phone;
+          if (!data.patientAvatar) data.patientAvatar = (pat as any).avatar || null;
+        }
+      }
+
+      // 3. Resolve and validate service
+      let validServiceId: string | null = null;
+      let targetServiceId = data.serviceId;
+      if (targetServiceId === "srv-1") targetServiceId = "doctor-visit";
+      else if (targetServiceId === "srv-2") targetServiceId = "home-nursing";
+      else if (targetServiceId === "srv-3") targetServiceId = "physiotherapy";
+      else if (targetServiceId === "srv-4") targetServiceId = "elderly-care";
+
+      if (targetServiceId) {
+        let srv = await manager.findOne(ServiceEntity, { where: { id: targetServiceId } });
+        if (!srv && data.service) {
+          srv = await manager.findOne(ServiceEntity, { where: { name: data.service } });
+        }
+        if (srv) {
+          validServiceId = srv.id;
+          if (!data.service) data.service = srv.name;
+        }
+      } else if (data.service) {
+        const srv = await manager.findOne(ServiceEntity, { where: { name: data.service } });
+        if (srv) validServiceId = srv.id;
+      }
+
       const apt = new AppointmentEntity();
       apt.id = "apt-" + crypto.randomUUID();
 
-      apt.patientId = data.patientId || null;
-      apt.providerId = data.providerId || null;
-      apt.serviceId = data.serviceId || null;
+      apt.patientId = validPatientId;
+      apt.providerId = validProviderId;
+      apt.serviceId = validServiceId;
 
       apt.patientName = data.patientName || "Patient";
-      apt.patientAvatar = data.patientAvatar;
-      apt.providerName = data.providerName;
-      apt.providerAvatar = data.providerAvatar;
+      apt.patientAvatar = data.patientAvatar || null;
+      apt.providerName = data.providerName || null;
+      apt.providerAvatar = data.providerAvatar || null;
       apt.providerPhone = data.providerPhone || null;
       apt.patientPhone = data.patientPhone || null;
-
-      if (!apt.providerPhone && (data.providerId || data.providerName)) {
-        try {
-          const prov = data.providerId
-            ? await manager.findOne(ProviderEntity, { where: { id: data.providerId }, relations: ["user"] })
-            : await manager.findOne(ProviderEntity, { where: { name: data.providerName }, relations: ["user"] });
-          if (prov?.phone || prov?.user?.phone) {
-            apt.providerPhone = prov.phone || prov.user.phone;
-          }
-        } catch (_) {}
-      }
-      if (!apt.patientPhone && data.patientId) {
-        try {
-          const pat = await manager.findOne(UserEntity, { where: { id: data.patientId } });
-          if (pat?.phone) {
-            apt.patientPhone = pat.phone;
-          }
-        } catch (_) {}
-      }
 
       apt.service = data.service || "Doctor Home Visit";
       apt.date = data.date;
       apt.time = data.time;
-      apt.location = data.location;
+      apt.location = data.location || "Addis Ababa";
       apt.amount = data.amount || 0;
       apt.status = data.status || "requested";
+      apt.version = 1;
 
       const savedApt = await manager.save(apt);
 
@@ -229,7 +268,7 @@ export class AppointmentsService {
       history.id = `apth-${crypto.randomUUID()}`;
       history.appointmentId = savedApt.id;
       history.status = savedApt.status;
-      history.changedBy = data.patientId || "patient";
+      history.changedBy = validPatientId || data.patientId || "patient";
       history.notes = "Appointment request created.";
       history.createdAt = new Date().toISOString();
       await manager.save(history);

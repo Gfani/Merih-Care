@@ -178,9 +178,11 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
 
                             final response = await client.dio.post('/appointments/book', data: {
                               'providerId': widget.providerId,
-                              'patientId': patientId,
+                              if (patientId != null && patientId.isNotEmpty && patientId != 'pat-user') 'patientId': patientId,
                               'patientName': patientName,
-                              'patientPhone': patientPhone,
+                              if (patientPhone != null && patientPhone.isNotEmpty) 'patientPhone': patientPhone,
+                              'serviceId': 'doctor-visit',
+                              'service': 'Doctor Home Visit',
                               'date': dateStr,
                               'time': _selectedTime,
                               'location': _addressController.text.trim(),
