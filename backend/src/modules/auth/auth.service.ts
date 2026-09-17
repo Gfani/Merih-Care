@@ -242,6 +242,55 @@ export class AuthService {
     return crypto.createHash("sha256").update(token).digest("hex");
   }
 
+  private async notifyAdminsOfNewApplicant(user: UserEntity, details?: any) {
+    if (!this.notificationsService) return;
+    try {
+      const isProvider = user.role === "provider";
+      const admins = await this.userRepo.find({
+        where: isProvider
+          ? [
+              { role: "admin" },
+              { role: "super_admin" },
+              { adminRole: "super_admin" },
+              { adminRole: "verification_admin" },
+              { adminRole: "verifier" },
+            ]
+          : [
+              { adminRole: "super_admin" },
+              { role: "super_admin" },
+            ],
+      });
+      const title = isProvider
+        ? "New Provider Verification Request"
+        : "New Administrator Approval Required";
+      const body = isProvider
+        ? `New provider verification application from ${user.name} (${user.email || user.phone}) - ${details?.specialty || "Specialist"}. Credentials require verification.`
+        : `New administrator registration received from ${user.name} (${user.email || user.phone}) for ${user.adminRole || "Admin"} role.`;
+
+      for (const admin of admins) {
+        await this.notificationsService.sendNotification(admin.id, {
+          type: "verification_update",
+          title,
+          body,
+          priority: "critical",
+          recipientEmail: admin.email,
+          recipientPhone: admin.phone,
+          data: {
+            applicantId: user.id,
+            name: user.name,
+            email: user.email,
+            phone: user.phone,
+            role: user.role,
+            adminRole: user.adminRole,
+            category: "verification",
+          },
+        }).catch(() => {});
+      }
+    } catch (err: any) {
+      console.error(`Failed to dispatch applicant notifications: ${err?.message || err}`);
+    }
+  }
+
   async hashPassword(password: string): Promise<string> {
     return bcrypt.hash(password, 10);
   }
@@ -551,36 +600,7 @@ export class AuthService {
 
     // When an administrator registers, immediately alert super administrators
     if (role === "admin") {
-      if (this.notificationsService) {
-        try {
-          const superAdmins = await this.userRepo.find({
-            where: [
-              { adminRole: "super_admin" },
-              { role: "super_admin" },
-            ],
-          });
-          for (const sa of superAdmins) {
-            await this.notificationsService.sendNotification(sa.id, {
-              type: "verification_update",
-              title: "New Administrator Approval Required",
-              body: `New administrator registration received from ${savedUser.name} (${savedUser.email || savedUser.phone}) for ${savedUser.adminRole || "Admin"} role.`,
-              priority: "critical",
-              recipientEmail: sa.email,
-              recipientPhone: sa.phone,
-              data: {
-                applicantId: savedUser.id,
-                name: savedUser.name,
-                email: savedUser.email,
-                phone: savedUser.phone,
-                role: savedUser.role,
-                adminRole: savedUser.adminRole,
-              },
-            }).catch(() => {});
-          }
-        } catch (err: any) {
-          console.error(`Failed to dispatch superadmin notifications: ${err?.message || err}`);
-        }
-      }
+      await this.notifyAdminsOfNewApplicant(savedUser);
 
       if (this.realtimeService) {
         this.realtimeService.emitApprovalRequested({
@@ -633,15 +653,19 @@ export class AuthService {
       }
     }
 
-    if (role === "provider" && this.realtimeService) {
-      this.realtimeService.emitApprovalRequested({
-        userId: savedUser.id,
-        name: savedUser.name,
-        email: savedUser.email,
-        phone: savedUser.phone,
-        role: "provider",
-        specialty: providerDetails?.specialty || "General Medicine",
-      });
+    if (role === "provider") {
+      await this.notifyAdminsOfNewApplicant(savedUser, providerDetails);
+
+      if (this.realtimeService) {
+        this.realtimeService.emitApprovalRequested({
+          userId: savedUser.id,
+          name: savedUser.name,
+          email: savedUser.email,
+          phone: savedUser.phone,
+          role: "provider",
+          specialty: providerDetails?.specialty || "General Medicine",
+        });
+      }
     }
 
     return savedUser;
@@ -1566,15 +1590,18 @@ export class AuthService {
         await this.providerRepo.save(provider);
       }
 
-      if ((targetRole === "provider" || targetRole === "admin") && this.realtimeService) {
-        this.realtimeService.emitApprovalRequested({
-          userId: user.id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone,
-          role: user.role,
-          adminRole: user.adminRole,
-        });
+      if (targetRole === "provider" || targetRole === "admin") {
+        await this.notifyAdminsOfNewApplicant(user, providerDetails);
+        if (this.realtimeService) {
+          this.realtimeService.emitApprovalRequested({
+            userId: user.id,
+            name: user.name,
+            email: user.email,
+            phone: user.phone,
+            role: user.role,
+            adminRole: user.adminRole,
+          });
+        }
       }
     } else {
       if (this.providerRepo && googleUser.picture) {
@@ -1761,15 +1788,18 @@ export class AuthService {
         await this.providerRepo.save(provider);
       }
 
-      if ((targetRole === "provider" || targetRole === "admin") && this.realtimeService) {
-        this.realtimeService.emitApprovalRequested({
-          userId: user.id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone,
-          role: user.role,
-          adminRole: user.adminRole,
-        });
+      if (targetRole === "provider" || targetRole === "admin") {
+        await this.notifyAdminsOfNewApplicant(user, providerDetails);
+        if (this.realtimeService) {
+          this.realtimeService.emitApprovalRequested({
+            userId: user.id,
+            name: user.name,
+            email: user.email,
+            phone: user.phone,
+            role: user.role,
+            adminRole: user.adminRole,
+          });
+        }
       }
     }
 

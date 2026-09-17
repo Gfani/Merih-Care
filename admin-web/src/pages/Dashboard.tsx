@@ -9,14 +9,44 @@ import { AdminMapView } from "./LiveMap";
 
 import { useRealtimeSocket } from "../hooks/useRealtimeSocket";
 
+import { Link } from "react-router-dom";
+
 export default function DashboardSection() {
   const PIE_COLORS = ["#0d7c6a", "#1b6fba", "#d97706", "#dc2626", "#7c3aed"];
   const [stats, setStats] = useState<any>(null);
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [unreadVerifs, setUnreadVerifs] = useState(0);
 
   const token = sessionStorage.getItem("admin_token") || localStorage.getItem("admin_token");
   const { on, off, joinRoom, isLive } = useRealtimeSocket({ token });
+
+  const checkVerifications = async () => {
+    try {
+      const notifs = await api.getNotifications(1, 20).catch(() => []);
+      const list = Array.isArray(notifs) ? notifs : (notifs as any)?.notifications || [];
+      const unreadV = list.filter(
+        (n: any) =>
+          !n.read &&
+          (n.type === "verification_update" ||
+            n.type === "approval_requested" ||
+            n.title?.toLowerCase().includes("verification") ||
+            n.message?.toLowerCase().includes("verification"))
+      ).length;
+      const lastReadAt = localStorage.getItem("merihcare_verifications_read_at");
+      if (unreadV > 0) {
+        setUnreadVerifs(unreadV);
+      } else if (!lastReadAt) {
+        const verifs = await api.getVerificationQueue().catch(() => []);
+        const pendingCount = (verifs || []).filter((v: any) => !v.verified).length;
+        setUnreadVerifs(pendingCount);
+      } else {
+        setUnreadVerifs(0);
+      }
+    } catch {
+      setUnreadVerifs(0);
+    }
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -33,6 +63,7 @@ export default function DashboardSection() {
       }
     };
     loadData();
+    checkVerifications();
   }, []);
 
   useEffect(() => {
@@ -56,9 +87,17 @@ export default function DashboardSection() {
       }
     };
 
+    const handleUpdate = () => {
+      checkVerifications();
+    };
+
     on("admin_metrics", handleAdminMetrics);
+    on("approval_requested", handleUpdate);
+    on("notification", handleUpdate);
     return () => {
       off("admin_metrics", handleAdminMetrics);
+      off("approval_requested", handleUpdate);
+      off("notification", handleUpdate);
     };
   }, [token, on, off, joinRoom]);
 
@@ -72,6 +111,28 @@ export default function DashboardSection() {
           <span className="font-semibold">Sandbox Mode — The metrics below are simulated mock values.</span>
         </div>
       )}
+      {unreadVerifs > 0 && (
+        <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-red-800 dark:text-red-200 shadow-sm animate-fade-in">
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-3 w-3 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600"></span>
+            </span>
+            <span className="text-xs font-semibold">
+              🔔 {unreadVerifs} new provider verification {unreadVerifs === 1 ? "request requires" : "requests require"} clinical credential review.
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Link
+              to="/verification"
+              className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-colors shadow-sm"
+            >
+              Review Verifications →
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Total Patients" value={loading ? "..." : (stats?.kpis?.totalPatients ?? 0).toLocaleString()} sub="Registered patients" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>} trend={{ value: 8, up: true }} />

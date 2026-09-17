@@ -47,4 +47,20 @@ describe("NotificationsController", () => {
     expect(controller).toBeDefined();
     expect(service).toBeDefined();
   });
+
+  it("should successfully mark all notifications as read", async () => {
+    jest.spyOn(service, "markAllRead").mockResolvedValue();
+    const req = { user: { id: "user-admin-123" } };
+    const res = await controller.markAllRead(req);
+    expect(res).toEqual({ success: true });
+    expect(service.markAllRead).toHaveBeenCalledWith("user-admin-123");
+  });
+
+  it("should successfully mark single notification as read", async () => {
+    jest.spyOn(service, "markRead").mockResolvedValue();
+    const req = { user: { id: "user-admin-123" } };
+    const res = await controller.markRead("notif-456", req);
+    expect(res).toEqual({ success: true });
+    expect(service.markRead).toHaveBeenCalledWith("user-admin-123", "notif-456");
+  });
 });

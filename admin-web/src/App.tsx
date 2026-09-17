@@ -206,7 +206,7 @@ function AppContent() {
     try {
       const count = await api.getUnreadCount();
       setUnreadCount(count);
-      const list = await api.getNotifications(1, 10);
+      const list = await api.getNotifications(1, 20);
       const notifs = Array.isArray(list) ? list : (list as any)?.notifications || [];
       setNotifications(notifs);
     } catch {
@@ -217,14 +217,49 @@ function AppContent() {
   const loadBadgeCounts = async () => {
     if (!isAuthenticated) return;
     try {
-      const [verifs, comps, pays, reqs, pendingAdmins] = await Promise.all([
-        api.getVerificationReviews().catch(() => []),
+      const [verifs, comps, pays, reqs, pendingAdmins, notifs] = await Promise.all([
+        api.getVerificationQueue().catch(() => []),
         api.getComplaints().catch(() => []),
         api.getPayouts().catch(() => []),
         api.getAppointments().catch(() => []),
         api.getPendingAdmins().catch(() => []),
+        api.getNotifications(1, 20).catch(() => []),
       ]);
-      const pendingVerifs = (verifs || []).filter((v: any) => v.status === "pending" || v.reviewStatus === "pending").length;
+
+      const pendingVerifItems = (verifs || []).filter(
+        (v: any) =>
+          !v.verified ||
+          v.status === "pending_verification" ||
+          v.status === "pending" ||
+          v.status === "needs_fix"
+      );
+
+      const notifList = Array.isArray(notifs) ? notifs : (notifs as any)?.notifications || [];
+      const unreadVerifNotifs = notifList.filter(
+        (n: any) =>
+          !n.read &&
+          (n.type === "verification_update" ||
+            n.type === "verification" ||
+            n.type === "approval_requested" ||
+            n.title?.toLowerCase().includes("verification") ||
+            n.message?.toLowerCase().includes("verification") ||
+            n.body?.toLowerCase().includes("verification"))
+      );
+
+      const lastReadAt = localStorage.getItem("merihcare_verifications_read_at");
+      let pendingVerifs = 0;
+      if (unreadVerifNotifs.length > 0) {
+        pendingVerifs = unreadVerifNotifs.length;
+      } else if (lastReadAt) {
+        const lastReadTime = new Date(lastReadAt).getTime();
+        pendingVerifs = pendingVerifItems.filter((p: any) => {
+          const createdAtTime = p.createdAt ? new Date(p.createdAt).getTime() : 0;
+          return createdAtTime > lastReadTime;
+        }).length;
+      } else {
+        pendingVerifs = pendingVerifItems.length;
+      }
+
       const pendingComps = (comps || []).filter((c: any) => c.status === "open" || c.status === "pending").length;
       const pendingPays = (pays || []).filter((p: any) => p.status === "pending").length;
       const reqList = Array.isArray(reqs) ? reqs : (reqs as any)?.data || [];
@@ -274,11 +309,50 @@ function AppContent() {
       await api.markAllNotificationsRead();
       setUnreadCount(0);
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      localStorage.setItem("merihcare_verifications_read_at", new Date().toISOString());
+      setBadgeCounts((prev) => ({ ...prev, verification: 0 }));
       toast("All notifications marked read", "success");
     } catch (err: any) {
       toast(err.message || "Failed to mark all read", "error");
     }
   };
+
+  const handleNotificationClick = async (n: any) => {
+    if (!n.read) {
+      try {
+        await api.markNotificationRead(n.id);
+        setNotifications((prev) =>
+          prev.map((item) => (item.id === n.id ? { ...item, read: true } : item))
+        );
+        setUnreadCount((c) => Math.max(0, c - 1));
+      } catch (e) {
+        console.error("Failed to mark single notification as read:", e);
+      }
+    }
+    setNotifPopoverOpen(false);
+    const isVerif =
+      n.type === "verification_update" ||
+      n.type === "approval_requested" ||
+      n.title?.toLowerCase().includes("verification") ||
+      n.message?.toLowerCase().includes("verification");
+
+    if (isVerif) {
+      localStorage.setItem("merihcare_verifications_read_at", new Date().toISOString());
+      setBadgeCounts((prev) => ({ ...prev, verification: 0 }));
+      navigate("/verification");
+    } else if (n.type === "new_service_request" || n.title?.toLowerCase().includes("request")) {
+      navigate("/requests");
+    } else if (n.type === "complaint" || n.title?.toLowerCase().includes("complaint")) {
+      navigate("/complaints");
+    }
+  };
+
+  React.useEffect(() => {
+    if (location.pathname === "/verification") {
+      localStorage.setItem("merihcare_verifications_read_at", new Date().toISOString());
+      setBadgeCounts((prev) => ({ ...prev, verification: 0 }));
+    }
+  }, [location.pathname]);
 
   React.useEffect(() => {
     loadNotifications();
@@ -375,21 +449,34 @@ function AppContent() {
             <div className="space-y-0.5 px-2">
               {section.items.map((item) => {
                 const active = location.pathname === item.path;
+                const hasBadge = Boolean((item as any).badge);
+                const badgeCount = (item as any).badge;
                 return (
                   <Link
                     key={item.id}
                     to={item.path}
-                    className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                    className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors relative group ${
                       active
                         ? "bg-[#0d7c6a] text-white"
                         : "text-[#4a5a6a] dark:text-slate-300 hover:bg-[#f0f4f7] dark:hover:bg-slate-700 hover:text-[#18232e] dark:hover:text-white"
                     }`}
                   >
-                    <span className="shrink-0">{item.icon}</span>
+                    <span className="shrink-0 relative flex items-center justify-center">
+                      {item.icon}
+                      {hasBadge && (
+                        <span
+                          className="absolute -top-1.5 -right-1.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-600 px-1 text-[8.5px] font-black text-white ring-2 ring-white dark:ring-slate-800 animate-pulse shadow-sm"
+                          title={`${badgeCount} new pending item${badgeCount > 1 ? "s" : ""}`}
+                        >
+                          {badgeCount}
+                        </span>
+                      )}
+                    </span>
                     {(mobile || sidebarOpen) && <span className="flex-1 truncate">{item.label}</span>}
-                    {(mobile || sidebarOpen) && (item as any).badge && (
-                      <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-[#dc2626] text-white">
-                        {(item as any).badge}
+                    {(mobile || sidebarOpen) && hasBadge && (
+                      <span className="ml-auto px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-red-600 text-white shadow-sm flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                        {badgeCount}
                       </span>
                     )}
                   </Link>
@@ -512,7 +599,8 @@ function AppContent() {
                         notifications.map((n) => (
                           <div
                             key={n.id}
-                            className={`p-3 hover:bg-[#f8fafc] dark:hover:bg-slate-700/50 transition-colors ${
+                            onClick={() => handleNotificationClick(n)}
+                            className={`p-3 hover:bg-[#f8fafc] dark:hover:bg-slate-700/50 transition-colors cursor-pointer ${
                               !n.read ? "bg-[#f0fdf4] dark:bg-emerald-950/20 border-l-2 border-[#0d7c6a]" : ""
                             }`}
                           >

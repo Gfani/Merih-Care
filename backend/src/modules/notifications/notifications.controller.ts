@@ -79,15 +79,19 @@ export class NotificationsController {
     return { unread: count, count };
   }
 
-  @Patch(":id/read")
-  async markRead(@Param("id") id: string, @Req() req: any) {
-    await this.notificationsService.markRead(req.user?.id, id);
+  @Put("read-all")
+  @Patch("read-all")
+  @Post("read-all")
+  async markAllRead(@Req() req: any) {
+    await this.notificationsService.markAllRead(req.user?.id);
     return { success: true };
   }
 
-  @Patch("read-all")
-  async markAllRead(@Req() req: any) {
-    await this.notificationsService.markAllRead(req.user?.id);
+  @Put(":id/read")
+  @Patch(":id/read")
+  @Post(":id/read")
+  async markRead(@Param("id") id: string, @Req() req: any) {
+    await this.notificationsService.markRead(req.user?.id, id);
     return { success: true };
   }
 

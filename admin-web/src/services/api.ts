@@ -714,7 +714,7 @@ export const api = {
   },
 
   async getVerificationReviews(): Promise<any[]> {
-    return this.getProviders({ verified: false });
+    return this.getVerificationQueue();
   },
 
   // ─── AUDIT LOGS ────────────────────────────────────────────────────────────
@@ -765,7 +765,11 @@ export const api = {
     try {
       await axios.put(`${API_URL}/notifications/${id}/read`, {}, { headers: getHeaders() });
     } catch (error) {
-      if (!isDemoMode()) throw error;
+      try {
+        await axios.patch(`${API_URL}/notifications/${id}/read`, {}, { headers: getHeaders() });
+      } catch (patchErr) {
+        if (!isDemoMode()) throw error;
+      }
     }
   },
 
@@ -773,7 +777,11 @@ export const api = {
     try {
       await axios.put(`${API_URL}/notifications/read-all`, {}, { headers: getHeaders() });
     } catch (error) {
-      if (!isDemoMode()) throw error;
+      try {
+        await axios.patch(`${API_URL}/notifications/read-all`, {}, { headers: getHeaders() });
+      } catch (patchErr) {
+        if (!isDemoMode()) throw error;
+      }
     }
   },
 
