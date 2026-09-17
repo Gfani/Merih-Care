@@ -38,18 +38,17 @@ const maskEmail = (email: string): string => {
   if (!trimmed.includes("@")) return maskPhone(trimmed);
   if (trimmed.includes("*")) return trimmed;
   const [name, fullDomain] = trimmed.split("@");
-  const maskedName = name.length > 1 ? `${name[0]}***` : "***";
-  if (fullDomain) {
-    const parts = fullDomain.split(".");
-    if (parts.length >= 2) {
-      const domainName = parts[0];
-      const tld = parts.slice(1).join(".");
-      const maskedDomain = domainName.length > 1 ? `${domainName[0]}***` : "***";
-      return `${maskedName}@${maskedDomain}.${tld}`;
-    }
-    return `${maskedName}@***`;
+  let maskedName: string;
+  if (name.length <= 2) {
+    maskedName = name.length === 2 ? `${name[0]}*` : "*";
+  } else if (name.length === 3) {
+    maskedName = `${name[0]}*${name.slice(-2)}`;
+  } else if (name.length === 4) {
+    maskedName = `${name[0]}*${name.slice(-2)}`;
+  } else {
+    maskedName = `${name[0]}***${name.slice(-2)}`;
   }
-  return `${maskedName}@***`;
+  return `${maskedName}@${fullDomain || "merihcare.live"}`;
 };
 
 export default function Login({ onLogin }: { onLogin?: () => void }) {
@@ -161,7 +160,6 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     const currentEmail = (email.trim() || localStorage.getItem("admin_email") || "").trim();
     setSavedEmail(currentEmail);
     setAccountEmail(currentEmail);
-    setResetChannel("sms");
     setResetMaskedDest("");
     setResetOtp("");
     setResetNewPassword("");
@@ -176,16 +174,17 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
           const maskedE = contact.email ? maskEmail(contact.email) : maskEmail(currentEmail);
           setMaskedPhone(maskedP);
           setMaskedEmail(maskedE);
-          if (contact.email) {
+          if (!currentEmail && contact.email && !contact.email.includes("*")) {
             setAccountEmail(contact.email);
           }
           if (maskedP) {
+            setResetChannel("sms");
             setResetIdentifier(maskedP);
-            setIsContactLocked(true);
           } else {
+            setResetChannel("email");
             setResetIdentifier(maskedE);
-            setIsContactLocked(true);
           }
+          setIsContactLocked(true);
           setOtpModalOpen(true);
           return;
         } else {
@@ -198,6 +197,7 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
       }
     }
 
+    setResetChannel("email");
     setResetIdentifier("");
     setMaskedPhone("");
     setMaskedEmail("");
@@ -213,12 +213,20 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
       return;
     }
 
+    if (resetChannel === "sms" && !maskedPhone && !val.replace(/\D/g, "")) {
+      toast("No registered mobile phone number found for this account. Please use 'Via Email'.", "warning");
+      setResetChannel("email");
+      return;
+    }
+
     setResetLoading(true);
     setResetOtp("");
     setResetNewPassword("");
     setResetConfirmPassword("");
 
-    let resolvedEmail = accountEmail || savedEmail;
+    let resolvedEmail = (accountEmail && !accountEmail.includes("*"))
+      ? accountEmail
+      : ((savedEmail && !savedEmail.includes("*")) ? savedEmail : (val.includes("@") && !val.includes("*") ? val : ""));
     let resolvedPhone = maskedPhone;
 
     if (!isContactLocked && val) {
@@ -233,9 +241,15 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
         const maskedE = contact.email ? maskEmail(contact.email) : maskEmail(val);
         setMaskedPhone(maskedP);
         setMaskedEmail(maskedE);
-        resolvedEmail = contact.email || (val.includes("@") ? val : resolvedEmail);
+        if (val.includes("@") && !val.includes("*")) {
+          resolvedEmail = val;
+        } else if (contact.email && !contact.email.includes("*")) {
+          resolvedEmail = contact.email;
+        }
         resolvedPhone = maskedP;
-        setAccountEmail(resolvedEmail);
+        if (resolvedEmail) {
+          setAccountEmail(resolvedEmail);
+        }
         if (resetChannel === "sms" && maskedP) {
           setResetIdentifier(maskedP);
         } else if (maskedE) {
@@ -252,8 +266,8 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     try {
       const isPhoneInput = !val.includes("@");
       const phoneCandidate = (resetChannel === "sms") ? (resolvedPhone || (isPhoneInput ? val : undefined)) : undefined;
-      const emailCandidate = resolvedEmail || (val.includes("@") ? val : undefined);
-      const targetIdentifier = (resetChannel === "sms" ? (phoneCandidate || emailCandidate) : (emailCandidate || phoneCandidate)) || val;
+      const emailCandidate = resolvedEmail || (val.includes("@") && !val.includes("*") ? val : undefined);
+      const targetIdentifier = resolvedEmail || (phoneCandidate || val);
 
       const res = await api.requestPasswordReset(targetIdentifier, resetChannel, {
         email: emailCandidate,
@@ -261,7 +275,7 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
       });
 
       const actualChannel = (res.channel as "sms" | "email") || resetChannel;
-      const actualDest = res.destination || (actualChannel === "sms" ? (phoneCandidate || maskedPhone || "registered mobile") : (emailCandidate || maskedEmail));
+      const actualDest = (res.destination || (actualChannel === "sms" ? (phoneCandidate || maskedPhone || "registered mobile") : (maskedEmail || emailCandidate))) || "";
 
       setResetChannel(actualChannel);
       setResetMaskedDest(actualDest);
@@ -284,22 +298,27 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
   };
 
   const handleResendOtp = async (targetChannel: "sms" | "email") => {
+    if (targetChannel === "sms" && !maskedPhone) {
+      toast("No registered mobile phone number found for this account. Please use 'Resend Email'.", "warning");
+      return;
+    }
     if (targetChannel === "sms") setResendingSms(true);
     else setResendingEmail(true);
     try {
       const val = resetIdentifier.trim();
-      const isPhoneInput = !val.includes("@");
-      const phoneCandidate = (targetChannel === "sms") ? (maskedPhone || (isPhoneInput ? val : undefined)) : undefined;
-      const emailCandidate = accountEmail || savedEmail || (val.includes("@") ? val : undefined);
-      const targetIdentifier = (targetChannel === "sms" ? (phoneCandidate || emailCandidate) : (emailCandidate || phoneCandidate)) || "admin@merihcare.live";
+      const resolvedEmail = (accountEmail && !accountEmail.includes("*"))
+        ? accountEmail
+        : ((savedEmail && !savedEmail.includes("*")) ? savedEmail : (val.includes("@") && !val.includes("*") ? val : "admin@merihcare.live"));
+      const phoneCandidate = (targetChannel === "sms") ? (maskedPhone || undefined) : undefined;
+      const targetIdentifier = resolvedEmail || phoneCandidate || "admin@merihcare.live";
 
       const res = await api.requestPasswordReset(targetIdentifier, targetChannel, {
-        email: emailCandidate,
+        email: resolvedEmail,
         phone: phoneCandidate,
       });
 
       const actualChannel = (res.channel as "sms" | "email") || targetChannel;
-      const actualDest = res.destination || (actualChannel === "sms" ? (phoneCandidate || maskedPhone || "registered mobile") : (emailCandidate || maskedEmail));
+      const actualDest = (res.destination || (actualChannel === "sms" ? (phoneCandidate || maskedPhone || "registered mobile") : (maskedEmail || resolvedEmail))) || "";
 
       setResetChannel(actualChannel);
       setResetMaskedDest(actualDest);
@@ -328,14 +347,16 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     }
     setResetLoading(true);
     try {
-      const targetIdentifier = accountEmail || (resetIdentifier.includes("@") ? resetIdentifier : (savedEmail || email.trim() || "admin@merihcare.live"));
+      const targetIdentifier = (accountEmail && !accountEmail.includes("*"))
+        ? accountEmail
+        : ((savedEmail && !savedEmail.includes("*")) ? savedEmail : (resetIdentifier.includes("@") && !resetIdentifier.includes("*") ? resetIdentifier : "admin@merihcare.live"));
       await api.confirmPasswordReset(targetIdentifier, resetOtp.trim(), resetNewPassword, {
-        email: accountEmail || savedEmail || (targetIdentifier.includes("@") ? targetIdentifier : undefined),
+        email: targetIdentifier.includes("@") ? targetIdentifier : undefined,
         phone: maskedPhone || (resetChannel === "sms" ? resetIdentifier : undefined),
       });
       toast("Password reset successfully! You can now sign in with your new password.", "success");
-      if (accountEmail) {
-        setEmail(accountEmail);
+      if (targetIdentifier && targetIdentifier.includes("@")) {
+        setEmail(targetIdentifier);
       }
       setPassword(resetNewPassword);
       setOtpModalOpen(false);
@@ -529,12 +550,14 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
                 <button
                   type="button"
                   onClick={async () => {
-                    setResetChannel("sms");
                     if (maskedPhone) {
+                      setResetChannel("sms");
                       setResetIdentifier(maskedPhone);
                       setIsContactLocked(true);
                     } else {
-                      const emailToLookup = accountEmail || savedEmail || (email.includes("@") ? email.trim() : "admin@merihcare.live");
+                      const emailToLookup = (accountEmail && !accountEmail.includes("*"))
+                        ? accountEmail
+                        : ((savedEmail && !savedEmail.includes("*")) ? savedEmail : (email.includes("@") ? email.trim() : "admin@merihcare.live"));
                       try {
                         const contact = await api.lookupContact(emailToLookup);
                         if (contact && (contact.phone || contact.email)) {
@@ -542,18 +565,22 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
                           const mEmail = contact.email ? maskEmail(contact.email) : maskEmail(emailToLookup);
                           setMaskedPhone(mPhone);
                           setMaskedEmail(mEmail);
-                          if (contact.email) setAccountEmail(contact.email);
+                          if (contact.email && !contact.email.includes("*")) setAccountEmail(contact.email);
                           if (mPhone) {
+                            setResetChannel("sms");
                             setResetIdentifier(mPhone);
                             setIsContactLocked(true);
                           } else {
-                            setResetIdentifier("");
-                            setIsContactLocked(false);
+                            toast("No registered mobile phone found for this account. Please receive OTP via email.", "warning");
+                            setResetChannel("email");
                           }
+                        } else {
+                          toast("No registered mobile phone found for this account. Please receive OTP via email.", "warning");
+                          setResetChannel("email");
                         }
                       } catch {
-                        setResetIdentifier("");
-                        setIsContactLocked(false);
+                        toast("No registered mobile phone found for this account. Please receive OTP via email.", "warning");
+                        setResetChannel("email");
                       }
                     }
                   }}

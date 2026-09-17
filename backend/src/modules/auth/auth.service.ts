@@ -937,18 +937,17 @@ export class AuthService {
     if (!trimmed.includes("@")) return "***";
     if (trimmed.includes("*")) return trimmed;
     const [name, fullDomain] = trimmed.split("@");
-    const maskedName = name.length > 1 ? `${name[0]}***` : "***";
-    if (fullDomain) {
-      const parts = fullDomain.split(".");
-      if (parts.length >= 2) {
-        const domainName = parts[0];
-        const tld = parts.slice(1).join(".");
-        const maskedDomain = domainName.length > 1 ? `${domainName[0]}***` : "***";
-        return `${maskedName}@${maskedDomain}.${tld}`;
-      }
-      return `${maskedName}@***`;
+    let maskedName: string;
+    if (name.length <= 2) {
+      maskedName = name.length === 2 ? `${name[0]}*` : "*";
+    } else if (name.length === 3) {
+      maskedName = `${name[0]}*${name.slice(-2)}`;
+    } else if (name.length === 4) {
+      maskedName = `${name[0]}*${name.slice(-2)}`;
+    } else {
+      maskedName = `${name[0]}***${name.slice(-2)}`;
     }
-    return `${maskedName}@***`;
+    return `${maskedName}@${fullDomain || "merihcare.live"}`;
   }
 
   maskDestination(str: string): string {
@@ -1030,7 +1029,7 @@ export class AuthService {
 
     let user: UserEntity | null = null;
 
-    if (emailCandidate) {
+    if (emailCandidate && !emailCandidate.includes("*")) {
       user = await this.userRepo.findOne({ where: { email: emailCandidate.toLowerCase() } });
       if (
         user &&
@@ -1043,10 +1042,40 @@ export class AuthService {
       ) {
         user = null; // Mismatched secondary contact candidate fails silently with uniform response
       }
-    } else if (phoneCandidate) {
+    } else if (phoneCandidate && !phoneCandidate.includes("*")) {
       user = await this.findUserByIdentifier(phoneCandidate);
-    } else {
+    } else if (identifier && !identifier.includes("*")) {
       user = await this.findUserByIdentifier(identifier);
+    }
+
+    // Fallback: If candidate is masked, match user by unmasked parts
+    if (!user && (rawEmail?.includes("*") || identifier?.includes("*") || rawPhone?.includes("*"))) {
+      const maskedEmail = (rawEmail?.includes("*") ? rawEmail : (identifier.includes("@") && identifier.includes("*") ? identifier : "")).toLowerCase();
+      const phoneDigits = (rawPhone || (!identifier.includes("@") ? identifier : "")).replace(/\D/g, "");
+      const lastPhone3 = phoneDigits.length >= 3 ? phoneDigits.slice(-3) : "";
+
+      if (maskedEmail && maskedEmail.includes("@")) {
+        const [maskedName, domain] = maskedEmail.split("@");
+        const firstChar = maskedName[0];
+        const matchEnd = maskedName.match(/([a-zA-Z0-9]{1,2})$/);
+        const lastChars = matchEnd ? matchEnd[1] : "";
+
+        const query = this.userRepo.createQueryBuilder("user")
+          .where("LOWER(user.email) LIKE :prefix", { prefix: `${firstChar}%` })
+          .andWhere("LOWER(user.email) LIKE :domain", { domain: `%@${domain}` });
+
+        if (lastChars) {
+          query.andWhere("LOWER(user.email) LIKE :suffix", { suffix: `%${lastChars}@${domain}` });
+        }
+        if (lastPhone3) {
+          query.andWhere("user.phone LIKE :p", { p: `%${lastPhone3}` });
+        }
+        user = await query.getOne();
+      } else if (lastPhone3) {
+        user = await this.userRepo.createQueryBuilder("user")
+          .where("user.phone LIKE :p", { p: `%${lastPhone3}` })
+          .getOne();
+      }
     }
 
     // Never fall back to legacy dummy test phone 0991607015
@@ -1055,11 +1084,13 @@ export class AuthService {
     // The SMS OTP MUST strictly go to the real registered phone number or unmasked candidate
     const isPhoneCandidateMasked = phoneCandidate && phoneCandidate.includes("*");
     const targetPhone = isPhoneCandidateMasked ? cleanUserPhone : (phoneCandidate || cleanUserPhone);
-    const targetEmail = emailCandidate || user?.email;
+    const targetEmail = (emailCandidate && !emailCandidate.includes("*")) ? emailCandidate : user?.email;
 
     let channel: "email" | "sms" = requestedChannel || (targetPhone ? "sms" : "email");
+    let informativeMessage = "If an account matches the provided identifier, reset instructions have been sent to your registered contact.";
     if (channel === "sms" && !targetPhone && targetEmail) {
       channel = "email";
+      informativeMessage = "No registered mobile phone number was found on this account. Reset instructions have been routed to your registered email.";
     }
 
     if (!user) {
@@ -1103,7 +1134,7 @@ export class AuthService {
       success: true,
       channel,
       destination: masked,
-      message: "If an account matches the provided identifier, reset instructions have been sent to your registered contact.",
+      message: informativeMessage,
     };
   }
 
