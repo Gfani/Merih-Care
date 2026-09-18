@@ -163,29 +163,21 @@ export class AppointmentsService {
   // Atomic database transaction for bookings
   async createAppointment(data: any): Promise<AppointmentEntity> {
     const result = await this.dataSource.transaction(async (manager) => {
-      // 1. Resolve and validate provider
-      let validProviderId: string | null = null;
-      if (data.providerId) {
-        const matchedProvider = await manager.findOne(ProviderEntity, {
-          where: [{ id: data.providerId }, { userId: data.providerId }],
-          relations: ["user"],
-        });
-        if (matchedProvider) {
-          validProviderId = matchedProvider.id;
-          data.providerId = matchedProvider.id;
-          if (!data.providerName) data.providerName = matchedProvider.name;
-          if (!data.providerPhone) data.providerPhone = matchedProvider.phone || matchedProvider.user?.phone;
-          if (!data.providerAvatar) data.providerAvatar = matchedProvider.avatar;
-        } else {
-          validProviderId = null;
-        }
-      }
+      const providerId = data.providerId || null;
+      const patientId = data.patientId && data.patientId !== "pat-user" ? data.patientId : null;
 
-      // Prevent double booking if provider is pre-assigned and valid
-      if (validProviderId) {
+      let serviceId = data.serviceId || null;
+      if (serviceId === "srv-1") serviceId = "doctor-visit";
+      else if (serviceId === "srv-2") serviceId = "home-nursing";
+      else if (serviceId === "srv-3") serviceId = "physiotherapy";
+      else if (serviceId === "srv-4") serviceId = "elderly-care";
+      else if (!serviceId && (data.service === "Doctor Home Visit" || !data.service)) serviceId = "doctor-visit";
+
+      // Prevent double booking if provider is pre-assigned
+      if (providerId) {
         try {
           await manager.findOne(ProviderEntity, {
-            where: { id: validProviderId },
+            where: { id: providerId },
             lock: { mode: "pessimistic_write" },
           });
         } catch {
@@ -194,7 +186,7 @@ export class AppointmentsService {
 
         const collision = await manager.findOne(AppointmentEntity, {
           where: {
-            providerId: validProviderId,
+            providerId,
             date: data.date,
             time: data.time,
             status: In(["requested", "scheduled", "accepted", "on_the_way", "arrived", "in_progress"]),
@@ -205,46 +197,12 @@ export class AppointmentsService {
         }
       }
 
-      // 2. Resolve and validate patient
-      let validPatientId: string | null = null;
-      if (data.patientId && data.patientId !== "pat-user") {
-        const pat = await manager.findOne(UserEntity, { where: { id: data.patientId } });
-        if (pat) {
-          validPatientId = pat.id;
-          if (!data.patientName || data.patientName === "Patient") data.patientName = pat.name;
-          if (!data.patientPhone) data.patientPhone = pat.phone;
-          if (!data.patientAvatar) data.patientAvatar = (pat as any).avatar || null;
-        }
-      }
-
-      // 3. Resolve and validate service
-      let validServiceId: string | null = null;
-      let targetServiceId = data.serviceId;
-      if (targetServiceId === "srv-1") targetServiceId = "doctor-visit";
-      else if (targetServiceId === "srv-2") targetServiceId = "home-nursing";
-      else if (targetServiceId === "srv-3") targetServiceId = "physiotherapy";
-      else if (targetServiceId === "srv-4") targetServiceId = "elderly-care";
-
-      if (targetServiceId) {
-        let srv = await manager.findOne(ServiceEntity, { where: { id: targetServiceId } });
-        if (!srv && data.service) {
-          srv = await manager.findOne(ServiceEntity, { where: { name: data.service } });
-        }
-        if (srv) {
-          validServiceId = srv.id;
-          if (!data.service) data.service = srv.name;
-        }
-      } else if (data.service) {
-        const srv = await manager.findOne(ServiceEntity, { where: { name: data.service } });
-        if (srv) validServiceId = srv.id;
-      }
-
       const apt = new AppointmentEntity();
       apt.id = "apt-" + crypto.randomUUID();
 
-      apt.patientId = validPatientId;
-      apt.providerId = validProviderId;
-      apt.serviceId = validServiceId;
+      apt.patientId = patientId;
+      apt.providerId = providerId;
+      apt.serviceId = serviceId;
 
       apt.patientName = data.patientName || "Patient";
       apt.patientAvatar = data.patientAvatar || null;
@@ -252,6 +210,30 @@ export class AppointmentsService {
       apt.providerAvatar = data.providerAvatar || null;
       apt.providerPhone = data.providerPhone || null;
       apt.patientPhone = data.patientPhone || null;
+
+      if (!apt.providerPhone && (providerId || data.providerName)) {
+        try {
+          const prov = providerId
+            ? await manager.findOne(ProviderEntity, { where: [{ id: providerId }, { userId: providerId }], relations: ["user"] })
+            : await manager.findOne(ProviderEntity, { where: { name: data.providerName }, relations: ["user"] });
+          if (prov) {
+            if (!apt.providerName) apt.providerName = prov.name;
+            if (!apt.providerPhone) apt.providerPhone = prov.phone || prov.user?.phone || null;
+            if (!apt.providerAvatar) apt.providerAvatar = prov.avatar || null;
+          }
+        } catch (_) {}
+      }
+
+      if (!apt.patientPhone && patientId) {
+        try {
+          const pat = await manager.findOne(UserEntity, { where: { id: patientId } });
+          if (pat) {
+            if (!apt.patientName || apt.patientName === "Patient") apt.patientName = pat.name;
+            if (!apt.patientPhone) apt.patientPhone = pat.phone || null;
+            if (!apt.patientAvatar) apt.patientAvatar = (pat as any).avatar || null;
+          }
+        } catch (_) {}
+      }
 
       apt.service = data.service || "Doctor Home Visit";
       apt.date = data.date;
@@ -268,7 +250,7 @@ export class AppointmentsService {
       history.id = `apth-${crypto.randomUUID()}`;
       history.appointmentId = savedApt.id;
       history.status = savedApt.status;
-      history.changedBy = validPatientId || data.patientId || "patient";
+      history.changedBy = patientId || data.patientId || "patient";
       history.notes = "Appointment request created.";
       history.createdAt = new Date().toISOString();
       await manager.save(history);

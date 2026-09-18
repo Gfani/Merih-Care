@@ -115,7 +115,11 @@ const getHeaders = () => {
 };
 
 const isDemoMode = (): boolean => {
-  return false;
+  if (import.meta.env.PROD) {
+    return false;
+  }
+  const stored = typeof window !== "undefined" && typeof localStorage !== "undefined" ? localStorage.getItem("demo_mode") : null;
+  return stored === "true";
 };
 
 let isRefreshing = false;
