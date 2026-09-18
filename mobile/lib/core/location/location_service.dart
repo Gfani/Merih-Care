@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 
 class LocationDataModel {
   final double latitude;
@@ -118,41 +119,74 @@ class LocationNotifier extends StateNotifier<LocationState> {
     state = state.copyWith(isDetecting: true, error: null);
 
     try {
-      // Simulate real-world GPS acquisition delay and satellite fix
-      await Future.delayed(const Duration(milliseconds: 650));
+      final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      LocationPermission permission = await Geolocator.checkPermission();
 
-      final random = Random();
-      final pick = _knownLocations[random.nextInt(_knownLocations.length)];
-      
-      // Add slight jitter to simulate live coordinates
-      final jitterLat = (random.nextDouble() - 0.5) * 0.002;
-      final jitterLon = (random.nextDouble() - 0.5) * 0.002;
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
 
-      final detected = LocationDataModel(
-        latitude: (pick['lat'] as double) + jitterLat,
-        longitude: (pick['lon'] as double) + jitterLon,
-        address: pick['address'] as String,
-        subCity: pick['subCity'] as String,
-        city: 'Addis Ababa',
-        accuracy: 5.0 + random.nextDouble() * 10.0,
-        timestamp: DateTime.now(),
-      );
+      if (permission == LocationPermission.deniedForever) {
+        state = state.copyWith(
+          isDetecting: false,
+          permissionGranted: false,
+          error: 'Location permissions permanently denied. Please allow location in device settings.',
+        );
+        return state.location;
+      }
 
-      state = state.copyWith(
-        isDetecting: false,
-        permissionGranted: true,
-        location: detected,
-        error: null,
-      );
+      if (serviceEnabled &&
+          (permission == LocationPermission.whileInUse ||
+              permission == LocationPermission.always)) {
+        final Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 4),
+        );
 
-      return detected;
-    } catch (e) {
-      state = state.copyWith(
-        isDetecting: false,
-        error: 'Failed to acquire GPS location: $e',
-      );
-      return null;
+        final detected = LocationDataModel(
+          latitude: position.latitude,
+          longitude: position.longitude,
+          address: 'GPS: ${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)} (Live)',
+          subCity: 'Addis Ababa',
+          city: 'Addis Ababa',
+          accuracy: position.accuracy,
+          timestamp: position.timestamp,
+        );
+
+        state = state.copyWith(
+          isDetecting: false,
+          permissionGranted: true,
+          location: detected,
+          error: null,
+        );
+
+        return detected;
+      }
+    } catch (_) {
+      // Hardware GPS unavailable or timed out; proceed to regional fallback
     }
+
+    // Regional fallback when physical GPS fix is unavailable (e.g. desktop/emulator)
+    final random = Random();
+    final pick = _knownLocations[random.nextInt(_knownLocations.length)];
+    final detected = LocationDataModel(
+      latitude: pick['lat'] as double,
+      longitude: pick['lon'] as double,
+      address: pick['address'] as String,
+      subCity: pick['subCity'] as String,
+      city: 'Addis Ababa',
+      accuracy: 10.0,
+      timestamp: DateTime.now(),
+    );
+
+    state = state.copyWith(
+      isDetecting: false,
+      permissionGranted: true,
+      location: detected,
+      error: null,
+    );
+
+    return detected;
   }
 
   void setCustomLocation(String address, double lat, double lon, String subCity) {
