@@ -59,6 +59,22 @@ services:
       timeout: 5s
       retries: 5
 
+  # 3.5 Database Migration Runner (Runs migrations before API & Worker boot)
+  migration:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: merihcare-migration
+    command: npm run migration:run
+    env_file:
+      - .env.production
+    networks:
+      - backend-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   # 4. Backend Service
   backend:
     build:
@@ -78,6 +94,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migration:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:3000/api/v1/health || exit 1"]
       interval: 10s
@@ -99,6 +117,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+      migration:
+        condition: service_completed_successfully
 
   # 6. Admin Web Standalone Service
   admin-web:
@@ -123,6 +143,7 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./certs:/etc/nginx/certs:ro
+      - certbot_data:/var/www/certbot:ro
     networks:
       - frontend-net
     depends_on:
@@ -143,3 +164,4 @@ volumes:
   minio_data:
   uploads_data:
   certs_data:
+  certbot_data:

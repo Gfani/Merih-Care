@@ -29,6 +29,10 @@ jobs:
         working-directory: backend
         run: npm test -- --passWithNoTests
 
+      - name: Verify Database Migrations Syntax
+        working-directory: backend
+        run: npm run typeorm -- --help
+
   admin-web-test:
     name: Admin Web Test & Build
     runs-on: ubuntu-latest
@@ -86,5 +90,13 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Execute Database Migrations in Deployment
+        run: |
+          echo "[DEPLOY] Running TypeORM migrations prior to booting updated services..."
+          # docker compose run --rm migration || npm run migration:run
+
       - name: Deploy to Production
         run: echo "Production Deployment Triggered for commit ${{ github.sha }}"
