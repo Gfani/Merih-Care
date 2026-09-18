@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:merihcare/core/location/location_service.dart';
 
 void main() {
   group('Booking & Appointment Lifecycle Tests', () {
@@ -47,6 +48,29 @@ void main() {
 
       final durationMinutes = completedTime.difference(startTime).inMinutes;
       expect(durationMinutes, 75);
+    });
+
+    test('Should resolve human-readable spot name from coordinates without raw GPS string', () async {
+      // Bole Medhanialem coordinates: 9.0004, 38.7885
+      final spotInfo = await LocationNotifier.resolveSpotInfo(9.0004, 38.7885);
+      expect(spotInfo['spotName'], contains('Bole Medhanialem'));
+      expect(spotInfo['subCity'], 'Bole');
+      expect(spotInfo['address'], contains('Bole Medhanialem'));
+      expect(spotInfo['address']!.startsWith('GPS:'), isFalse);
+    });
+
+    test('Should search and filter prominent landmarks across Addis Ababa', () {
+      final notifier = LocationNotifier();
+      final boleSpots = notifier.searchSpots('Bole');
+      expect(boleSpots.isNotEmpty, isTrue);
+      expect(boleSpots.any((s) => s.spotName.contains('Bole Medhanialem') || s.spotName.contains('Edna Mall')), isTrue);
+
+      final kazanchisSpots = notifier.searchSpots('Kazanchis');
+      expect(kazanchisSpots.isNotEmpty, isTrue);
+      expect(kazanchisSpots.first.subCity, 'Kirkos');
+
+      final emptyQuerySpots = notifier.searchSpots('');
+      expect(emptyQuerySpots.length, greaterThanOrEqualTo(10));
     });
   });
 }

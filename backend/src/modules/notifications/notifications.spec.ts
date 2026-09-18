@@ -63,4 +63,37 @@ describe("NotificationsController", () => {
     expect(res).toEqual({ success: true });
     expect(service.markRead).toHaveBeenCalledWith("user-admin-123", "notif-456");
   });
+
+  it("should dispatch service request as in-app notification without sending SMS or email to phone", async () => {
+    const notifRepo = (service as any).notificationRepo;
+    const deliveryRepo = (service as any).deliveryRepo;
+    const savedNotif = { id: "notif-req-1", userId: "prov-123", type: "new_service_request" };
+    notifRepo.save.mockResolvedValue(savedNotif);
+    deliveryRepo.save.mockResolvedValue({});
+
+    const result = await service.sendNotification("prov-123", {
+      type: "new_service_request",
+      title: "New Care Request Nearby",
+      body: "Patient John requested Urgent Nursing Care.",
+      targetChannel: "in_app",
+      recipientPhone: "+251911223344",
+      recipientEmail: "provider@merihcare.com",
+    });
+
+    expect(result).toBeDefined();
+    // Delivery attempt must be logged for in_app channel as sent
+    expect(deliveryRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "in_app",
+        status: "sent",
+      })
+    );
+    // Must NOT have attempted SMS or Email delivery
+    expect(deliveryRepo.save).not.toHaveBeenCalledWith(
+      expect.objectContaining({ channel: "sms" })
+    );
+    expect(deliveryRepo.save).not.toHaveBeenCalledWith(
+      expect.objectContaining({ channel: "email" })
+    );
+  });
 });

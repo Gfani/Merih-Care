@@ -108,7 +108,7 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> with SingleTi
                   Text(
                     locationState.isDetecting
                         ? 'Acquiring high-accuracy GPS fix...'
-                        : '📍 GPS: ${location?.shortAddress ?? "Addis Ababa"} (${location?.latitude.toStringAsFixed(4)}, ${location?.longitude.toStringAsFixed(4)})',
+                        : '📍 Location: ${location?.address ?? "Addis Ababa"}',
                     style: const TextStyle(color: Color(0xFF991B1B), fontSize: 12, fontWeight: FontWeight.bold),
                   ),
                 ],

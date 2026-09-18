@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/network/network_providers.dart';
 import '../../core/location/location_service.dart';
+import '../../shared/widgets/spot_search_sheet.dart';
 import '../auth/auth_provider.dart';
 
 class BookingScreen extends ConsumerStatefulWidget {
@@ -29,7 +31,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final loc = ref.read(locationProvider).location;
       if (loc != null && _addressController.text.isEmpty) {
-        _addressController.text = loc.fullAddress;
+        _addressController.text = loc.address;
       }
     });
   }
@@ -108,38 +110,87 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('Care Location Address', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                  TextButton.icon(
-                    onPressed: () async {
-                      final detected = await ref.read(locationProvider.notifier).autoDetectCurrentLocation();
-                      if (detected != null && mounted) {
-                        setState(() {
-                          _addressController.text = detected.fullAddress;
-                        });
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('📍 Location auto-detected: ${detected.shortAddress}'),
-                            backgroundColor: theme.primaryColor,
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.my_location, size: 16),
-                    label: const Text('Auto-Detect GPS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      visualDensity: VisualDensity.compact,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton.icon(
+                        onPressed: () {
+                          SpotSearchSheet.show(
+                            context,
+                            ref,
+                            initialQuery: _addressController.text,
+                            onSpotSelected: (spot) {
+                              setState(() {
+                                _addressController.text = spot.address;
+                              });
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('📍 Selected spot: ${spot.displaySpot}'),
+                                  backgroundColor: theme.primaryColor,
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                        icon: const Icon(Icons.search, size: 16),
+                        label: const Text('Search Spot', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      TextButton.icon(
+                        onPressed: () async {
+                          final detected = await ref.read(locationProvider.notifier).autoDetectCurrentLocation();
+                          if (detected != null && mounted) {
+                            setState(() {
+                              _addressController.text = detected.address;
+                            });
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('📍 Spot identified: ${detected.displaySpot}'),
+                                backgroundColor: theme.primaryColor,
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.my_location, size: 16),
+                        label: const Text('Auto-Detect', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _addressController,
-                decoration: const InputDecoration(
-                  labelText: 'Address details',
-                  hintText: 'Enter subcity, house number, landmark, etc.',
-                  prefixIcon: Icon(Icons.map_outlined),
+                decoration: InputDecoration(
+                  labelText: 'Home / Visit Address',
+                  hintText: 'e.g. Bole Medhanialem, Kazanchis, CMC...',
+                  prefixIcon: const Icon(Icons.location_on_outlined, color: AppTheme.primaryColor),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.travel_explore, color: AppTheme.primaryColor),
+                    tooltip: 'Search & Pick Spot',
+                    onPressed: () {
+                      SpotSearchSheet.show(
+                        context,
+                        ref,
+                        initialQuery: _addressController.text,
+                        onSpotSelected: (spot) {
+                          setState(() {
+                            _addressController.text = spot.address;
+                          });
+                        },
+                      );
+                    },
+                  ),
                 ),
                 validator: (val) {
                   if (val == null || val.trim().isEmpty) {

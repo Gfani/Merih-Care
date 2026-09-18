@@ -302,7 +302,8 @@ export class AppointmentsService {
                 type: "new_service_request",
                 title: "New Service Request",
                 body: `${result.patientName} requested ${result.service} (${result.location || "Addis Ababa"}).`,
-                priority: "critical",
+                priority: "normal",
+                targetChannel: "in_app",
                 idempotencyKey: `service-req-${result.id}-${admin.id}`,
                 data: {
                   appointmentId: result.id,
@@ -321,7 +322,8 @@ export class AppointmentsService {
             type: "new_service_request",
             title: "New Service Request",
             body: `${result.patientName} requested ${result.service} (${result.location || "Addis Ababa"}).`,
-            priority: "critical",
+            priority: "normal",
+            targetChannel: "in_app",
             idempotencyKey: `service-req-${result.id}-admin`,
             data: {
               appointmentId: result.id,
@@ -351,10 +353,11 @@ export class AppointmentsService {
 
           if (this.notificationsService && provUserId) {
             this.notificationsService.sendNotification(provUserId, {
-              type: "appointment_update",
+              type: "new_service_request",
               title: "New Patient Care Request",
               body: `${result.patientName} requested ${result.service} on ${result.date} at ${result.time}.`,
-              priority: "critical",
+              priority: "normal",
+              targetChannel: "in_app",
               data: {
                 appointmentId: result.id,
                 type: "appointment_request",
@@ -388,10 +391,11 @@ export class AppointmentsService {
 
             if (this.notificationsService) {
               this.notificationsService.sendNotification(targetUserId, {
-                type: "appointment_update",
+                type: "new_service_request",
                 title: "New Care Request Nearby",
                 body: `${result.patientName} requested ${result.service} near ${result.location || "your area"}. Tap to review and accept.`,
-                priority: "critical",
+                priority: "normal",
+                targetChannel: "in_app",
                 data: {
                   appointmentId: result.id,
                   type: "appointment_request",
@@ -417,10 +421,11 @@ export class AppointmentsService {
                 this.realtimeService.emitToRoom(`provider:${u.id}`, "new_service_request", eventPayload);
                 if (this.notificationsService) {
                   this.notificationsService.sendNotification(u.id, {
-                    type: "appointment_update",
+                    type: "new_service_request",
                     title: "New Care Request Nearby",
                     body: `${result.patientName} requested ${result.service} near ${result.location || "your area"}. Tap to review and accept.`,
-                    priority: "critical",
+                    priority: "normal",
+                    targetChannel: "in_app",
                     data: {
                       appointmentId: result.id,
                       type: "appointment_request",
@@ -526,7 +531,8 @@ export class AppointmentsService {
           type: "appointment_update",
           title: "Care Request Accepted! 🩺",
           body: `${savedApt.providerName || "Your clinician"} has accepted your ${savedApt.service} request for ${savedApt.date} at ${savedApt.time}.`,
-          priority: "critical",
+          priority: "normal",
+          targetChannel: "in_app",
           data: {
             appointmentId: id,
             status: newStatus,
@@ -540,7 +546,8 @@ export class AppointmentsService {
           type: "appointment_update",
           title: "Care Request Declined ❌",
           body: `Your appointment request for ${savedApt.service} on ${savedApt.date} was declined by the provider. Please choose an alternate slot or clinician.`,
-          priority: "critical",
+          priority: "normal",
+          targetChannel: "in_app",
           data: {
             appointmentId: id,
             status: "cancelled",

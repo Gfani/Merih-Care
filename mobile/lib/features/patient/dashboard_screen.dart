@@ -166,7 +166,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              locationState.location?.fullAddress ?? 'Bole, Addis Ababa (9.0054, 38.7845)',
+                              locationState.location?.address ?? 'Near Edna Mall, Bole, Addis Ababa',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),

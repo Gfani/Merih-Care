@@ -27,7 +27,7 @@ export interface SendNotificationOptions {
   idempotencyKey?: string;
   recipientEmail?: string;
   recipientPhone?: string;
-  targetChannel?: "email" | "sms" | "all";
+  targetChannel?: "email" | "sms" | "all" | "in_app";
 }
 
 const logger = new Logger("NotificationDispatchers");
@@ -526,7 +526,12 @@ export class NotificationsService {
     // Parallel multi-channel dispatch for regular notifications
     const channelTasks: Promise<any>[] = [];
 
-    if ((!targetChannel || targetChannel === "all") && (isCritical || prefs.push)) {
+    // Service requests and in_app channels must only notify within the app (in-app record & FCM push),
+    // strictly suppressing SMS (TextBee) and email alerts to their phone.
+    const isServiceRequest = opts.type === "new_service_request" || opts.type === "appointment_update";
+    const isInAppOnly = targetChannel === "in_app" || isServiceRequest;
+
+    if ((!targetChannel || targetChannel === "all" || targetChannel === "in_app") && (isCritical || prefs.push)) {
       channelTasks.push(
         dispatchPush(userId, opts.title, opts.body, payloadData, prefs.pushToken)
           .catch(() => false)
@@ -534,7 +539,7 @@ export class NotificationsService {
       );
     }
 
-    if ((targetChannel === "email" || targetChannel === "all" || !targetChannel) && (isCritical || prefs.email)) {
+    if (!isInAppOnly && (targetChannel === "email" || targetChannel === "all" || !targetChannel) && (isCritical || prefs.email)) {
       channelTasks.push(
         dispatchEmail(userId, opts.title, opts.body, recipientEmail)
           .catch(() => false)
@@ -542,7 +547,7 @@ export class NotificationsService {
       );
     }
 
-    if ((targetChannel === "sms" || targetChannel === "all" || !targetChannel) && (isCritical || prefs.sms)) {
+    if (!isInAppOnly && (targetChannel === "sms" || targetChannel === "all" || !targetChannel) && (isCritical || prefs.sms)) {
       channelTasks.push(
         dispatchSms(userId, opts.body, recipientPhone)
           .catch(() => false)

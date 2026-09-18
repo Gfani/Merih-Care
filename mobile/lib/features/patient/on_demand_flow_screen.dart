@@ -7,6 +7,7 @@ import '../../core/location/location_service.dart';
 import '../../core/network/network_providers.dart';
 import '../auth/auth_provider.dart';
 import '../../shared/widgets/create_design_widgets.dart';
+import '../../shared/widgets/spot_search_sheet.dart';
 
 enum OnDemandStep {
   serviceSelect,
@@ -32,7 +33,8 @@ class OnDemandFlowScreen extends ConsumerStatefulWidget {
 class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with TickerProviderStateMixin {
   OnDemandStep _currentStep = OnDemandStep.serviceSelect;
   Map<String, dynamic>? _selectedService;
-  String _locationAddress = 'Bole Subcity, House 452, Addis Ababa';
+  String _locationAddress = 'Near Edna Mall, Cameroon St, Bole, Addis Ababa';
+  final TextEditingController _locationController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
   
   int _searchSeconds = 0;
@@ -104,6 +106,18 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final loc = ref.read(locationProvider).location;
+      if (loc != null) {
+        setState(() {
+          _locationAddress = loc.address;
+          _locationController.text = loc.address;
+        });
+      } else {
+        _locationController.text = _locationAddress;
+      }
+    });
   }
 
   @override
@@ -111,6 +125,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
     _pulseController.dispose();
     _searchTimer?.cancel();
     _visitTimer?.cancel();
+    _locationController.dispose();
     _notesController.dispose();
     _reviewController.dispose();
     super.dispose();
@@ -401,6 +416,8 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
   // ─── 2. LOCATION CONFIRM ─────────────────────────────────────────────────────
   Widget _buildLocationConfirm() {
     final locationState = ref.watch(locationProvider);
+    final activeSpotName = locationState.location?.displaySpot ?? 'Addis Ababa';
+    final activeAddress = locationState.location?.address ?? _locationAddress;
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -408,57 +425,177 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('Where should the provider visit you?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text(
+            'Clinicians use your selected spot and landmarks for rapid door-to-door dispatch.',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
           const SizedBox(height: 14),
-          // Interactive Map Simulation Box
+          // Interactive Map Simulation Box with Identified Spot Header
           Container(
-            height: 180,
+            height: 170,
             width: double.infinity,
             decoration: BoxDecoration(
-              color: const Color(0xFFE2E8EE),
+              color: const Color(0xFFEBF2F7),
               borderRadius: BorderRadius.circular(AppTheme.radiusLg),
               border: Border.all(color: AppTheme.borderColor),
             ),
             child: Stack(
               alignment: Alignment.center,
               children: [
+                Positioned.fill(
+                  child: Opacity(
+                    opacity: 0.12,
+                    child: GridView.builder(
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 8),
+                      itemCount: 40,
+                      itemBuilder: (_, __) => Container(
+                        decoration: BoxDecoration(border: Border.all(color: AppTheme.primaryColor)),
+                      ),
+                    ),
+                  ),
+                ),
                 Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.map_outlined, size: 40, color: AppTheme.textMuted),
-                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.primaryColor.withValues(alpha: 0.35),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(Icons.location_on, color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(height: 8),
                     Text(
-                      locationState.location?.fullAddress ?? _locationAddress,
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
+                      activeSpotName,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                    ),
+                    const SizedBox(height: 2),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Text(
+                        activeAddress,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                      ),
                     ),
                   ],
-                ),
-                Positioned(
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: const BoxDecoration(color: AppTheme.primaryColor, shape: BoxShape.circle),
-                    child: const Icon(Icons.home, color: Colors.white, size: 20),
-                  ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 16),
           TextField(
+            controller: _locationController,
             decoration: InputDecoration(
-              labelText: 'Home Address & House Number',
-              hintText: 'e.g. Bole Subcity, Kebele 03, House 452',
+              labelText: 'Home / Visit Spot Address',
+              hintText: 'e.g. Bole Medhanialem, Kazanchis, Kebele 03 House 452',
               prefixIcon: const Icon(Icons.location_on_outlined, color: AppTheme.primaryColor),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.my_location, color: AppTheme.primaryColor),
-                onPressed: () => ref.read(locationProvider.notifier).autoDetectCurrentLocation(),
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.travel_explore, color: AppTheme.primaryColor),
+                    tooltip: 'Search & Pick Spot',
+                    onPressed: () {
+                      SpotSearchSheet.show(
+                        context,
+                        ref,
+                        initialQuery: _locationController.text,
+                        onSpotSelected: (spot) {
+                          setState(() {
+                            _locationAddress = spot.address;
+                            _locationController.text = spot.address;
+                          });
+                        },
+                      );
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.my_location, color: AppTheme.primaryColor),
+                    tooltip: 'Auto-Detect Current GPS Spot',
+                    onPressed: () async {
+                      final detected = await ref.read(locationProvider.notifier).autoDetectCurrentLocation();
+                      if (detected != null && mounted) {
+                        setState(() {
+                          _locationAddress = detected.address;
+                          _locationController.text = detected.address;
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('📍 Spot identified: ${detected.displaySpot}'),
+                            backgroundColor: AppTheme.primaryColor,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ],
               ),
             ),
-            controller: TextEditingController(text: _locationAddress),
             onChanged: (val) => _locationAddress = val,
+          ),
+          const SizedBox(height: 10),
+          // Quick Spot / Landmark Shortcuts
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              ActionChip(
+                avatar: const Icon(Icons.search, size: 14, color: AppTheme.primaryColor),
+                label: const Text('Search Landmarks', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                backgroundColor: const Color(0xFFF1F5F9),
+                onPressed: () {
+                  SpotSearchSheet.show(
+                    context,
+                    ref,
+                    initialQuery: _locationController.text,
+                    onSpotSelected: (spot) {
+                      setState(() {
+                        _locationAddress = spot.address;
+                        _locationController.text = spot.address;
+                      });
+                    },
+                  );
+                },
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.my_location, size: 14, color: AppTheme.primaryColor),
+                label: const Text('Auto-Detect GPS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                backgroundColor: const Color(0xFFF1F5F9),
+                onPressed: () async {
+                  final detected = await ref.read(locationProvider.notifier).autoDetectCurrentLocation();
+                  if (detected != null && mounted) {
+                    setState(() {
+                      _locationAddress = detected.address;
+                      _locationController.text = detected.address;
+                    });
+                  }
+                },
+              ),
+            ],
           ),
           const Spacer(),
           ElevatedButton(
-            onPressed: () => setState(() => _currentStep = OnDemandStep.requestDetails),
+            onPressed: () {
+              if (_locationController.text.trim().isNotEmpty) {
+                _locationAddress = _locationController.text.trim();
+              }
+              setState(() => _currentStep = OnDemandStep.requestDetails);
+            },
             child: const Text('Confirm Location & Continue'),
           ),
         ],
