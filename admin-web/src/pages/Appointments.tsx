@@ -78,9 +78,26 @@ export default function AppointmentsSection() {
     return () => clearInterval(timer);
   }, []);
 
-  // Real-time socket events for confirmed appointment updates
+  // Real-time socket events for confirmed appointment updates and new service requests
   useRealtimeSocket({
     appointment_status_update: (data: any) => {
+      const apt = data?.data || data;
+      const targetId = apt?.appointmentId || apt?.id;
+      if (targetId) {
+        setAppointments((prev) => {
+          const index = prev.findIndex((a) => a.id === targetId);
+          if (index >= 0) {
+            const updated = [...prev];
+            updated[index] = { ...updated[index], ...apt, id: targetId };
+            return updated;
+          }
+          return [{ ...apt, id: targetId }, ...prev];
+        });
+      } else {
+        loadData();
+      }
+    },
+    new_service_request: (data: any) => {
       const apt = data?.data || data;
       const targetId = apt?.appointmentId || apt?.id;
       if (targetId) {

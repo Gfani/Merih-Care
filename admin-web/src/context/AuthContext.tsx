@@ -7,6 +7,7 @@ interface AuthContextType {
   role: UserRole | null;
   token: string | null;
   isAuthenticated: boolean;
+  isLoading: boolean;
   login: (email: string, pass: string) => Promise<void>;
   googleLogin: (idToken?: string) => Promise<void>;
   appleLogin: (identityToken?: string, givenName?: string, familyName?: string) => Promise<void>;
@@ -43,10 +44,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   });
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => !!token || !!user);
+  const [isLoading, setIsLoading] = useState<boolean>(() => !token);
 
   useEffect(() => {
     let isMounted = true;
     const validateActiveSession = async () => {
+      const storedToken = api.getStoredToken();
+      if (storedToken && !token) {
+        setToken(storedToken);
+      }
       try {
         const profile = await api.getMe();
         if (isMounted && profile) {
@@ -56,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (currentToken) setToken(currentToken);
         }
       } catch {
-        // Attempt silent token refresh via HttpOnly refresh_token cookie
+        // Attempt silent token refresh via HttpOnly refresh_token cookie or session storage
         try {
           const refreshed = await api.refreshToken();
           if (isMounted && refreshed) {
@@ -70,11 +76,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         } catch (_) {}
 
-        if (isMounted) {
+        // If validation failed and there is no active token, clear session
+        if (isMounted && !api.getStoredToken()) {
           api.clearSessionTokens();
           setToken(null);
           setUser(null);
           setIsAuthenticated(false);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
         }
       }
     };
@@ -199,6 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role,
         token,
         isAuthenticated,
+        isLoading,
         login,
         googleLogin,
         appleLogin,

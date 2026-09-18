@@ -37,7 +37,12 @@ describe("Admin Web - Sandbox / Live Mode & API Tests", () => {
     });
   });
 
-  describe("Session Expiration & Logout", () => {
+  describe("Session Persistence & Refresh", () => {
+    it("should rehydrate token from tab-scoped sessionStorage across page refreshes", () => {
+      sessionStorage.setItem("admin_token", "rehydrated-token-456");
+      expect(api.getStoredToken()).toBe("rehydrated-token-456");
+    });
+
     it("should clear sessionStorage and legacy localStorage tokens and user info on logout", () => {
       sessionStorage.setItem("admin_token", "jwt-token-123");
       sessionStorage.setItem("admin_user", JSON.stringify({ name: "Admin" }));
@@ -50,6 +55,7 @@ describe("Admin Web - Sandbox / Live Mode & API Tests", () => {
       expect(sessionStorage.getItem("admin_user")).toBeNull();
       expect(localStorage.getItem("admin_token")).toBeNull();
       expect(localStorage.getItem("admin_user")).toBeNull();
+      expect(api.getStoredToken()).toBeNull();
     });
   });
 

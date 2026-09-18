@@ -67,26 +67,44 @@ export const resolveApiUrl = (): string => {
 export const API_URL = resolveApiUrl();
 axios.defaults.withCredentials = true;
 
-// In-memory token storage (tokens are NEVER written to localStorage/sessionStorage for XSS prevention)
+// In-memory token storage (synchronized with tab-scoped sessionStorage for page-refresh persistence)
 let inMemoryToken: string | null = null;
 let inMemoryRefreshToken: string | null = null;
 
-// Scrub any lingering JWT tokens from web storage on startup
+// Scrub any lingering tokens from persistent localStorage on startup (ensuring HIPAA compliance & tab isolation)
 if (typeof window !== "undefined") {
   try {
     localStorage.removeItem("admin_token");
     localStorage.removeItem("admin_refresh_token");
-    sessionStorage.removeItem("admin_token");
-    sessionStorage.removeItem("admin_refresh_token");
   } catch (_) {}
 }
 
 export const getStoredToken = (): string | null => {
-  return inMemoryToken;
+  if (inMemoryToken) return inMemoryToken;
+  if (typeof window !== "undefined") {
+    try {
+      const stored = sessionStorage.getItem("admin_token");
+      if (stored && stored !== "null" && stored !== "undefined") {
+        inMemoryToken = stored;
+        return stored;
+      }
+    } catch (_) {}
+  }
+  return null;
 };
 
 const getStoredRefreshToken = (): string | null => {
-  return inMemoryRefreshToken;
+  if (inMemoryRefreshToken) return inMemoryRefreshToken;
+  if (typeof window !== "undefined") {
+    try {
+      const stored = sessionStorage.getItem("admin_refresh_token");
+      if (stored && stored !== "null" && stored !== "undefined") {
+        inMemoryRefreshToken = stored;
+        return stored;
+      }
+    } catch (_) {}
+  }
+  return null;
 };
 
 const getStoredUser = (): string | null => {
@@ -98,27 +116,34 @@ const setSessionTokens = (token: string, user: any, refreshToken?: string) => {
   inMemoryToken = token;
   inMemoryRefreshToken = refreshToken || null;
   if (typeof window === "undefined") return;
-  // Ensure no sensitive JWT is written to localStorage or sessionStorage
-  localStorage.removeItem("admin_token");
-  localStorage.removeItem("admin_refresh_token");
-  sessionStorage.removeItem("admin_token");
-  sessionStorage.removeItem("admin_refresh_token");
-  if (user) {
-    const userStr = typeof user === "string" ? user : JSON.stringify(user);
-    sessionStorage.setItem("admin_user", userStr);
-  }
+  try {
+    localStorage.removeItem("admin_token");
+    localStorage.removeItem("admin_refresh_token");
+    if (token) {
+      sessionStorage.setItem("admin_token", token);
+    }
+    if (refreshToken) {
+      sessionStorage.setItem("admin_refresh_token", refreshToken);
+    }
+    if (user) {
+      const userStr = typeof user === "string" ? user : JSON.stringify(user);
+      sessionStorage.setItem("admin_user", userStr);
+    }
+  } catch (_) {}
 };
 
 export const clearSessionTokens = () => {
   inMemoryToken = null;
   inMemoryRefreshToken = null;
   if (typeof window === "undefined") return;
-  sessionStorage.removeItem("admin_token");
-  sessionStorage.removeItem("admin_refresh_token");
-  sessionStorage.removeItem("admin_user");
-  localStorage.removeItem("admin_token");
-  localStorage.removeItem("admin_refresh_token");
-  localStorage.removeItem("admin_user");
+  try {
+    sessionStorage.removeItem("admin_token");
+    sessionStorage.removeItem("admin_refresh_token");
+    sessionStorage.removeItem("admin_user");
+    localStorage.removeItem("admin_token");
+    localStorage.removeItem("admin_refresh_token");
+    localStorage.removeItem("admin_user");
+  } catch (_) {}
 };
 
 const getHeaders = () => {
@@ -201,42 +226,42 @@ axios.interceptors.response.use(
       !originalRequest.url?.includes("/auth/refresh") &&
       typeof window !== "undefined"
     ) {
-      const storedRefresh = getStoredRefreshToken();
-      if (storedRefresh) {
-        if (isRefreshing) {
-          return new Promise((resolve) => {
-            subscribeTokenRefresh((token: string) => {
-              originalRequest.headers = originalRequest.headers || {};
-              originalRequest.headers.Authorization = `Bearer ${token}`;
-              resolve(axios(originalRequest));
-            });
-          });
-        }
-
-        originalRequest._retry = true;
-        isRefreshing = true;
-
-        try {
-          const newToken = await performSilentRefresh();
-          if (newToken) {
-            onRefreshed(newToken);
+      if (isRefreshing) {
+        return new Promise((resolve) => {
+          subscribeTokenRefresh((token: string) => {
             originalRequest.headers = originalRequest.headers || {};
-            originalRequest.headers.Authorization = `Bearer ${newToken}`;
-            return axios(originalRequest);
-          }
-        } catch (refreshErr) {
-          if (import.meta.env.MODE !== "test") {
-            console.warn("Silent token refresh error:", refreshErr);
-          }
-        } finally {
-          isRefreshing = false;
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            resolve(axios(originalRequest));
+          });
+        });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        const newToken = await performSilentRefresh();
+        if (newToken) {
+          onRefreshed(newToken);
+          originalRequest.headers = originalRequest.headers || {};
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return axios(originalRequest);
         }
+      } catch (refreshErr) {
+        if (import.meta.env.MODE !== "test") {
+          console.warn("Silent token refresh error:", refreshErr);
+        }
+      } finally {
+        isRefreshing = false;
       }
 
       clearSessionTokens();
       window.dispatchEvent(new CustomEvent("merihcare:session_expired"));
-      if (window.location.pathname !== "/login") {
-        window.location.href = "/login";
+      const isAlreadyOnLogin =
+        window.location.pathname === "/login" ||
+        window.location.hash.includes("/login");
+      if (!isAlreadyOnLogin) {
+        window.location.href = "/#/login";
       }
     }
     return Promise.reject(error);

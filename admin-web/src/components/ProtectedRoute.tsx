@@ -1,6 +1,7 @@
 import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { LoadingShell } from "./LoadingShell";
 import { UserRole } from "../types";
 
 interface ProtectedRouteProps {
@@ -9,10 +10,14 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
-  const { isAuthenticated, token, hasPermission } = useAuth();
+  const { isAuthenticated, isLoading, hasPermission } = useAuth();
   const location = useLocation();
 
-  if (!isAuthenticated || !token) {
+  if (isLoading) {
+    return <LoadingShell />;
+  }
+
+  if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

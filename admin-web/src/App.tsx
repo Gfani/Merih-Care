@@ -187,7 +187,7 @@ export default function App() {
 }
 
 function AppContent() {
-  const { user, token, isAuthenticated, logout, hasPermission, login } = useAuth();
+  const { user, token, isAuthenticated, isLoading, logout, hasPermission, login } = useAuth();
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("theme") === "dark");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -418,10 +418,18 @@ function AppContent() {
   }, [location.pathname]);
 
   React.useEffect(() => {
-    if (isAuthed && isAuthPage) {
+    if (!isLoading && isAuthed && isAuthPage) {
       navigate("/", { replace: true });
     }
-  }, [isAuthed, isAuthPage, navigate]);
+  }, [isLoading, isAuthed, isAuthPage, navigate]);
+
+  if (isLoading && !isAuthPage && !isAuthed) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-6">
+        <LoadingShell />
+      </div>
+    );
+  }
 
   if (isAuthPage && !isAuthed) {
     return (
