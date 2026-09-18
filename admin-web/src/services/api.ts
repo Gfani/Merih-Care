@@ -67,37 +67,51 @@ export const resolveApiUrl = (): string => {
 export const API_URL = resolveApiUrl();
 axios.defaults.withCredentials = true;
 
-const getStoredToken = (): string | null => {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("admin_token") || sessionStorage.getItem("admin_token");
+// In-memory token storage (tokens are NEVER written to localStorage/sessionStorage for XSS prevention)
+let inMemoryToken: string | null = null;
+let inMemoryRefreshToken: string | null = null;
+
+// Scrub any lingering JWT tokens from web storage on startup
+if (typeof window !== "undefined") {
+  try {
+    localStorage.removeItem("admin_token");
+    localStorage.removeItem("admin_refresh_token");
+    sessionStorage.removeItem("admin_token");
+    sessionStorage.removeItem("admin_refresh_token");
+  } catch (_) {}
+}
+
+export const getStoredToken = (): string | null => {
+  return inMemoryToken;
 };
 
 const getStoredRefreshToken = (): string | null => {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("admin_refresh_token") || sessionStorage.getItem("admin_refresh_token");
+  return inMemoryRefreshToken;
 };
 
 const getStoredUser = (): string | null => {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("admin_user") || sessionStorage.getItem("admin_user");
+  return sessionStorage.getItem("admin_user");
 };
 
 const setSessionTokens = (token: string, user: any, refreshToken?: string) => {
+  inMemoryToken = token;
+  inMemoryRefreshToken = refreshToken || null;
   if (typeof window === "undefined") return;
-  localStorage.setItem("admin_token", token);
-  sessionStorage.setItem("admin_token", token);
+  // Ensure no sensitive JWT is written to localStorage or sessionStorage
+  localStorage.removeItem("admin_token");
+  localStorage.removeItem("admin_refresh_token");
+  sessionStorage.removeItem("admin_token");
+  sessionStorage.removeItem("admin_refresh_token");
   if (user) {
     const userStr = typeof user === "string" ? user : JSON.stringify(user);
-    localStorage.setItem("admin_user", userStr);
     sessionStorage.setItem("admin_user", userStr);
-  }
-  if (refreshToken) {
-    localStorage.setItem("admin_refresh_token", refreshToken);
-    sessionStorage.setItem("admin_refresh_token", refreshToken);
   }
 };
 
-const clearSessionTokens = () => {
+export const clearSessionTokens = () => {
+  inMemoryToken = null;
+  inMemoryRefreshToken = null;
   if (typeof window === "undefined") return;
   sessionStorage.removeItem("admin_token");
   sessionStorage.removeItem("admin_refresh_token");
@@ -111,7 +125,7 @@ const getHeaders = () => {
   const token = getStoredToken();
   return {
     "Content-Type": "application/json",
-    Authorization: token ? `Bearer ${token}` : "",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 };
 
@@ -159,7 +173,9 @@ const performSilentRefresh = async (): Promise<string | null> => {
     }
     return null;
   } catch (error) {
-    console.warn("Silent token refresh failed:", error);
+    if (import.meta.env.MODE !== "test") {
+      console.warn("Silent token refresh failed:", error);
+    }
     return null;
   }
 };
@@ -209,7 +225,9 @@ axios.interceptors.response.use(
             return axios(originalRequest);
           }
         } catch (refreshErr) {
-          console.warn("Silent token refresh error:", refreshErr);
+          if (import.meta.env.MODE !== "test") {
+            console.warn("Silent token refresh error:", refreshErr);
+          }
         } finally {
           isRefreshing = false;
         }
@@ -346,11 +364,35 @@ export const api = {
         withCredentials: true,
       }
     );
-    p.catch((e) => console.warn("Backend session revocation completed or offline:", e));
+    p.catch((e) => {
+      if (import.meta.env.MODE !== "test") {
+        console.warn("Backend session revocation completed or offline:", e);
+      }
+    });
   },
 
   async refreshToken(): Promise<string | null> {
     return performSilentRefresh();
+  },
+
+  async getMe(): Promise<User> {
+    const res = await axios.get(`${API_URL}/auth/me`, {
+      headers: getHeaders(),
+      withCredentials: true,
+    });
+    const user = res.data?.data || res.data;
+    if (user && typeof window !== "undefined") {
+      sessionStorage.setItem("admin_user", JSON.stringify(user));
+    }
+    return user;
+  },
+
+  getStoredToken(): string | null {
+    return getStoredToken();
+  },
+
+  clearSessionTokens(): void {
+    clearSessionTokens();
   },
 
   async getAdminProfile(): Promise<{ name: string; email: string }> {

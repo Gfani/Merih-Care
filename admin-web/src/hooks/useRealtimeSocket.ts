@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
-import { API_URL } from "../services/api";
+import { api, API_URL } from "../services/api";
 
 export interface RealtimeEvent {
   v: number;
@@ -21,7 +21,7 @@ export interface RealtimeEvent {
 export interface UseRealtimeSocketOptions {
   token?: string | null;
   baseUrl?: string;
-  /** Only activate HTTP polling when the caller explicitly passes true */
+  /** Defaults to true to negotiate ["polling", "websocket"] for proxy/clinical network resilience */
   fallbackPoll?: boolean;
   onEvent?: (event: string, payload: any) => void;
   [eventName: string]: any;
@@ -54,15 +54,17 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
   const {
     token: propToken,
     baseUrl = BACKEND_URL,
-    fallbackPoll = false,
+    fallbackPoll = true,
     onEvent,
   } = options;
 
   const effectiveToken =
     propToken ||
     (typeof window !== "undefined"
-      ? sessionStorage.getItem("admin_token") || sessionStorage.getItem("token") || localStorage.getItem("admin_token")
+      ? api.getStoredToken()
       : null);
+
+  const hasSession = !!effectiveToken || (typeof window !== "undefined" && !!sessionStorage.getItem("admin_user"));
 
   const socketRef = useRef<Socket | null>(null);
   const lastPongRef = useRef<number | null>(null);
@@ -80,11 +82,11 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
   // Recompute isLive whenever any dependency changes
   useEffect(() => {
     const age = lastPongRef.current !== null ? Date.now() - lastPongRef.current : Infinity;
-    setIsLive(connected && connectionEstablished && age < HEARTBEAT_STALE_MS);
+    setIsLive(connected && connectionEstablished && (age < HEARTBEAT_STALE_MS || lastPongRef.current === null));
   }, [connected, connectionEstablished, heartbeatAge]);
 
   useEffect(() => {
-    if (!effectiveToken) {
+    if (!hasSession) {
       setConnectionState("disconnected");
       return;
     }
@@ -93,8 +95,9 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
 
     const origin = baseUrl.replace(/\/api\/v\d+.*$/, "");
     const socket = io(`${origin}/realtime`, {
-      auth: { token: effectiveToken },
-      // ONLY use polling as a transport if fallbackPoll is explicitly true
+      auth: effectiveToken ? { token: effectiveToken } : undefined,
+      withCredentials: true,
+      // Default to auto-negotiating ["polling", "websocket"] for maximum network resilience
       transports: fallbackPoll ? ["polling", "websocket"] : ["websocket"],
       reconnection: true,
       reconnectionAttempts: Infinity,
@@ -193,7 +196,7 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
       setIsLive(false);
       setConnectionState("disconnected");
     };
-  }, [effectiveToken, baseUrl, fallbackPoll]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [effectiveToken, hasSession, baseUrl, fallbackPoll]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const on = useCallback((event: string, handler: (payload: any) => void) => {
     socketRef.current?.on(event, handler);

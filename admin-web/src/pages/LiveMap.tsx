@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import L from "leaflet";
 import { Card } from "../components/ui";
 import { useRealtimeSocket } from "../hooks/useRealtimeSocket";
+import { useAuth } from "../context/AuthContext";
 import { api } from "../services/api";
 
 export interface LocationPin {
@@ -43,9 +44,8 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
   const [selectedPin, setSelectedPin] = useState<LocationPin | null>(null);
   const [routeInfo, setRouteInfo] = useState<{ distance: string; eta: number } | null>(null);
   const [myPrivacy, setMyPrivacy] = useState(false);
-
-  const token = sessionStorage.getItem("admin_token") || localStorage.getItem("admin_token") || "demo-token";
-  const { isLive, connectionState, on, off } = useRealtimeSocket({ token });
+  const { token } = useAuth();
+  const { isLive, connectionState, on, off } = useRealtimeSocket({ token: token || undefined });
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);

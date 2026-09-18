@@ -8,18 +8,19 @@ import {
 import { AdminMapView } from "./LiveMap";
 
 import { useRealtimeSocket } from "../hooks/useRealtimeSocket";
+import { useAuth } from "../context/AuthContext";
 
 import { Link } from "react-router-dom";
 
 export default function DashboardSection() {
+  const { token } = useAuth();
   const PIE_COLORS = ["#0d7c6a", "#1b6fba", "#d97706", "#dc2626", "#7c3aed"];
   const [stats, setStats] = useState<any>(null);
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [unreadVerifs, setUnreadVerifs] = useState(0);
 
-  const token = sessionStorage.getItem("admin_token") || localStorage.getItem("admin_token");
-  const { on, off, joinRoom, isLive } = useRealtimeSocket({ token });
+  const { on, off, joinRoom, isLive } = useRealtimeSocket({ token: token || undefined });
 
   const checkVerifications = async () => {
     try {

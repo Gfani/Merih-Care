@@ -7,6 +7,7 @@ import {
 import { api } from "../services/api";
 import { Avatar, toast } from "../components/ui";
 import { useRealtimeSocket } from "../hooks/useRealtimeSocket";
+import { useAuth } from "../context/AuthContext";
 
 export default function AdministratorsSection() {
   const [activeAdmins, setActiveAdmins] = useState<any[]>([]);
@@ -37,11 +38,8 @@ export default function AdministratorsSection() {
   // Pending action state
   const [processingId, setProcessingId] = useState<string | null>(null);
 
-  const userStr = sessionStorage.getItem("admin_user") || localStorage.getItem("admin_user");
-  const currentUser = (() => {
-    if (!userStr || userStr === "undefined" || userStr === "null") return null;
-    try { return JSON.parse(userStr); } catch { return null; }
-  })();
+  const { token, user: authUser } = useAuth();
+  const currentUser = authUser;
   const isSuperAdmin =
     currentUser?.adminRole === "super_admin" ||
     currentUser?.role === "super_admin" ||
@@ -67,9 +65,8 @@ export default function AdministratorsSection() {
     loadData();
   }, []);
 
-  const token = sessionStorage.getItem("admin_token") || localStorage.getItem("admin_token") || "";
   useRealtimeSocket({
-    token,
+    token: token || undefined,
     approval_requested: (data: any) => {
       if (data?.role === "admin" || !data?.role) {
         toast(`🔔 Administrator Application: ${data?.name || "Applicant"} applied for ${data?.adminRole || "administrative"} role`, "info");

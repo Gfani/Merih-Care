@@ -32,15 +32,9 @@ function isTokenValid(token: string | null): boolean {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => {
-    const stored = localStorage.getItem("admin_token") || sessionStorage.getItem("admin_token");
-    const storedRefresh = localStorage.getItem("admin_refresh_token") || sessionStorage.getItem("admin_refresh_token");
-    if (!stored && !storedRefresh) return null;
-    if (stored && isTokenValid(stored)) return stored;
-    return storedRefresh ? stored : null;
-  });
+  const [token, setToken] = useState<string | null>(() => api.getStoredToken());
   const [user, setUser] = useState<User | null>(() => {
-    const raw = localStorage.getItem("admin_user") || sessionStorage.getItem("admin_user");
+    const raw = typeof window !== "undefined" ? sessionStorage.getItem("admin_user") : null;
     if (!raw || raw === "undefined" || raw === "null") return null;
     try {
       return JSON.parse(raw);
@@ -48,98 +42,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return null;
     }
   });
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => !!token || !!user);
 
   useEffect(() => {
+    let isMounted = true;
     const validateActiveSession = async () => {
-      const stored = localStorage.getItem("admin_token") || sessionStorage.getItem("admin_token");
-      const storedRefresh = localStorage.getItem("admin_refresh_token") || sessionStorage.getItem("admin_refresh_token");
-
-      if (!stored && !storedRefresh) {
-        setToken(null);
-        setUser(null);
-        return;
-      }
-
-      if (!stored || !isTokenValid(stored)) {
-        if (storedRefresh) {
-          const refreshed = await api.refreshToken();
-          if (refreshed) {
-            setToken(refreshed);
-            const rawUser = localStorage.getItem("admin_user") || sessionStorage.getItem("admin_user");
-            if (rawUser) {
-              try {
-                setUser(JSON.parse(rawUser));
-              } catch (_) {}
-            }
-            return;
-          }
-        }
-        sessionStorage.removeItem("admin_token");
-        sessionStorage.removeItem("admin_user");
-        sessionStorage.removeItem("admin_refresh_token");
-        localStorage.removeItem("admin_token");
-        localStorage.removeItem("admin_user");
-        localStorage.removeItem("admin_refresh_token");
-        setToken(null);
-        setUser(null);
-        return;
-      }
-
       try {
-        const profile = await api.getAdminProfile();
-        if (!profile) {
-          throw new Error("Invalid session");
+        const profile = await api.getMe();
+        if (isMounted && profile) {
+          setUser(profile);
+          setIsAuthenticated(true);
+          const currentToken = api.getStoredToken();
+          if (currentToken) setToken(currentToken);
         }
       } catch {
-        if (storedRefresh) {
+        // Attempt silent token refresh via HttpOnly refresh_token cookie
+        try {
           const refreshed = await api.refreshToken();
-          if (refreshed) {
+          if (isMounted && refreshed) {
             setToken(refreshed);
-            return;
+            const profile = await api.getMe();
+            if (isMounted && profile) {
+              setUser(profile);
+              setIsAuthenticated(true);
+              return;
+            }
           }
+        } catch (_) {}
+
+        if (isMounted) {
+          api.clearSessionTokens();
+          setToken(null);
+          setUser(null);
+          setIsAuthenticated(false);
         }
-        sessionStorage.removeItem("admin_token");
-        sessionStorage.removeItem("admin_user");
-        sessionStorage.removeItem("admin_refresh_token");
-        localStorage.removeItem("admin_token");
-        localStorage.removeItem("admin_user");
-        localStorage.removeItem("admin_refresh_token");
-        setToken(null);
-        setUser(null);
       }
     };
 
     validateActiveSession();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   useEffect(() => {
+    // Proactive background cookie session refresh
     const checkAndRefreshToken = async () => {
-      const storedToken = localStorage.getItem("admin_token") || sessionStorage.getItem("admin_token");
-      const storedRefresh = localStorage.getItem("admin_refresh_token") || sessionStorage.getItem("admin_refresh_token");
-      if (!storedToken || !storedRefresh) return;
+      if (!isAuthenticated) return;
       try {
-        const parts = storedToken.split(".");
-        if (parts.length === 3) {
-          const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
-          const now = Date.now() / 1000;
-          if (payload.exp && payload.exp - now < 1800) {
-            const newToken = await api.refreshToken();
-            if (newToken) {
-              setToken(newToken);
-            }
-          }
+        const refreshedToken = await api.refreshToken();
+        if (refreshedToken) {
+          setToken(refreshedToken);
         }
       } catch (_) {}
     };
 
-    const interval = setInterval(checkAndRefreshToken, 5 * 60 * 1000);
+    const interval = setInterval(checkAndRefreshToken, 10 * 60 * 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     const handleSessionExpired = () => {
       setToken(null);
       setUser(null);
+      setIsAuthenticated(false);
     };
 
     window.addEventListener("merihcare:session_expired", handleSessionExpired);
@@ -150,6 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await api.login(email, pass);
     setToken(res.access_token);
     setUser(res.user);
+    setIsAuthenticated(true);
   };
 
   const googleLogin = async (idToken?: string) => {
@@ -187,7 +154,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await api.googleAuth(tokenToUse, "admin");
     if (res.access_token) {
       setToken(res.access_token);
+    }
+    if (res.user) {
       setUser(res.user);
+      setIsAuthenticated(true);
     }
   };
 
@@ -199,7 +169,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (res.access_token) {
       setToken(res.access_token);
+    }
+    if (res.user) {
       setUser(res.user);
+      setIsAuthenticated(true);
     }
   };
 
@@ -207,6 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     api.logout();
     setToken(null);
     setUser(null);
+    setIsAuthenticated(false);
   };
 
   const role: UserRole = (user?.adminRole as UserRole) || (user?.role as UserRole) || "admin";
@@ -224,7 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         role,
         token,
-        isAuthenticated: !!token,
+        isAuthenticated,
         login,
         googleLogin,
         appleLogin,

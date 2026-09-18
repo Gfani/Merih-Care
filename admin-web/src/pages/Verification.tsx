@@ -67,7 +67,7 @@ function resolveDocumentInfo(docTitle: string, provider: any): DocumentInfo {
     }
     cleanKey = decodeURIComponent(cleanKey).replace(/^\/+/, "");
 
-    const token = sessionStorage.getItem("admin_token") || localStorage.getItem("admin_token");
+    const token = api.getStoredToken();
     let fullQuery = queryPart;
     if (token && !fullQuery.includes("token=")) {
       const sep = fullQuery.includes("?") ? "&" : "?";
@@ -135,16 +135,14 @@ const DocumentViewer: React.FC<{
     setLoadError(false);
     setViewMode("preview");
 
-    const token =
-      sessionStorage.getItem("admin_token") ||
-      localStorage.getItem("admin_token");
+    const token = api.getStoredToken();
 
     const headers: Record<string, string> = {};
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    fetch(doc.resolvedUrl, { headers })
+    fetch(doc.resolvedUrl, { headers, credentials: "include" })
       .then(async (res) => {
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}: Failed to fetch credential file`);

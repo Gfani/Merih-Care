@@ -411,7 +411,7 @@ function AppContent() {
     }
   }, [darkMode]);
 
-  const isAuthed = isAuthenticated || !!sessionStorage.getItem("admin_token") || !!localStorage.getItem("admin_token");
+  const isAuthed = isAuthenticated;
 
   React.useEffect(() => {
     setMobileSidebarOpen(false);
