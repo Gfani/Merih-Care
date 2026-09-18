@@ -65,6 +65,7 @@ export const resolveApiUrl = (): string => {
 };
 
 export const API_URL = resolveApiUrl();
+axios.defaults.withCredentials = true;
 
 const getStoredToken = (): string | null => {
   if (typeof window === "undefined") return null;
@@ -136,11 +137,12 @@ const onRefreshed = (token: string) => {
 
 const performSilentRefresh = async (): Promise<string | null> => {
   const refreshToken = getStoredRefreshToken();
-  if (!refreshToken) return null;
   try {
-    const res = await axios.post(`${API_URL}/auth/refresh`, {
-      refresh_token: refreshToken,
-    });
+    const res = await axios.post(
+      `${API_URL}/auth/refresh`,
+      refreshToken ? { refresh_token: refreshToken } : {},
+      { withCredentials: true }
+    );
     const data = res.data?.data || res.data;
     const newToken = data.access_token || data.token;
     const newRefreshToken = data.refresh_token || refreshToken;
@@ -336,16 +338,15 @@ export const api = {
     const refreshToken = getStoredRefreshToken();
     const token = getStoredToken();
     clearSessionTokens();
-    if (refreshToken || token) {
-      const p = refreshToken
-        ? axios.post(`${API_URL}/auth/logout`, { refresh_token: refreshToken }, {
-            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-          })
-        : axios.delete(`${API_URL}/auth/sessions/all`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-      p.catch((e) => console.warn("Backend session revocation completed or offline:", e));
-    }
+    const p = axios.post(
+      `${API_URL}/auth/logout`,
+      refreshToken ? { refresh_token: refreshToken } : {},
+      {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        withCredentials: true,
+      }
+    );
+    p.catch((e) => console.warn("Backend session revocation completed or offline:", e));
   },
 
   async refreshToken(): Promise<string | null> {

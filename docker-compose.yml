@@ -26,8 +26,8 @@ services:
     image: redis:7-alpine
     container_name: merihcare-redis
     restart: always
-    # Enable Redis authentication
-    command: redis-server --requirepass ${REDIS_PASSWORD:-merihcare_redis_secure_password}
+    # Enable Redis authentication & AOF persistence
+    command: redis-server --requirepass ${REDIS_PASSWORD:-merihcare_redis_secure_password} --appendonly yes
     # Do not expose ports publicly in production
     networks:
       - backend-net

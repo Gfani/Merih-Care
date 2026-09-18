@@ -21,7 +21,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: merihcare-redis-staging
-    command: redis-server --requirepass ${REDIS_PASSWORD:-merihcare_staging_redis}
+    command: redis-server --requirepass ${REDIS_PASSWORD:-merihcare_staging_redis} --appendonly yes
     networks:
       - backend-net
     volumes:

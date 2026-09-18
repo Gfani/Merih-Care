@@ -20,6 +20,7 @@ import { AppointmentEntity } from "../../database/entities/appointment.entity";
 import { UserEntity } from "../../database/entities/user.entity";
 import { EmergencyEntity } from "../../database/entities/emergency.entity";
 import { ProviderEntity } from "../../database/entities/provider.entity";
+import { parseCookieString } from "../../shared/utils/cookie.util";
 
 
 // In-memory socket tracking
@@ -72,9 +73,16 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     // JWT auth middleware — rejects unauthenticated connections & checks active state
     server.use(async (socket: Socket, next) => {
       try {
-        const token =
+        let token =
           socket.handshake.auth?.token ||
           socket.handshake.headers?.authorization?.replace("Bearer ", "");
+
+        // If no token in auth payload or header, extract from HttpOnly cookie header
+        if (!token && socket.handshake.headers?.cookie) {
+          const parsed = parseCookieString(socket.handshake.headers.cookie);
+          token = parsed.admin_token || parsed.token;
+        }
+
         if (!token) return next(new Error("Unauthorized: missing token"));
 
         const payload = await this.jwtService.verifyAsync(token);
@@ -110,23 +118,6 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         next(new Error("Unauthorized: invalid token"));
       }
     });
-
-
-    // Redis adapter (only if REDIS_URL is configured)
-    if (process.env.REDIS_URL) {
-      try {
-        const { createClient } = require("redis");
-        const { createAdapter } = require("@socket.io/redis-adapter");
-        const pubClient = createClient({ url: process.env.REDIS_URL });
-        const subClient = pubClient.duplicate();
-        Promise.all([pubClient.connect(), subClient.connect()]).then(() => {
-          server.adapter(createAdapter(pubClient, subClient));
-          console.log("[Realtime] Redis adapter connected");
-        }).catch((e: any) => console.warn("[Realtime] Redis adapter failed, using in-memory:", e.message));
-      } catch (e: any) {
-        console.warn("[Realtime] Redis packages not found, using in-memory adapter");
-      }
-    }
 
     // Server heartbeat — emit ping every 25 s to all connected namespace clients
     const heartbeatTimer = setInterval(() => {

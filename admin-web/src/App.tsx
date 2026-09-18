@@ -17,43 +17,43 @@ import { LoadingShell } from "./components/LoadingShell";
 import { useRealtimeSocket } from "./hooks/useRealtimeSocket";
 import { useRouteError } from "react-router-dom";
 
-// Automatic chunk retry helper for dynamic imports during new deployments
+// Graceful chunk loader with exponential retry backoff for transient network glitches
 function lazyWithRetry<T extends React.ComponentType<any>>(
-  factory: () => Promise<{ default: T }>
+  factory: () => Promise<{ default: T }>,
+  maxRetries = 3
 ): React.LazyExoticComponent<T> {
   return React.lazy(async () => {
-    try {
-      return await factory();
-    } catch (error: any) {
-      const isChunkError =
-        error?.message?.includes("Failed to fetch dynamically imported module") ||
-        error?.message?.includes("error loading dynamically imported module") ||
-        error?.name === "TypeError";
+    let attempts = 0;
+    while (attempts < maxRetries) {
+      try {
+        return await factory();
+      } catch (error: any) {
+        attempts++;
+        const message = String(error?.message || "");
+        const isChunkNetworkError =
+          message.includes("Failed to fetch dynamically imported module") ||
+          message.includes("error loading dynamically imported module") ||
+          message.includes("Importing a module script failed");
 
-      const key = "merihcare_chunk_retry";
-      const lastRetry = sessionStorage.getItem(key);
-      const now = Date.now();
-      if (isChunkError && (!lastRetry || now - Number(lastRetry) > 8000)) {
-        sessionStorage.setItem(key, String(now));
-        window.location.reload();
-        return new Promise(() => {}); // Hold until browser reloads
+        // If not a chunk network error or exceeded retry attempts, pass error to ErrorBoundary
+        if (!isChunkNetworkError || attempts >= maxRetries) {
+          throw error;
+        }
+
+        // Exponential backoff delay (800ms, 1600ms, 2400ms)
+        const delay = attempts * 800;
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
-      throw error;
     }
+    return factory();
   });
 }
 
-// Listen to Vite asset loading errors on new deployments
+// Non-destructive Vite asset loading error observer
 if (typeof window !== "undefined") {
   window.addEventListener("vite:preloadError", (event) => {
     event.preventDefault();
-    const key = "merihcare_preload_retry";
-    const last = sessionStorage.getItem(key);
-    const now = Date.now();
-    if (!last || now - Number(last) > 8000) {
-      sessionStorage.setItem(key, String(now));
-      window.location.reload();
-    }
+    console.warn("[Vite Preload] Handled chunk preload warning gracefully without disrupting user session.");
   });
 }
 

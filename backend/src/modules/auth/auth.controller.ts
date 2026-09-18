@@ -1,10 +1,11 @@
-import { Controller, Post, Get, Delete, Put, Body, Param, Req, UnauthorizedException, BadRequestException, UseGuards, HttpCode, HttpStatus } from "@nestjs/common";
+import { Controller, Post, Get, Delete, Put, Body, Param, Req, Res, UnauthorizedException, BadRequestException, UseGuards, HttpCode, HttpStatus } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 import { IsEmail, IsNotEmpty, MinLength, MaxLength, IsOptional, Matches, IsIn, Length, IsString } from "class-validator";
-import { Request } from "express";
+import { Request, Response } from "express";
 import { verifyTOTP } from "../../shared/utils/totp";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 import { RateLimiterGuard } from "../../shared/guards/rate-limiter.guard";
+import { getSecureCookieOptions } from "../../shared/utils/cookie.util";
 
 export class LoginDto {
   @IsEmail()
@@ -197,15 +198,15 @@ export class AppleAuthDto {
 }
 
 export class RefreshDto {
-  @IsNotEmpty()
+  @IsOptional()
   @MaxLength(500)
-  refresh_token: string;
+  refresh_token?: string;
 }
 
 export class LogoutDto {
-  @IsNotEmpty()
+  @IsOptional()
   @MaxLength(500)
-  refresh_token: string;
+  refresh_token?: string;
 }
 
 export class PasswordResetRequestDto {
@@ -292,9 +293,44 @@ export class EmailVerificationConfirmDto {
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  private setAuthCookies(res: Response, session: any) {
+    if (!res || !session?.token) return;
+    const isProd = process.env.NODE_ENV === "production";
+    const cookieOptions = getSecureCookieOptions(isProd);
+
+    res.cookie("token", session.token, cookieOptions);
+    if (session.user?.role === "admin" || session.user?.adminRole || session.user?.roles?.includes("admin")) {
+      res.cookie("admin_token", session.token, cookieOptions);
+    }
+    if (session.refresh_token) {
+      res.cookie("refresh_token", session.refresh_token, {
+        ...cookieOptions,
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      });
+    }
+  }
+
+  private clearAuthCookies(res: Response) {
+    if (!res) return;
+    res.clearCookie("token", { path: "/" });
+    res.clearCookie("admin_token", { path: "/" });
+    res.clearCookie("refresh_token", { path: "/" });
+  }
+
+  @Get("me")
+  @UseGuards(JwtAuthGuard)
+  async getMe(@Req() req: any) {
+    const userId = req.user?.id || req.user?.sub;
+    return this.authService.getUserById(userId);
+  }
+
   @Post("login")
   @UseGuards(RateLimiterGuard)
-  async login(@Body() body: LoginDto, @Req() req: Request) {
+  async login(
+    @Body() body: LoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res?: Response
+  ) {
     try {
       const user = await this.authService.validateUser(body.email, body.password);
       if (!user) {
@@ -311,18 +347,24 @@ export class AuthController {
         }
       }
 
-      return this.authService.createSession(
+      const session = await this.authService.createSession(
         user.id,
         req.headers["user-agent"] || "",
         req.ip || ""
       );
+      if (res) this.setAuthCookies(res, session);
+      return session;
     } catch (err) {
       throw new UnauthorizedException(err.message);
     }
   }
 
   @Post("google")
-  async googleAuth(@Body() body: GoogleAuthDto, @Req() req: Request) {
+  async googleAuth(
+    @Body() body: GoogleAuthDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res?: Response
+  ) {
     try {
       const providerDetails = body.role === "provider" ? {
         title: body.title,
@@ -336,20 +378,26 @@ export class AuthController {
         idDocumentUrl: body.idDocumentUrl,
       } : undefined;
 
-      return await this.authService.googleAuth(
+      const session = await this.authService.googleAuth(
         body.idToken,
         body.role || "patient",
         providerDetails,
         (req.headers["user-agent"] as string) || "Unknown",
         req.ip || "127.0.0.1"
       );
+      if (res) this.setAuthCookies(res, session);
+      return session;
     } catch (err: any) {
       throw new BadRequestException(err.message);
     }
   }
 
   @Post("apple")
-  async appleAuth(@Body() body: AppleAuthDto, @Req() req: Request) {
+  async appleAuth(
+    @Body() body: AppleAuthDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res?: Response
+  ) {
     try {
       const providerDetails = body.role === "provider" ? {
         title: body.title,
@@ -365,7 +413,7 @@ export class AuthController {
 
       const userName = [body.givenName, body.familyName].filter(Boolean).join(" ") || undefined;
 
-      return await this.authService.appleAuth(
+      const session = await this.authService.appleAuth(
         body.identityToken,
         body.role || "patient",
         userName,
@@ -373,13 +421,19 @@ export class AuthController {
         (req.headers["user-agent"] as string) || "Unknown",
         req.ip || "127.0.0.1"
       );
+      if (res) this.setAuthCookies(res, session);
+      return session;
     } catch (err: any) {
       throw new BadRequestException(err.message);
     }
   }
 
   @Post("signup")
-  async signup(@Body() body: SignUpDto, @Req() req: Request) {
+  async signup(
+    @Body() body: SignUpDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res?: Response
+  ) {
     try {
       let targetRole = body.role || "patient";
       let targetAdminRole = body.adminRole;
@@ -415,11 +469,13 @@ export class AuthController {
       );
 
       if (user.isApproved) {
-        return this.authService.createSession(
+        const session = await this.authService.createSession(
           user.id,
           req.headers["user-agent"] || "",
           req.ip || ""
         );
+        if (res) this.setAuthCookies(res, session);
+        return session;
       }
 
       return {
@@ -433,22 +489,40 @@ export class AuthController {
   }
 
   @Post("refresh")
-  async refresh(@Body() body: RefreshDto, @Req() req: Request) {
+  async refresh(
+    @Body() body: RefreshDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res?: Response
+  ) {
     try {
-      return await this.authService.rotateSession(
-        body.refresh_token,
+      const refreshToken = body.refresh_token || (req as any).cookies?.refresh_token;
+      if (!refreshToken) {
+        throw new UnauthorizedException("Missing refresh token");
+      }
+      const session = await this.authService.rotateSession(
+        refreshToken,
         req.headers["user-agent"] || "",
         req.ip || ""
       );
+      if (res) this.setAuthCookies(res, session);
+      return session;
     } catch (err) {
       throw new UnauthorizedException(err.message);
     }
   }
 
   @Post("logout")
-  async logout(@Body() body: LogoutDto, @Req() req: any) {
+  async logout(
+    @Body() body: LogoutDto,
+    @Req() req: any,
+    @Res({ passthrough: true }) res?: Response
+  ) {
+    const refreshToken = body.refresh_token || req?.cookies?.refresh_token;
     const userId = req?.user?.id || req?.user?.sub;
-    await this.authService.revokeSession(body.refresh_token, userId);
+    if (refreshToken) {
+      await this.authService.revokeSession(refreshToken, userId);
+    }
+    if (res) this.clearAuthCookies(res);
     return { success: true };
   }
 

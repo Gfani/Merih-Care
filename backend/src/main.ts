@@ -8,9 +8,18 @@ import * as path from "path";
 import { IdempotencyInterceptor } from "./shared/interceptors/idempotency.interceptor";
 import { TransformInterceptor } from "./shared/interceptors/transform.interceptor";
 import helmet from "helmet";
+import cookieParser from "cookie-parser";
+import { RedisIoAdapter } from "./modules/realtime/redis-io.adapter";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  app.use(cookieParser());
+
+  // Attach multi-node Redis WebSocket adapter
+  const redisIoAdapter = new RedisIoAdapter(app);
+  await redisIoAdapter.connectToRedis();
+  app.useWebSocketAdapter(redisIoAdapter);
 
   app.use(helmet({
     contentSecurityPolicy: {

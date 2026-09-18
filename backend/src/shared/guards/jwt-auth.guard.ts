@@ -3,6 +3,7 @@ import { JwtService } from "@nestjs/jwt";
 import { DataSource } from "typeorm";
 import { UserEntity } from "../../database/entities/user.entity";
 import { ProviderEntity } from "../../database/entities/provider.entity";
+import { parseCookieString } from "../utils/cookie.util";
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -13,14 +14,29 @@ export class JwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const authHeader = request.headers.authorization;
-    if (!authHeader) {
-      throw new UnauthorizedException("Authorization header missing");
+    let token: string | undefined;
+
+    // 1. Check HttpOnly cookies first (HIPAA compliance for web clients)
+    if (request.cookies) {
+      token = request.cookies.admin_token || request.cookies.token;
+    } else if (request.headers?.cookie) {
+      const parsed = parseCookieString(request.headers.cookie);
+      token = parsed.admin_token || parsed.token;
     }
 
-    const [type, token] = authHeader.split(" ");
-    if (type !== "Bearer" || !token) {
-      throw new UnauthorizedException("Invalid token format");
+    // 2. Fallback to Authorization: Bearer header (Mobile Flutter app, automated test suites)
+    const authHeader = request.headers?.authorization;
+    if (!token && authHeader) {
+      const [type, bearerToken] = authHeader.split(" ");
+      if (type === "Bearer" && bearerToken) {
+        token = bearerToken;
+      } else {
+        throw new UnauthorizedException("Invalid token format");
+      }
+    }
+
+    if (!token) {
+      throw new UnauthorizedException("Authorization header or cookie missing");
     }
 
     let payload: any;
