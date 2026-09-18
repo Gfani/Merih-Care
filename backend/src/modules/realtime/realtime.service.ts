@@ -95,13 +95,15 @@ export class RealtimeService {
 
   /** Provider location update for active appointment */
   emitLocationUpdate(appointmentId: string, providerId: string, lat: number, lng: number, ts: string) {
-    this.emitToRoom(`appointment:${appointmentId}`, "location_update", {
+    const payload = {
       appointmentId,
       providerId,
       lat,
       lng,
       ts,
-    });
+    };
+    this.emitToRoom(`appointment:${appointmentId}`, "location_update", payload);
+    this.emitToRoom("admin", "location_update", payload);
   }
 
   /** Provider location has gone stale (no update in 90 s) */

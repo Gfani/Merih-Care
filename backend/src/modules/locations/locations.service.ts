@@ -1,8 +1,9 @@
-import { Injectable, BadRequestException } from "@nestjs/common";
+import { Injectable, BadRequestException, Optional } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { LocationEntity } from "../../database/entities/location.entity";
 import { LocationHistoryEntity } from "../../database/entities/emergency-relation.entity";
+import { RealtimeService } from "../realtime/realtime.service";
 import * as crypto from "crypto";
 
 @Injectable()
@@ -12,6 +13,8 @@ export class LocationsService {
     private readonly locationRepo: Repository<LocationEntity>,
     @InjectRepository(LocationHistoryEntity)
     private readonly historyRepo: Repository<LocationHistoryEntity>,
+    @Optional()
+    private readonly realtimeService?: RealtimeService,
   ) {}
 
   async getAllLocations(): Promise<LocationEntity[]> {
@@ -80,6 +83,15 @@ export class LocationsService {
     history.y = latitude;
     history.timestamp = new Date().toISOString();
     await this.historyRepo.save(history);
+
+    if (this.realtimeService) {
+      this.realtimeService.emitToRoom("admin", "location_update", {
+        providerId: loc.userId || id,
+        lat: latitude,
+        lng: longitude,
+        lastUpdated: loc.locationTimestamp,
+      });
+    }
 
     return saved;
   }
