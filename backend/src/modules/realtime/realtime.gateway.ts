@@ -330,6 +330,140 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     return { ok: true, room: "providers", ts: new Date().toISOString() };
   }
 
+  /**
+   * join_provider — Explicit post-auth room join for the Flutter provider app.
+   * The app emits this event immediately after receiving connection_established.
+   * Joins the provider into:
+   *   • "providers" broadcast room (receives all open on-demand requests)
+   *   • "provider:{userId}" personal room (receives targeted requests)
+   *   • "provider:{providerEntityId}" entity room (receives requests keyed by ProviderEntity.id)
+   */
+  @SubscribeMessage("join_provider")
+  async handleJoinProvider(@ConnectedSocket() socket: Socket) {
+    const { userId, role, roles } = (socket as any);
+    const isProvider = role === "provider" || (roles as string[])?.includes("provider") || (socket as any).hasProviderAccount;
+
+    if (!isProvider) {
+      socket.emit("error", { message: "Provider role required" });
+      return { ok: false, error: "Forbidden" };
+    }
+
+    const joinedRooms: string[] = [];
+
+    // Always join the broadcast room and personal user room
+    socket.join("providers");
+    socket.join(`provider:${userId}`);
+    joinedRooms.push("providers", `provider:${userId}`);
+    socketUserMap.get(socket.id)?.rooms.add("providers");
+    socketUserMap.get(socket.id)?.rooms.add(`provider:${userId}`);
+
+    // Look up the ProviderEntity to also join the entity-keyed room
+    if (this.dataSource && this.dataSource.isInitialized) {
+      try {
+        const provRepo = this.dataSource.getRepository(ProviderEntity);
+        const prov = await provRepo.findOne({ where: [{ userId }, { id: userId }] });
+        if (prov && prov.id && prov.id !== userId) {
+          const entityRoom = `provider:${prov.id}`;
+          socket.join(entityRoom);
+          joinedRooms.push(entityRoom);
+          socketUserMap.get(socket.id)?.rooms.add(entityRoom);
+        }
+      } catch (_) {}
+    }
+
+    return { ok: true, rooms: joinedRooms, ts: new Date().toISOString() };
+  }
+
+  /**
+   * search_providers — Patient emits their GPS coordinates to find nearby providers.
+   * The gateway:
+   *   1. Queries LocationEntity for all providers whose status is online/active.
+   *   2. Filters to those within radiusKm (default 15 km) using the Haversine formula.
+   *   3. Emits new_service_request to each nearby provider's personal room.
+   *   4. Emits new_service_request to the "providers" room (catches any provider not in LocationEntity).
+   *   5. Emits new_service_request to the "admin" room.
+   *   6. Returns { ok, nearbyCount, appointmentId } acknowledgement to the patient.
+   */
+  @SubscribeMessage("search_providers")
+  async handleSearchProviders(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() data: {
+      lat: number;
+      lng: number;
+      appointmentId?: string;
+      service?: string;
+      radiusKm?: number;
+      payload?: Record<string, any>;
+    },
+  ) {
+    const { userId, role } = (socket as any);
+    const isPatient = role === "patient" || !role;
+    if (!isPatient && role !== "admin") {
+      socket.emit("error", { message: "Only patients may search for providers" });
+      return { ok: false, error: "Forbidden" };
+    }
+
+    const patientLat = data?.lat;
+    const patientLng = data?.lng;
+    const radiusKm = data?.radiusKm ?? 15; // Default 15 km radius for Addis Ababa
+    const eventPayload = {
+      ...(data?.payload || {}),
+      appointmentId: data?.appointmentId,
+      service: data?.service,
+      patientLat,
+      patientLng,
+      radiusKm,
+      ts: new Date().toISOString(),
+    };
+
+    const nearbyProviderRooms = new Set<string>();
+
+    // Query LocationEntity for online providers and filter by radius
+    if (this.dataSource && this.dataSource.isInitialized && typeof patientLat === "number" && typeof patientLng === "number") {
+      try {
+        const locRepo = this.dataSource.getRepository(LocationEntity);
+        const providerLocations = await locRepo
+          .createQueryBuilder("loc")
+          .where("loc.role = :role AND loc.status NOT IN (:...offlineStatuses)", {
+            role: "provider",
+            offlineStatuses: ["offline", "suspended"],
+          })
+          .getMany();
+
+        for (const loc of providerLocations) {
+          if (!loc.userId || typeof loc.y !== "number" || typeof loc.x !== "number") continue;
+          // Haversine distance calculation
+          const R = 6371;
+          const dLat = (loc.y - patientLat) * Math.PI / 180;
+          const dLon = (loc.x - patientLng) * Math.PI / 180;
+          const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(patientLat * Math.PI / 180) *
+            Math.cos(loc.y * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+          const distanceKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+          if (distanceKm <= radiusKm) {
+            nearbyProviderRooms.add(`provider:${loc.userId}`);
+          }
+        }
+
+        // Emit to each nearby provider's personal room
+        for (const room of nearbyProviderRooms) {
+          this.realtimeService.emitToRoom(room, "new_service_request", eventPayload);
+        }
+      } catch (_) {}
+    }
+
+    // Always also emit to the full "providers" room (catches providers not in LocationEntity)
+    this.realtimeService.emitToRoom("providers", "new_service_request", eventPayload);
+
+    // Always emit to admin room
+    this.realtimeService.emitToRoom("admin", "new_service_request", eventPayload);
+
+    return { ok: true, nearbyCount: nearbyProviderRooms.size, appointmentId: data?.appointmentId, ts: new Date().toISOString() };
+  }
+
   // ─── Provider Location Updates ───────────────────────────────────
 
   @SubscribeMessage("location_update")

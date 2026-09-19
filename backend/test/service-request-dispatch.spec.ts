@@ -139,7 +139,7 @@ describe("Service Request Dispatch & Notification Flow", () => {
     );
   });
 
-  it("should broadcast to all online providers and create admin persistent notifications on on-demand request", async () => {
+  it("should broadcast to the providers room and create admin persistent notifications on on-demand request", async () => {
     const newRequest = await appointmentsService.createAppointment({
       patientId: "pat-123",
       patientName: "Abebe Bikila",
@@ -154,28 +154,36 @@ describe("Service Request Dispatch & Notification Flow", () => {
     expect(newRequest).toBeDefined();
     expect(newRequest.status).toBe("searching");
 
-    // 1. Check that admin room received realtime event
+    // 1. Admin room must receive realtime event
     const adminRoomEvent = emittedRoomEvents.find((e) => e.room === "admin" && e.event === "new_service_request");
     expect(adminRoomEvent).toBeDefined();
     expect(adminRoomEvent.data.patientName).toBe("Abebe Bikila");
 
-    // 2. Check that persistent notification was created for platform admin
+    // 2. Persistent in-app notification created for platform admin
     const adminNotification = sentNotifications.find((n) => n.userId === "admin-1");
     expect(adminNotification).toBeDefined();
     expect(adminNotification.type).toBe("new_service_request");
     expect(adminNotification.title).toBe("New Service Request");
     expect(adminNotification.body).toContain("Abebe Bikila");
 
-    // 3. Check that nearby/active providers received realtime events & notifications
+    // 3. "providers" room must receive the broadcast WebSocket event
+    //    (replaces the old per-provider DB-scan loop — all online providers are in this room)
+    const providersRoomEvent = emittedRoomEvents.find((e) => e.room === "providers" && e.event === "new_service_request");
+    expect(providersRoomEvent).toBeDefined();
+    expect(providersRoomEvent.data.service).toBe("Doctor Home Visit");
+
+    // 4. A single broadcast in-app notification must be persisted (not per-provider)
+    const broadcastNotif = sentNotifications.find((n) => n.userId === "providers_broadcast");
+    expect(broadcastNotif).toBeDefined();
+    expect(broadcastNotif.title).toBe("New Care Request Nearby");
+    expect(broadcastNotif.targetChannel).toBe("in_app");
+
+    // 5. Individual per-provider sendNotification calls must NOT exist for open requests
+    //    (they caused O(n) DB queries and spammed unrelated providers)
     const prov1Notif = sentNotifications.find((n) => n.userId === "user-prov-1");
     const prov2Notif = sentNotifications.find((n) => n.userId === "user-prov-2");
-    expect(prov1Notif).toBeDefined();
-    expect(prov2Notif).toBeDefined();
-    expect(prov1Notif.title).toBe("New Care Request Nearby");
-
-    // 4. Check that provider rooms received websocket event
-    const prov1Room = emittedRoomEvents.find((e) => e.room === "provider:user-prov-1");
-    expect(prov1Room).toBeDefined();
+    expect(prov1Notif).toBeUndefined();
+    expect(prov2Notif).toBeUndefined();
   });
 
   it("should auto-assign provider and notify patient when clinician accepts unassigned request", async () => {
@@ -313,8 +321,9 @@ describe("Service Request Dispatch & Notification Flow", () => {
     );
   });
 
-  it("should strictly suppress SMS and Email for provider notifications on service requests and appointments", async () => {
-    // When an on-demand service request is created, notifications sent to providers must be in_app only
+  it("should strictly suppress SMS and Email for on-demand broadcast notifications and use in_app only", async () => {
+    // When an on-demand service request is created, the broadcast notification
+    // persisted to providers_broadcast must be in_app only (no SMS or Email)
     const req = await appointmentsService.createAppointment({
       patientId: "pat-123",
       patientName: "Kenenisa Bekele",
@@ -326,11 +335,15 @@ describe("Service Request Dispatch & Notification Flow", () => {
 
     expect(req).toBeDefined();
 
-    // All provider notifications sent must be in_app only (strictly suppressing SMS and email)
-    const providerNotifs = sentNotifications.filter((n) => n.userId.startsWith("user-prov-"));
-    expect(providerNotifs.length).toBeGreaterThan(0);
-    for (const pNotif of providerNotifs) {
-      expect(pNotif.targetChannel).toBe("in_app");
-    }
+    // The broadcast record must use in_app channel (no SMS/Email)
+    const broadcastNotif = sentNotifications.find((n) => n.userId === "providers_broadcast");
+    expect(broadcastNotif).toBeDefined();
+    expect(broadcastNotif.targetChannel).toBe("in_app");
+    expect(broadcastNotif.type).toBe("new_service_request");
+
+    // No individual provider should have received a sendNotification call
+    // (replaced by room-scoped emitToRoom("providers", ...) which is O(1))
+    const perProviderNotifs = sentNotifications.filter((n) => n.userId.startsWith("user-prov-"));
+    expect(perProviderNotifs.length).toBe(0);
   });
 });

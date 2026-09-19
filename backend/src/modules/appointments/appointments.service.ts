@@ -381,76 +381,39 @@ export class AppointmentsService {
             }).catch(() => {});
           }
         } else {
-          // On-demand request: dispatch to all nearby/active/verified providers
-          const activeProviders = await provRepo
-            .createQueryBuilder("prov")
-            .leftJoinAndSelect("prov.user", "user")
-            .where("prov.status IN (:...statuses) OR prov.available = :avail OR prov.verified = :verif", {
-              statuses: ["verified", "active", "approved"],
-              avail: true,
-              verif: true,
-            })
-            .getMany();
+          // ─── On-demand (open) request: room-scoped broadcast ──────────────────
+          // The "providers" Socket.IO room is auto-joined in RealtimeGateway.handleConnection()
+          // for every authenticated provider socket. Emitting to the room is O(1) and
+          // reaches all currently online providers without any DB queries.
+          //
+          // Do NOT loop over ProviderEntity or UserEntity rows here — that causes:
+          //   1. O(n) DB queries for every new request
+          //   2. Individual sendNotification() calls that persist per-provider DB records
+          //      and spam every provider regardless of proximity or availability.
+          this.realtimeService.emitToRoom("providers", "new_service_request", eventPayload);
+          this.realtimeService.emitToRoom("providers", "appointment_status_update", eventPayload);
 
-          const notifiedUserIds = new Set<string>();
-          for (const prov of activeProviders) {
-            const targetUserId = prov.userId || prov.user?.id;
-            if (!targetUserId || notifiedUserIds.has(targetUserId)) continue;
-            notifiedUserIds.add(targetUserId);
-
-            this.realtimeService.emitToRoom(`provider:${targetUserId}`, "new_service_request", eventPayload);
-            this.realtimeService.emitToRoom(`provider:${prov.id}`, "new_service_request", eventPayload);
-
-            if (this.notificationsService) {
-              this.notificationsService.sendNotification(targetUserId, {
-                type: "new_service_request",
-                title: "New Care Request Nearby",
-                body: `${result.patientName} requested ${result.service} near ${result.location || "your area"}. Tap to review and accept.`,
-                priority: "normal",
-                targetChannel: "in_app",
-                data: {
-                  appointmentId: result.id,
-                  type: "appointment_request",
-                  patientName: result.patientName,
-                  service: result.service,
-                  location: result.location,
-                  amount: result.amount,
-                },
-              }).catch(() => {});
-            }
+          // Persist one broadcast in-app notification using idempotency key so offline
+          // providers see the request in their notification feed when they next open the app.
+          if (this.notificationsService) {
+            this.notificationsService.sendNotification("providers_broadcast", {
+              type: "new_service_request",
+              title: "New Care Request Nearby",
+              body: `${result.patientName} requested ${result.service} near ${result.location || "your area"}. Tap to review and accept.`,
+              priority: "normal",
+              targetChannel: "in_app",
+              idempotencyKey: `broadcast-${result.id}`,
+              data: {
+                appointmentId: result.id,
+                type: "appointment_request",
+                patientName: result.patientName,
+                service: result.service,
+                location: result.location,
+                amount: result.amount,
+                broadcast: true,
+              },
+            }).catch(() => {});
           }
-
-          // Also alert any users with provider role directly
-          try {
-            const userRepo = this.dataSource.getRepository(UserEntity);
-            const provUsers = await userRepo
-              .createQueryBuilder("u")
-              .where("u.role = :pRole OR u.roles LIKE :pRoles", { pRole: "provider", pRoles: "%provider%" })
-              .getMany();
-            for (const u of provUsers) {
-              if (!notifiedUserIds.has(u.id)) {
-                notifiedUserIds.add(u.id);
-                this.realtimeService.emitToRoom(`provider:${u.id}`, "new_service_request", eventPayload);
-                if (this.notificationsService) {
-                  this.notificationsService.sendNotification(u.id, {
-                    type: "new_service_request",
-                    title: "New Care Request Nearby",
-                    body: `${result.patientName} requested ${result.service} near ${result.location || "your area"}. Tap to review and accept.`,
-                    priority: "normal",
-                    targetChannel: "in_app",
-                    data: {
-                      appointmentId: result.id,
-                      type: "appointment_request",
-                      patientName: result.patientName,
-                      service: result.service,
-                      location: result.location,
-                      amount: result.amount,
-                    },
-                  }).catch(() => {});
-                }
-              }
-            }
-          } catch (_) {}
         }
       } catch (_) {}
     } catch (_) {}
