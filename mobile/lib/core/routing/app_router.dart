@@ -118,14 +118,22 @@ final appRouter = Provider<GoRouter>((ref) {
       GoRoute(path: '/medical-records', builder: (ctx, _) => const MedicalRecordsScreen()),
       GoRoute(path: '/emergency', builder: (ctx, _) => const EmergencyScreen()),
       GoRoute(path: '/profile-settings', builder: (ctx, _) => const ProfileSettingsScreen()),
-      GoRoute(path: '/patient/on-demand', builder: (ctx, _) => const OnDemandFlowScreen()),
+      GoRoute(
+        path: '/patient/on-demand',
+        builder: (ctx, state) => OnDemandFlowScreen(
+          initialAppointmentId: state.uri.queryParameters['appointmentId'],
+        ),
+      ),
 
       // Provider App Routes
       GoRoute(path: '/provider-dashboard', builder: (ctx, _) => const ProviderDashboardScreen()),
       GoRoute(path: '/provider/profile', builder: (ctx, _) => const ProviderEditProfileScreen()),
       GoRoute(
         path: '/provider/active-request', 
-        builder: (ctx, state) => ProviderActiveFlowScreen(requestData: state.extra as Map<String, dynamic>?),
+        builder: (ctx, state) => ProviderActiveFlowScreen(
+          requestData: state.extra as Map<String, dynamic>?,
+          appointmentId: state.uri.queryParameters['appointmentId'],
+        ),
       ),
       GoRoute(path: '/provider/credentials', builder: (ctx, _) => const CredentialsUploadScreen()),
       GoRoute(path: '/provider/availability', builder: (ctx, _) => const ProviderAvailabilityScreen()),

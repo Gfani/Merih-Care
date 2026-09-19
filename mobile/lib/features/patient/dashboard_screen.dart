@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -19,6 +20,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   int _currentNavIndex = 0;
   List<dynamic> _upcoming = [];
   List<dynamic> _providers = [];
+  Timer? _refreshTimer;
 
   final List<Map<String, dynamic>> _serviceCategories = [
     {'id': 'cat-1', 'name': 'Doctor Visit', 'icon': Icons.medical_services_outlined, 'color': Color(0xFFE6F5F2), 'priceFrom': 800, 'count': 45},
@@ -31,10 +33,34 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     {'id': 'cat-8', 'name': 'Post-Op Care', 'icon': Icons.healing_outlined, 'color': Color(0xFFE0E7FF), 'priceFrom': 700, 'count': 15},
   ];
 
+  Map<String, dynamic>? get _activeOngoingRequest {
+    for (final apt in _upcoming) {
+      final status = apt['status']?.toString();
+      if (status == 'searching' ||
+          status == 'requested' ||
+          status == 'accepted' ||
+          status == 'on_the_way' ||
+          status == 'arrived' ||
+          status == 'in_progress') {
+        return apt as Map<String, dynamic>;
+      }
+    }
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
     _loadDashboardData();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (mounted) _loadDashboardData();
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadDashboardData() async {
@@ -62,6 +88,49 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           _upcoming = [];
           _providers = [];
         });
+      }
+    }
+  }
+
+  Future<void> _cancelOngoingRequest(String aptId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel Care Request?', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text(
+          'Are you sure you want to cancel this ongoing care request?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Keep Active'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorColor),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Yes, Cancel', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        final client = ref.read(apiClientProvider);
+        await client.dio.post('/appointments/$aptId/cancel', data: {
+          'reason': 'Patient cancelled ongoing request from dashboard',
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Care request canceled.'),
+              backgroundColor: AppTheme.errorColor,
+            ),
+          );
+          _loadDashboardData();
+        }
+      } catch (e) {
+        print('[DASHBOARD] Error cancelling appointment: $e');
       }
     }
   }
@@ -184,6 +253,149 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     ),
 
                     const SizedBox(height: 14),
+
+                    // ─── Active Ongoing Care Request (Uber-Style Trip Banner) ─────────────
+                    if (_activeOngoingRequest != null) ...[
+                      Builder(
+                        builder: (context) {
+                          final active = _activeOngoingRequest!;
+                          final status = active['status']?.toString() ?? 'searching';
+                          final aptId = active['id']?.toString() ?? '';
+                          final serviceName = active['service']?.toString() ?? 'Medical Care Visit';
+                          final provName = active['providerName'] ?? (active['provider'] is Map ? active['provider']['name'] : null);
+                          final location = active['location']?.toString() ?? 'Home Location';
+
+                          String statusTitle;
+                          String statusSubtitle;
+                          IconData statusIcon;
+
+                          if (status == 'searching') {
+                            statusTitle = '🚨 Finding Nearby Clinician...';
+                            statusSubtitle = 'Broadcasting request to nearby certified providers';
+                            statusIcon = Icons.radar;
+                          } else if (status == 'requested' || status == 'pending') {
+                            statusTitle = '⏳ Care Request Awaiting Confirmation';
+                            statusSubtitle = provName != null ? 'Waiting for $provName to confirm' : 'Preparing dispatch assignment';
+                            statusIcon = Icons.hourglass_top_rounded;
+                          } else if (status == 'accepted' || status == 'scheduled') {
+                            statusTitle = '👨‍⚕️ Clinician Accepted Your Request';
+                            statusSubtitle = provName != null ? '$provName is preparing medical kit' : 'Clinician dispatched';
+                            statusIcon = Icons.check_circle_outline;
+                          } else if (status == 'on_the_way') {
+                            statusTitle = '🚑 Clinician En Route';
+                            statusSubtitle = provName != null ? '$provName is heading to $location' : 'Heading to your location';
+                            statusIcon = Icons.directions_car_outlined;
+                          } else if (status == 'arrived') {
+                            statusTitle = '🏡 Clinician Has Arrived';
+                            statusSubtitle = 'Clinician is outside your doorstep';
+                            statusIcon = Icons.home_work_outlined;
+                          } else if (status == 'in_progress') {
+                            statusTitle = '🩺 Clinical Visit in Progress';
+                            statusSubtitle = 'Clinician is providing care at your home';
+                            statusIcon = Icons.medical_services;
+                          } else {
+                            statusTitle = 'Active Care Request';
+                            statusSubtitle = serviceName;
+                            statusIcon = Icons.medical_services_outlined;
+                          }
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 14),
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF0F766E), Color(0xFF115E59)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF0F766E).withValues(alpha: 0.25),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withValues(alpha: 0.15),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(statusIcon, color: Colors.white, size: 20),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            statusTitle,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            statusSubtitle,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.white.withValues(alpha: 0.85),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: ElevatedButton.icon(
+                                        onPressed: () {
+                                          context.push('/patient/on-demand?appointmentId=$aptId');
+                                        },
+                                        icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+                                        label: const Text('View Live Request', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.white,
+                                          foregroundColor: const Color(0xFF0F766E),
+                                          padding: const EdgeInsets.symmetric(vertical: 10),
+                                          minimumSize: const Size(0, 38),
+                                          elevation: 0,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    OutlinedButton(
+                                      onPressed: () => _cancelOngoingRequest(aptId),
+                                      style: OutlinedButton.styleFrom(
+                                        side: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                        minimumSize: const Size(0, 38),
+                                      ),
+                                      child: const Text('Cancel', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ],
 
                     // ─── Emergency 907 Banner ─────────────────────────────────────────────
                     InkWell(

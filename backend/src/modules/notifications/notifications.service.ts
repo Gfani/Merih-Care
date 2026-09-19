@@ -433,10 +433,12 @@ export class NotificationsService {
     let recipientEmail = opts.recipientEmail || opts.data?.recipientEmail || opts.data?.email;
     let recipientPhone = opts.recipientPhone || opts.data?.recipientPhone || opts.data?.phone;
 
-    if ((!recipientEmail || !recipientPhone) && this.userRepo) {
+    let userRole = "";
+    if (this.userRepo) {
       try {
         const user = await this.userRepo.findOne({ where: { id: userId } });
         if (user) {
+          userRole = user.role || "";
           if (!recipientEmail && user.email) recipientEmail = user.email;
           if (!recipientPhone && user.phone && user.phone !== "0991607015" && user.phone.replace(/\D/g, "") !== "0991607015") {
             recipientPhone = user.phone;
@@ -527,10 +529,27 @@ export class NotificationsService {
     // Parallel multi-channel dispatch for regular notifications
     const channelTasks: Promise<any>[] = [];
 
-    // Service requests and in_app channels must only notify within the app (in-app record & FCM push),
-    // strictly suppressing SMS (TextBee) and email alerts to their phone.
-    const isServiceRequest = opts.type === "new_service_request" || opts.type === "appointment_update";
-    const isInAppOnly = targetChannel === "in_app" || isServiceRequest;
+    // Service requests and provider notifications for service requests must only notify within the app (in-app record, socket & FCM push),
+    // strictly suppressing SMS (TextBee) and email alerts to providers.
+    const isServiceRequest =
+      opts.type === "new_service_request" ||
+      opts.type === "appointment_update" ||
+      opts.type === "appointment_reminder" ||
+      opts.type === "appointment_completed" ||
+      opts.type.startsWith("appointment_") ||
+      opts.data?.type === "service_request" ||
+      opts.data?.type === "appointment_request";
+
+    const isProviderRecipient =
+      userRole === "provider" ||
+      userId.startsWith("prov-") ||
+      userId.startsWith("p-") ||
+      opts.data?.providerId !== undefined;
+
+    const isInAppOnly =
+      targetChannel === "in_app" ||
+      isServiceRequest ||
+      (isProviderRecipient && (isServiceRequest || opts.type.includes("appointment")));
 
     if ((!targetChannel || targetChannel === "all" || targetChannel === "in_app") && (isCritical || prefs.push)) {
       channelTasks.push(

@@ -13,11 +13,13 @@ enum ProviderFlowStep {
   arrived,
   inProgress,
   completed,
+  canceled,
 }
 
 class ProviderActiveFlowScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic>? requestData;
-  const ProviderActiveFlowScreen({super.key, this.requestData});
+  final String? appointmentId;
+  const ProviderActiveFlowScreen({super.key, this.requestData, this.appointmentId});
 
   @override
   ConsumerState<ProviderActiveFlowScreen> createState() => _ProviderActiveFlowScreenState();
@@ -30,6 +32,7 @@ class _ProviderActiveFlowScreenState extends ConsumerState<ProviderActiveFlowScr
 
   int _visitSeconds = 0;
   Timer? _visitTimer;
+  Timer? _statusPollTimer;
 
   // Clinical Vitals Form Controllers
   final TextEditingController _bpController = TextEditingController(text: '120/80');
@@ -54,36 +57,92 @@ class _ProviderActiveFlowScreenState extends ConsumerState<ProviderActiveFlowScr
   void initState() {
     super.initState();
     if (widget.requestData != null) {
-      final d = widget.requestData!;
-      _requestData['id'] = d['id'] ?? d['appointmentId'] ?? _requestData['id'];
-      _requestData['patientName'] = d['patientName'] ?? (d['patient'] is Map ? d['patient']['name'] : null) ?? _requestData['patientName'];
-      _requestData['patientPhone'] = d['patientPhone'] ?? (d['patient'] is Map ? d['patient']['phone'] : null) ?? _requestData['patientPhone'];
-      _requestData['service'] = d['service'] ?? (d['serviceRelation'] is Map ? d['serviceRelation']['name'] : null) ?? _requestData['service'];
-      _requestData['address'] = d['location'] ?? d['address'] ?? _requestData['address'];
-      _requestData['grossFee'] = d['amount'] != null
-          ? (d['amount'] as num).toDouble()
-          : (d['estimatedEarnings'] != null ? (d['estimatedEarnings'] as num).toDouble() : 800.0);
-
-      final status = d['status']?.toString();
-      if (status == 'accepted') {
-        _currentStep = ProviderFlowStep.accepted;
-      } else if (status == 'on_the_way') {
-        _currentStep = ProviderFlowStep.navigating;
-      } else if (status == 'arrived') {
-        _currentStep = ProviderFlowStep.arrived;
-      } else if (status == 'in_progress') {
-        _currentStep = ProviderFlowStep.inProgress;
-        _startVisitTimer();
-      } else {
-        _currentStep = ProviderFlowStep.accepted;
-      }
+      _applyRequestData(widget.requestData!);
+    } else if (widget.appointmentId != null && widget.appointmentId!.isNotEmpty) {
+      _fetchAppointmentById(widget.appointmentId!);
     } else {
       _startCountdown();
     }
+    _startStatusPolling();
+  }
+
+  void _applyRequestData(Map<String, dynamic> d) {
+    _requestData['id'] = d['id'] ?? d['appointmentId'] ?? _requestData['id'];
+    _requestData['patientName'] = d['patientName'] ?? (d['patient'] is Map ? d['patient']['name'] : null) ?? _requestData['patientName'];
+    _requestData['patientPhone'] = d['patientPhone'] ?? (d['patient'] is Map ? d['patient']['phone'] : null) ?? _requestData['patientPhone'];
+    _requestData['service'] = d['service'] ?? (d['serviceRelation'] is Map ? d['serviceRelation']['name'] : null) ?? _requestData['service'];
+    _requestData['address'] = d['location'] ?? d['address'] ?? _requestData['address'];
+    _requestData['grossFee'] = d['amount'] != null
+        ? (d['amount'] as num).toDouble()
+        : (d['estimatedEarnings'] != null ? (d['estimatedEarnings'] as num).toDouble() : 800.0);
+
+    final status = d['status']?.toString();
+    if (status == 'cancelled') {
+      _currentStep = ProviderFlowStep.canceled;
+    } else if (status == 'accepted') {
+      _currentStep = ProviderFlowStep.accepted;
+    } else if (status == 'on_the_way') {
+      _currentStep = ProviderFlowStep.navigating;
+    } else if (status == 'arrived') {
+      _currentStep = ProviderFlowStep.arrived;
+    } else if (status == 'in_progress') {
+      _currentStep = ProviderFlowStep.inProgress;
+      _startVisitTimer();
+    } else {
+      _currentStep = ProviderFlowStep.accepted;
+    }
+  }
+
+  Future<void> _fetchAppointmentById(String id) async {
+    try {
+      final client = ref.read(apiClientProvider);
+      final res = await client.dio.get('/appointments/$id');
+      final dynamic resData = res.data;
+      final Map<String, dynamic>? data = (resData is Map<String, dynamic>)
+          ? (resData.containsKey('data') && resData['data'] is Map<String, dynamic> ? resData['data'] : resData)
+          : null;
+
+      if (data != null && mounted) {
+        setState(() {
+          _applyRequestData(data);
+        });
+      }
+    } catch (e) {
+      print('[PROVIDER FLOW] Error fetching appointment: $e');
+    }
+  }
+
+  void _startStatusPolling() {
+    _statusPollTimer?.cancel();
+    _statusPollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      final aptId = _requestData['id']?.toString();
+      if (aptId == null || aptId == 'req-active' || !mounted) return;
+
+      try {
+        final client = ref.read(apiClientProvider);
+        final res = await client.dio.get('/appointments/$aptId');
+        final dynamic resData = res.data;
+        final Map<String, dynamic>? data = (resData is Map<String, dynamic>)
+            ? (resData.containsKey('data') && resData['data'] is Map<String, dynamic> ? resData['data'] : resData)
+            : null;
+
+        if (data != null && mounted) {
+          final status = data['status']?.toString();
+          if (status == 'cancelled' && _currentStep != ProviderFlowStep.canceled) {
+            _visitTimer?.cancel();
+            _countdownTimer?.cancel();
+            setState(() {
+              _currentStep = ProviderFlowStep.canceled;
+            });
+          }
+        }
+      } catch (_) {}
+    });
   }
 
   @override
   void dispose() {
+    _statusPollTimer?.cancel();
     _countdownTimer?.cancel();
     _visitTimer?.cancel();
     _bpController.dispose();
@@ -195,6 +254,7 @@ class _ProviderActiveFlowScreenState extends ConsumerState<ProviderActiveFlowScr
       case ProviderFlowStep.arrived: return 'Arrived at Patient Home';
       case ProviderFlowStep.inProgress: return 'Clinical Visit in Progress';
       case ProviderFlowStep.completed: return 'Visit Summary & Earnings';
+      case ProviderFlowStep.canceled: return 'Request Canceled';
     }
   }
 
@@ -212,7 +272,50 @@ class _ProviderActiveFlowScreenState extends ConsumerState<ProviderActiveFlowScr
         return _buildInProgressScreen();
       case ProviderFlowStep.completed:
         return _buildCompletedScreen();
+      case ProviderFlowStep.canceled:
+        return _buildCanceledScreen();
     }
+  }
+
+  Widget _buildCanceledScreen() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 84,
+              height: 84,
+              decoration: BoxDecoration(
+                color: AppTheme.errorColor.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.cancel_outlined, size: 48, color: AppTheme.errorColor),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Request Canceled',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'This care task was canceled by the patient or administrator.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, height: 1.4),
+            ),
+            const SizedBox(height: 36),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => context.go('/provider-dashboard'),
+                child: const Text('Return to Dashboard'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ─── 1. INCOMING REQUEST WITH COUNTDOWN ───────────────────────────────────────

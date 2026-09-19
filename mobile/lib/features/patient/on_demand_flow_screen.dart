@@ -21,10 +21,12 @@ enum OnDemandStep {
   inProgress,
   payment,
   rateProvider,
+  canceled,
 }
 
 class OnDemandFlowScreen extends ConsumerStatefulWidget {
-  const OnDemandFlowScreen({super.key});
+  final String? initialAppointmentId;
+  const OnDemandFlowScreen({super.key, this.initialAppointmentId});
 
   @override
   ConsumerState<OnDemandFlowScreen> createState() => _OnDemandFlowScreenState();
@@ -108,6 +110,10 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
     )..repeat();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.initialAppointmentId != null && widget.initialAppointmentId!.isNotEmpty) {
+        _createdAppointmentId = widget.initialAppointmentId;
+        _loadExistingAppointment(widget.initialAppointmentId!);
+      }
       final loc = ref.read(locationProvider).location;
       if (loc != null) {
         setState(() {
@@ -118,6 +124,54 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
         _locationController.text = _locationAddress;
       }
     });
+  }
+
+  Future<void> _loadExistingAppointment(String aptId) async {
+    try {
+      final client = ref.read(apiClientProvider);
+      final check = await client.dio.get('/appointments/$aptId');
+      final dynamic checkData = check.data;
+      final Map<String, dynamic>? apt = (checkData is Map<String, dynamic>)
+          ? (checkData.containsKey('data') && checkData['data'] is Map<String, dynamic> ? checkData['data'] : checkData)
+          : null;
+
+      if (apt != null && mounted) {
+        final status = apt['status']?.toString();
+        if (apt['providerName'] != null) {
+          _matchedProvider['id'] = apt['providerId']?.toString() ?? 'p-1';
+          _matchedProvider['name'] = apt['providerName']?.toString() ?? 'Assigned Healthcare Provider';
+          _matchedProvider['phone'] = apt['providerPhone']?.toString() ?? '+251 91 122 3344';
+        }
+        if (apt['location'] != null && apt['location'].toString().isNotEmpty) {
+          _locationAddress = apt['location'].toString();
+        }
+
+        setState(() {
+          if (status == 'cancelled') {
+            _currentStep = OnDemandStep.canceled;
+          } else if (status == 'searching' || status == 'requested' || status == 'pending') {
+            _currentStep = OnDemandStep.findingProvider;
+            _startPolling();
+          } else if (status == 'accepted' || status == 'scheduled') {
+            _currentStep = OnDemandStep.providerMatched;
+            _startPolling();
+          } else if (status == 'on_the_way') {
+            _currentStep = OnDemandStep.liveTracking;
+            _startPolling();
+          } else if (status == 'arrived') {
+            _currentStep = OnDemandStep.providerArrived;
+            _startPolling();
+          } else if (status == 'in_progress') {
+            _startVisitTimer();
+            _startPolling();
+          } else if (status == 'completed') {
+            _currentStep = OnDemandStep.rateProvider;
+          }
+        });
+      }
+    } catch (e) {
+      print('[DISPATCH] Error loading existing appointment: $e');
+    }
   }
 
   @override
@@ -163,15 +217,30 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
 
       final res = await client.dio.post('/appointments', data: payload);
 
-      final dynamic data = res.data;
-      if (data is Map<String, dynamic> && data['id'] != null) {
+      final dynamic resData = res.data;
+      final Map<String, dynamic>? data = (resData is Map<String, dynamic>)
+          ? (resData.containsKey('data') && resData['data'] is Map<String, dynamic> ? resData['data'] : resData)
+          : null;
+
+      if (data != null && data['id'] != null) {
         _createdAppointmentId = data['id'].toString();
       }
     } catch (e) {
       print('[DISPATCH] Error creating real appointment: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Request dispatched with offline fallback. Searching providers...'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
 
-    // 2. Poll backend for actual doctor acceptance
+    _startPolling();
+  }
+
+  void _startPolling() {
     _searchTimer?.cancel();
     _searchTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
       if (!mounted) {
@@ -184,8 +253,12 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
         try {
           final client = ref.read(apiClientProvider);
           final check = await client.dio.get('/appointments/$_createdAppointmentId');
-          final dynamic apt = check.data;
-          if (apt is Map<String, dynamic>) {
+          final dynamic checkData = check.data;
+          final Map<String, dynamic>? apt = (checkData is Map<String, dynamic>)
+              ? (checkData.containsKey('data') && checkData['data'] is Map<String, dynamic> ? checkData['data'] : checkData)
+              : null;
+
+          if (apt != null) {
             final status = apt['status']?.toString();
             if (apt['providerName'] != null) {
               _matchedProvider['id'] = apt['providerId']?.toString() ?? 'p-1';
@@ -193,7 +266,11 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
               _matchedProvider['phone'] = apt['providerPhone']?.toString() ?? '+251 91 122 3344';
             }
 
-            if (_currentStep == OnDemandStep.findingProvider && (status == 'accepted' || status == 'scheduled' || status == 'on_the_way' || status == 'in_progress')) {
+            if (status == 'cancelled') {
+              timer.cancel();
+              _visitTimer?.cancel();
+              setState(() => _currentStep = OnDemandStep.canceled);
+            } else if (_currentStep == OnDemandStep.findingProvider && (status == 'accepted' || status == 'scheduled' || status == 'on_the_way' || status == 'in_progress')) {
               setState(() => _currentStep = OnDemandStep.providerMatched);
             } else if ((_currentStep == OnDemandStep.providerMatched || _currentStep == OnDemandStep.liveTracking) && status == 'arrived') {
               setState(() => _currentStep = OnDemandStep.providerArrived);
@@ -229,55 +306,103 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
     return '$mins:$secs';
   }
 
-  Future<void> _cancelActiveDispatch() async {
-    _searchTimer?.cancel();
-    if (_createdAppointmentId != null) {
-      try {
-        final client = ref.read(apiClientProvider);
-        await client.dio.post('/appointments/$_createdAppointmentId/cancel', data: {
-          'reason': 'Patient cancelled on-demand request',
-        });
-      } catch (e) {
-        print('[DISPATCH] Error cancelling appointment: $e');
+  void _handleBackNavigation() {
+    if (_currentStep == OnDemandStep.serviceSelect || _currentStep == OnDemandStep.canceled) {
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go('/dashboard');
+      }
+    } else if (_currentStep == OnDemandStep.locationConfirm) {
+      setState(() => _currentStep = OnDemandStep.serviceSelect);
+    } else if (_currentStep == OnDemandStep.requestDetails) {
+      setState(() => _currentStep = OnDemandStep.locationConfirm);
+    } else if (_currentStep == OnDemandStep.summary) {
+      setState(() => _currentStep = OnDemandStep.requestDetails);
+    } else {
+      // In Uber-style: Active dispatch/visit is NOT cancelled on back!
+      // Simply return to dashboard while active task continues in background.
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go('/dashboard');
       }
     }
-    if (mounted) {
-      context.go('/dashboard');
+  }
+
+  Future<void> _confirmAndCancel() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel Care Request?', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text(
+          'Are you sure you want to cancel this care request? Clinicians currently responding or en-route will be notified.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Keep Active'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorColor),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Yes, Cancel', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      _searchTimer?.cancel();
+      _visitTimer?.cancel();
+      if (_createdAppointmentId != null) {
+        try {
+          final client = ref.read(apiClientProvider);
+          await client.dio.post('/appointments/$_createdAppointmentId/cancel', data: {
+            'reason': 'Patient cancelled on-demand request',
+          });
+        } catch (e) {
+          print('[DISPATCH] Error cancelling appointment: $e');
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _currentStep = OnDemandStep.canceled;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.surfaceColor,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-          onPressed: () {
-            if (_currentStep == OnDemandStep.serviceSelect) {
-              context.pop();
-            } else if (_currentStep == OnDemandStep.locationConfirm) {
-              setState(() => _currentStep = OnDemandStep.serviceSelect);
-            } else if (_currentStep == OnDemandStep.requestDetails) {
-              setState(() => _currentStep = OnDemandStep.locationConfirm);
-            } else if (_currentStep == OnDemandStep.summary) {
-              setState(() => _currentStep = OnDemandStep.requestDetails);
-            } else {
-              _cancelActiveDispatch();
-            }
-          },
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          _handleBackNavigation();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppTheme.surfaceColor,
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+            onPressed: _handleBackNavigation,
+          ),
+          title: Text(_getStepTitle()),
+          actions: [
+            if (_currentStep != OnDemandStep.serviceSelect &&
+                _currentStep != OnDemandStep.rateProvider &&
+                _currentStep != OnDemandStep.canceled)
+              TextButton(
+                onPressed: _confirmAndCancel,
+                child: const Text('Cancel', style: TextStyle(color: AppTheme.errorColor, fontWeight: FontWeight.bold)),
+              ),
+          ],
         ),
-        title: Text(_getStepTitle()),
-        actions: [
-          if (_currentStep != OnDemandStep.serviceSelect && _currentStep != OnDemandStep.rateProvider)
-            TextButton(
-              onPressed: _cancelActiveDispatch,
-              child: const Text('Cancel', style: TextStyle(color: AppTheme.errorColor, fontWeight: FontWeight.bold)),
-            ),
-        ],
-      ),
-      body: SafeArea(
-        child: _buildCurrentStepContent(),
+        body: SafeArea(
+          child: _buildCurrentStepContent(),
+        ),
       ),
     );
   }
@@ -295,6 +420,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
       case OnDemandStep.inProgress: return 'Care in Progress';
       case OnDemandStep.payment: return 'Service Payment';
       case OnDemandStep.rateProvider: return 'Rate & Review';
+      case OnDemandStep.canceled: return 'Request Canceled';
     }
   }
 
@@ -322,7 +448,50 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
         return _buildPayment();
       case OnDemandStep.rateProvider:
         return _buildRateProvider();
+      case OnDemandStep.canceled:
+        return _buildCanceledScreen();
     }
+  }
+
+  Widget _buildCanceledScreen() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 84,
+              height: 84,
+              decoration: BoxDecoration(
+                color: AppTheme.errorColor.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.cancel_outlined, size: 48, color: AppTheme.errorColor),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Request Canceled',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Your care request has been canceled. You can request a new clinician anytime.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, height: 1.4),
+            ),
+            const SizedBox(height: 36),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => context.go('/dashboard'),
+                child: const Text('Return to Home'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ─── 1. SERVICE SELECT ───────────────────────────────────────────────────────
@@ -774,6 +943,22 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
           Text(
             'Broadcasting request to verified clinicians within 5 km ($_searchSeconds s)',
             style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+          ),
+          const SizedBox(height: 32),
+          OutlinedButton.icon(
+            onPressed: _confirmAndCancel,
+            icon: const Icon(Icons.close, size: 16, color: AppTheme.errorColor),
+            label: const Text('Cancel Request', style: TextStyle(color: AppTheme.errorColor, fontWeight: FontWeight.bold)),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: AppTheme.errorColor),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: () => context.go('/dashboard'),
+            icon: const Icon(Icons.home_outlined, size: 16, color: AppTheme.primaryColor),
+            label: const Text('Keep searching in background & return home', style: TextStyle(color: AppTheme.primaryColor, fontSize: 12)),
           ),
         ],
       ),

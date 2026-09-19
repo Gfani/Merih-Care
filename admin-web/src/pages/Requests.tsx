@@ -87,7 +87,12 @@ export default function RequestsSection() {
     (r) => r.status === "searching" || r.status === "requested" || r.status === "pending"
   ).length;
   const inProgressCount = aptList.filter(
-    (r) => r.status === "scheduled" || r.status === "in_progress" || r.status === "accepted"
+    (r) =>
+      r.status === "scheduled" ||
+      r.status === "in_progress" ||
+      r.status === "accepted" ||
+      r.status === "on_the_way" ||
+      r.status === "arrived"
   ).length;
   const completedCount = aptList.filter((r) => r.status === "completed").length;
 
@@ -171,6 +176,8 @@ export default function RequestsSection() {
               { value: "searching", label: "Searching Provider" },
               { value: "pending", label: "Pending" },
               { value: "accepted", label: "Accepted" },
+              { value: "on_the_way", label: "On The Way" },
+              { value: "arrived", label: "Arrived" },
               { value: "scheduled", label: "Scheduled" },
               { value: "in_progress", label: "In Progress" },
               { value: "completed", label: "Completed" },
@@ -178,7 +185,7 @@ export default function RequestsSection() {
             ]}
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-44"
+            className="w-48"
           />
         </div>
         <Button

@@ -312,4 +312,25 @@ describe("Service Request Dispatch & Notification Flow", () => {
       expect.objectContaining({ status: "completed" })
     );
   });
+
+  it("should strictly suppress SMS and Email for provider notifications on service requests and appointments", async () => {
+    // When an on-demand service request is created, notifications sent to providers must be in_app only
+    const req = await appointmentsService.createAppointment({
+      patientId: "pat-123",
+      patientName: "Kenenisa Bekele",
+      service: "Physiotherapy Session",
+      location: "Addis Ababa",
+      amount: 600,
+      status: "searching",
+    });
+
+    expect(req).toBeDefined();
+
+    // All provider notifications sent must be in_app only (strictly suppressing SMS and email)
+    const providerNotifs = sentNotifications.filter((n) => n.userId.startsWith("user-prov-"));
+    expect(providerNotifs.length).toBeGreaterThan(0);
+    for (const pNotif of providerNotifs) {
+      expect(pNotif.targetChannel).toBe("in_app");
+    }
+  });
 });

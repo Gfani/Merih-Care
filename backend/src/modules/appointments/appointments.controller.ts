@@ -110,6 +110,31 @@ export class CreateAppointmentDto {
   @ApiPropertyOptional({ description: "Geographic coordinates" })
   @IsOptional()
   coordinates?: any;
+
+  @ApiPropertyOptional({ description: "Service price alternative" })
+  @IsOptional()
+  @IsNumber()
+  price?: number;
+
+  @ApiPropertyOptional({ description: "Estimated provider earnings" })
+  @IsOptional()
+  @IsNumber()
+  estimatedEarnings?: number;
+
+  @ApiPropertyOptional({ description: "Selected payment method" })
+  @IsOptional()
+  @IsString()
+  paymentMethod?: string;
+
+  @ApiPropertyOptional({ description: "Patient symptoms" })
+  @IsOptional()
+  @IsString()
+  symptoms?: string;
+
+  @ApiPropertyOptional({ description: "Service duration" })
+  @IsOptional()
+  @IsString()
+  duration?: string;
 }
 
 export class UpdateStatusDto {

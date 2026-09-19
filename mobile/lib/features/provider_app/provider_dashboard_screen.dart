@@ -127,13 +127,23 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
           _rating = ratingVal;
           _reviewCount = reviews;
           _incomingRequests = all.where((a) => a['status'] == 'requested' || a['status'] == 'searching' || a['status'] == 'pending').toList();
-          _activeSchedule = all.where((a) => a['status'] == 'accepted' || a['status'] == 'scheduled' || a['status'] == 'in_progress').toList();
+          _activeSchedule = all.where((a) => a['status'] == 'accepted' || a['status'] == 'scheduled' || a['status'] == 'on_the_way' || a['status'] == 'arrived' || a['status'] == 'in_progress').toList();
           _loading = false;
         });
       }
     } catch (e) {
       print('[PROVIDER] loadDashboardData error: $e');
     }
+  }
+
+  Map<String, dynamic>? get _activeInFlightTask {
+    for (final a in _activeSchedule) {
+      final status = a['status']?.toString();
+      if (status == 'accepted' || status == 'on_the_way' || status == 'arrived' || status == 'in_progress') {
+        return a as Map<String, dynamic>;
+      }
+    }
+    return null;
   }
 
   Future<void> _acceptIncomingRequest(dynamic req) async {
@@ -349,6 +359,125 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
                     ),
 
                     const SizedBox(height: 16),
+
+                    // ─── Active Ongoing Patient Visit (Uber-Style Task Banner) ────────────
+                    if (_activeInFlightTask != null) ...[
+                      Builder(
+                        builder: (context) {
+                          final task = _activeInFlightTask!;
+                          final status = task['status']?.toString() ?? 'accepted';
+                          final patientName = task['patientName'] ?? (task['patient'] is Map ? task['patient']['name'] : null) ?? 'Patient';
+                          final service = task['service'] ?? (task['serviceRelation'] is Map ? task['serviceRelation']['name'] : null) ?? 'Care Visit';
+                          final location = task['location'] ?? task['address'] ?? 'Patient Location';
+
+                          String statusTitle;
+                          String statusSubtitle;
+                          IconData statusIcon;
+
+                          if (status == 'accepted') {
+                            statusTitle = '🚑 Patient Visit Accepted';
+                            statusSubtitle = '$patientName • Ready to start transit to $location';
+                            statusIcon = Icons.navigation_outlined;
+                          } else if (status == 'on_the_way') {
+                            statusTitle = '🚗 En Route to Patient';
+                            statusSubtitle = 'Navigating to $location';
+                            statusIcon = Icons.directions_car;
+                          } else if (status == 'arrived') {
+                            statusTitle = '🏡 Arrived at Patient Location';
+                            statusSubtitle = 'Outside $patientName\'s home • Ready to start care visit';
+                            statusIcon = Icons.home_work;
+                          } else if (status == 'in_progress') {
+                            statusTitle = '🩺 Clinical Visit in Progress';
+                            statusSubtitle = 'Providing $service for $patientName';
+                            statusIcon = Icons.medical_services;
+                          } else {
+                            statusTitle = 'Active Patient Task';
+                            statusSubtitle = '$patientName • $service';
+                            statusIcon = Icons.medical_services_outlined;
+                          }
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF0F766E), Color(0xFF115E59)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF0F766E).withValues(alpha: 0.25),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withValues(alpha: 0.15),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(statusIcon, color: Colors.white, size: 20),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            statusTitle,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            statusSubtitle,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.white.withValues(alpha: 0.85),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    onPressed: () {
+                                      context.push('/provider/active-request', extra: task);
+                                    },
+                                    icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                                    label: const Text('Resume Active Visit', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.white,
+                                      foregroundColor: const Color(0xFF0F766E),
+                                      padding: const EdgeInsets.symmetric(vertical: 10),
+                                      elevation: 0,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ],
 
                     // ─── Today's Earnings & Stats ─────────────────────────────────────────
                     CardWidget(

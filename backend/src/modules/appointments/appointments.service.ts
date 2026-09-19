@@ -239,7 +239,7 @@ export class AppointmentsService {
       apt.date = data.date;
       apt.time = data.time;
       apt.location = data.location || "Addis Ababa";
-      apt.amount = data.amount || 0;
+      apt.amount = data.amount || data.price || 0;
       apt.status = data.status || "requested";
       apt.visitNotes = data.visitNotes || data.notes || null;
       apt.version = 1;
