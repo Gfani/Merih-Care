@@ -241,6 +241,7 @@ export class AppointmentsService {
       apt.location = data.location || "Addis Ababa";
       apt.amount = data.amount || 0;
       apt.status = data.status || "requested";
+      apt.visitNotes = data.visitNotes || data.notes || null;
       apt.version = 1;
 
       const savedApt = await manager.save(apt);
@@ -251,7 +252,7 @@ export class AppointmentsService {
       history.appointmentId = savedApt.id;
       history.status = savedApt.status;
       history.changedBy = patientId || data.patientId || "patient";
-      history.notes = "Appointment request created.";
+      history.notes = data.visitNotes || data.notes || "Appointment request created.";
       history.createdAt = new Date().toISOString();
       await manager.save(history);
 
@@ -274,17 +275,23 @@ export class AppointmentsService {
         date: result.date,
         time: result.time,
         location: result.location,
+        notes: result.visitNotes,
+        visitNotes: result.visitNotes,
         amount: result.amount,
         createdAt: result.createdAt,
       };
 
-      // 1. Real-time broadcast to rooms: providers, admin, and global
-      this.realtimeService.emitNewServiceRequest(eventPayload);
+      // 1. Real-time broadcast to admin room (all requests must reach admin dashboard)
       this.realtimeService.emitAppointmentUpdate(result.id, result.status, eventPayload);
       this.realtimeService.emitToRoom("admin", "new_service_request", eventPayload);
       this.realtimeService.emitToRoom("admin", "appointment_status_update", eventPayload);
-      this.realtimeService.emitToRoom("providers", "new_service_request", eventPayload);
-      this.realtimeService.emitToRoom("providers", "appointment_status_update", eventPayload);
+
+      // If open / unassigned request without a specific doctor, broadcast to providers room
+      if (!result.providerId) {
+        this.realtimeService.emitNewServiceRequest(eventPayload);
+        this.realtimeService.emitToRoom("providers", "new_service_request", eventPayload);
+        this.realtimeService.emitToRoom("providers", "appointment_status_update", eventPayload);
+      }
 
       // 2. Persist notification and notify all Platform Administrators
       try {
@@ -342,13 +349,18 @@ export class AppointmentsService {
         const provRepo = this.dataSource.getRepository(ProviderEntity);
 
         if (result.providerId) {
-          // Direct booking for a specific provider
-          const prov = await provRepo.findOne({ where: { id: result.providerId }, relations: ["user"] });
+          // Direct booking for a specific provider - send ONLY to them
+          const prov = await provRepo.findOne({
+            where: [{ id: result.providerId }, { userId: result.providerId }],
+            relations: ["user"],
+          });
           const provUserId = prov?.userId || prov?.user?.id || result.providerId;
 
           this.realtimeService.emitToRoom(`provider:${result.providerId}`, "new_service_request", eventPayload);
-          if (prov?.userId) {
-            this.realtimeService.emitToRoom(`provider:${prov.userId}`, "new_service_request", eventPayload);
+          this.realtimeService.emitToRoom(`provider:${result.providerId}`, "appointment_status_update", eventPayload);
+          if (provUserId && provUserId !== result.providerId) {
+            this.realtimeService.emitToRoom(`provider:${provUserId}`, "new_service_request", eventPayload);
+            this.realtimeService.emitToRoom(`provider:${provUserId}`, "appointment_status_update", eventPayload);
           }
 
           if (this.notificationsService && provUserId) {
@@ -541,7 +553,22 @@ export class AppointmentsService {
             providerPhone: savedApt.providerPhone,
           },
         }).catch(() => {});
+      } else if (newStatus === "completed" && this.notificationsService) {
+        this.notificationsService.markAppointmentNotificationsRead(id).catch(() => {});
+        this.notificationsService.sendNotification(savedApt.patientId, {
+          type: "appointment_completed",
+          title: "Service Completed ✅",
+          body: `Your ${savedApt.service} session has been completed. Thank you for using Merih Care!`,
+          priority: "normal",
+          targetChannel: "in_app",
+          data: {
+            appointmentId: id,
+            status: "completed",
+            providerId: savedApt.providerId,
+          },
+        }).catch(() => {});
       } else if (newStatus === "cancelled" && this.notificationsService) {
+        this.notificationsService.markAppointmentNotificationsRead(id).catch(() => {});
         this.notificationsService.sendNotification(savedApt.patientId, {
           type: "appointment_update",
           title: "Care Request Declined ❌",
@@ -572,6 +599,10 @@ export class AppointmentsService {
     apt.cancelledBy = actorId;
     apt.cancellationReason = reason;
     const savedApt = await this.appointmentRepo.save(apt);
+
+    if (this.notificationsService) {
+      this.notificationsService.markAppointmentNotificationsRead(id).catch(() => {});
+    }
 
     // Save cancellation reason record
     const cancelRecord = new CancellationReasonEntity();
@@ -696,6 +727,20 @@ export class AppointmentsService {
     history.notes = `Admin override from ${oldStatus}. Notes: ${notes}`;
     history.createdAt = new Date().toISOString();
     await this.historyRepo.save(history);
+
+    if (this.notificationsService && (forceStatus === "completed" || forceStatus === "cancelled")) {
+      this.notificationsService.markAppointmentNotificationsRead(id).catch(() => {});
+    }
+
+    try {
+      this.realtimeService.emitAppointmentUpdate(id, forceStatus, {
+        appointmentId: id,
+        patientId: savedApt.patientId,
+        providerId: savedApt.providerId,
+        status: forceStatus,
+        notes,
+      });
+    } catch (_) {}
 
     return savedApt;
   }

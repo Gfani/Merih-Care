@@ -85,6 +85,7 @@ describe("Service Request Dispatch & Notification Flow", () => {
         sentNotifications.push({ userId, ...opts });
         return Promise.resolve({ id: `notif-${Date.now()}`, userId, ...opts });
       }),
+      markAppointmentNotificationsRead: jest.fn().mockResolvedValue(undefined),
     };
 
     mockDataSource = {
@@ -226,5 +227,89 @@ describe("Service Request Dispatch & Notification Flow", () => {
     // Admin query should query all appointments without restriction
     await appointmentsService.getAllAppointments(50, 0, undefined, { role: "admin", id: "admin-1" });
     expect(mockAppointmentRepo.find).toHaveBeenCalled();
+  });
+
+  it("should send doctor-specific requests ONLY to that doctor and admin, NOT to all providers or providers room", async () => {
+    const directRequest = await appointmentsService.createAppointment({
+      patientId: "pat-123",
+      patientName: "Tirunesh Dibaba",
+      providerId: "prov-1", // Specifically requesting Dr. Merih
+      providerName: "Dr. Merih",
+      service: "Cardiology Home Visit",
+      date: "2026-09-20",
+      time: "10:00",
+      location: "Bole, Addis Ababa",
+      amount: 1200,
+      status: "requested",
+      notes: "Need direct consultation with Dr. Merih",
+    });
+
+    expect(directRequest).toBeDefined();
+    expect(directRequest.providerId).toBe("prov-1");
+
+    // 1. Admin room and admin user MUST receive it
+    const adminRoomEvent = emittedRoomEvents.find((e) => e.room === "admin" && e.event === "new_service_request");
+    expect(adminRoomEvent).toBeDefined();
+    const adminNotif = sentNotifications.find((n) => n.userId === "admin-1");
+    expect(adminNotif).toBeDefined();
+
+    // 2. Specific requested provider MUST receive it
+    const targetProvRoom = emittedRoomEvents.find((e) => e.room === "provider:prov-1" && e.event === "new_service_request");
+    expect(targetProvRoom).toBeDefined();
+    const targetProvNotif = sentNotifications.find((n) => n.userId === "user-prov-1");
+    expect(targetProvNotif).toBeDefined();
+    expect(targetProvNotif.title).toBe("New Patient Care Request");
+
+    // 3. MUST NOT broadcast to general "providers" room or global broadcast
+    const providersRoomEvent = emittedRoomEvents.find((e) => e.room === "providers");
+    expect(providersRoomEvent).toBeUndefined();
+    expect(mockRealtimeService.emitNewServiceRequest).not.toHaveBeenCalled();
+
+    // 4. Other providers (prov-2 / user-prov-2) MUST NOT receive notification
+    const otherProvNotif = sentNotifications.find((n) => n.userId === "user-prov-2");
+    expect(otherProvNotif).toBeUndefined();
+  });
+
+  it("should mark notifications read and send completion notification when request is completed", async () => {
+    const apt = {
+      id: "apt-completed-01",
+      patientId: "pat-123",
+      patientName: "Abebe Bikila",
+      providerId: "prov-1",
+      providerName: "Dr. Merih",
+      service: "Doctor Home Visit",
+      status: "in_progress",
+      date: "2026-09-19",
+      time: "10:00",
+      location: "Bole",
+      amount: 800,
+      createdAt: new Date().toISOString(),
+    };
+    savedAppointments.push(apt);
+
+    const completed = await appointmentsService.updateStatus(
+      "apt-completed-01",
+      "completed",
+      "prov-1",
+      "Visit completed successfully, vitals normal",
+    );
+
+    expect(completed.status).toBe("completed");
+
+    // 1. Notifications related to this appointment must be marked as read
+    expect(mockNotificationsService.markAppointmentNotificationsRead).toHaveBeenCalledWith("apt-completed-01");
+
+    // 2. Patient must receive completion notification
+    const completedNotif = sentNotifications.find(
+      (n) => n.userId === "pat-123" && n.title?.includes("Completed")
+    );
+    expect(completedNotif).toBeDefined();
+
+    // 3. Realtime status update emitted to appointment and admin rooms
+    expect(mockRealtimeService.emitAppointmentUpdate).toHaveBeenCalledWith(
+      "apt-completed-01",
+      "completed",
+      expect.objectContaining({ status: "completed" })
+    );
   });
 });

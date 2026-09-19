@@ -11,6 +11,7 @@ import * as crypto from "crypto";
 export type NotificationType =
   | "appointment_reminder"
   | "appointment_update"
+  | "appointment_completed"
   | "payment_update"
   | "chat_message"
   | "verification_update"
@@ -675,6 +676,21 @@ export class NotificationsService {
       .set({ isRead: true, readAt: new Date().toISOString() })
       .where("userId = :userId AND isRead = false", { userId })
       .execute();
+  }
+
+  async markAppointmentNotificationsRead(appointmentId: string): Promise<void> {
+    if (!appointmentId) return;
+    try {
+      await this.notificationRepo
+        .createQueryBuilder()
+        .update()
+        .set({ isRead: true, readAt: new Date().toISOString() })
+        .where("(idempotencyKey LIKE :keyPattern OR data LIKE :dataPattern) AND isRead = false", {
+          keyPattern: `%${appointmentId}%`,
+          dataPattern: `%${appointmentId}%`,
+        })
+        .execute();
+    } catch (_) {}
   }
 
   // ─── Preferences ──────────────────────────────────────────────────

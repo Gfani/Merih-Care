@@ -86,6 +86,30 @@ export class CreateAppointmentDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @ApiPropertyOptional({ description: "Patient Care Notes / Symptoms" })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @ApiPropertyOptional({ description: "Clinical Visit Notes" })
+  @IsOptional()
+  @IsString()
+  visitNotes?: string;
+
+  @ApiPropertyOptional({ description: "Latitude coordinate" })
+  @IsOptional()
+  @IsNumber()
+  latitude?: number;
+
+  @ApiPropertyOptional({ description: "Longitude coordinate" })
+  @IsOptional()
+  @IsNumber()
+  longitude?: number;
+
+  @ApiPropertyOptional({ description: "Geographic coordinates" })
+  @IsOptional()
+  coordinates?: any;
 }
 
 export class UpdateStatusDto {
@@ -206,6 +230,9 @@ export class AppointmentsController {
     }
     if (!data.location) {
       data.location = "Addis Ababa";
+    }
+    if (data.notes && !data.visitNotes) {
+      data.visitNotes = data.notes;
     }
     if (data.serviceId === "srv-1") data.serviceId = "doctor-visit";
     else if (data.serviceId === "srv-2") data.serviceId = "home-nursing";

@@ -3,10 +3,11 @@ import {
   CheckCircle, AlertCircle, XCircle, Clock, Calendar, RefreshCw, Info, AlertTriangle, ShieldCheck 
 } from "lucide-react";
 
-export type StatusType = "pending" | "searching" | "accepted" | "scheduled" | "on_the_way" | "arrived" | "in_progress" | "completed" | "cancelled" | "rejected" | "expired" | "failed" | "disputed" | "verified" | "suspended" | "active" | "open" | "under_review" | "resolved" | "closed" | "needs_fix";
+export type StatusType = "pending" | "requested" | "searching" | "accepted" | "scheduled" | "on_the_way" | "arrived" | "in_progress" | "completed" | "cancelled" | "rejected" | "expired" | "failed" | "disputed" | "verified" | "suspended" | "active" | "open" | "under_review" | "resolved" | "closed" | "needs_fix";
 
 const statusConfig: Record<StatusType, { label: string; bg: string; text: string; dot: string }> = {
   pending: { label: "Pending", bg: "#fef3c7", text: "#92400e", dot: "#d97706" },
+  requested: { label: "Requested", bg: "#fef3c7", text: "#92400e", dot: "#d97706" },
   searching: { label: "Searching", bg: "#dbeafe", text: "#1e40af", dot: "#3b82f6" },
   accepted: { label: "Accepted", bg: "#dcfce7", text: "#166534", dot: "#16a34a" },
   scheduled: { label: "Scheduled", bg: "#e6f5f2", text: "#0a5c4e", dot: "#0d7c6a" },
@@ -31,6 +32,7 @@ const statusConfig: Record<StatusType, { label: string; bg: string; text: string
 
 const statusIcons: Record<StatusType, React.ReactNode> = {
   pending: <Clock size={12} aria-hidden="true" />,
+  requested: <Clock size={12} aria-hidden="true" />,
   searching: <RefreshCw size={12} aria-hidden="true" className="animate-spin" />,
   accepted: <CheckCircle size={12} aria-hidden="true" />,
   scheduled: <Calendar size={12} aria-hidden="true" />,

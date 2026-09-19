@@ -263,7 +263,32 @@ function AppContent() {
       const pendingComps = (comps || []).filter((c: any) => c.status === "open" || c.status === "pending").length;
       const pendingPays = (pays || []).filter((p: any) => p.status === "pending").length;
       const reqList = Array.isArray(reqs) ? reqs : (reqs as any)?.data || [];
-      const pendingReqs = reqList.filter((r: any) => r.status === "requested" || r.status === "searching" || r.status === "pending").length;
+      const activePending = reqList.filter(
+        (r: any) => r.status === "requested" || r.status === "searching" || r.status === "pending"
+      );
+
+      const unreadRequestNotifs = notifList.filter(
+        (n: any) =>
+          !n.read &&
+          (n.type === "new_service_request" ||
+            n.type === "service_request" ||
+            n.title?.toLowerCase().includes("request"))
+      );
+
+      const lastRequestsReadAt = localStorage.getItem("merihcare_requests_read_at");
+      let pendingReqs = 0;
+      if (unreadRequestNotifs.length > 0) {
+        pendingReqs = unreadRequestNotifs.length;
+      } else if (lastRequestsReadAt) {
+        const lastReqTime = new Date(lastRequestsReadAt).getTime();
+        pendingReqs = activePending.filter((r: any) => {
+          const createdAtTime = r.createdAt ? new Date(r.createdAt).getTime() : 0;
+          return createdAtTime > lastReqTime;
+        }).length;
+      } else {
+        pendingReqs = activePending.length;
+      }
+
       const pendingAdminCount = Array.isArray(pendingAdmins) ? pendingAdmins.length : 0;
       setBadgeCounts({
         verification: pendingVerifs,
@@ -323,6 +348,10 @@ function AppContent() {
         playNotificationChime();
         toast(`🚨 New Care Request: ${data.service || "Care Service"} by ${data.patientName || "Patient"}`, "info");
         setBadgeCounts((prev) => ({ ...prev, requests: (prev.requests || 0) + 1 }));
+      } else if (data?.status === "completed" || data?.status === "cancelled") {
+        // Automatically turn off the notification red dot on the service request on the admin page
+        localStorage.setItem("merihcare_requests_read_at", new Date().toISOString());
+        setBadgeCounts((prev) => ({ ...prev, requests: 0 }));
       }
       loadBadgeCounts();
       loadNotifications();
@@ -347,7 +376,8 @@ function AppContent() {
       setUnreadCount(0);
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
       localStorage.setItem("merihcare_verifications_read_at", new Date().toISOString());
-      setBadgeCounts((prev) => ({ ...prev, verification: 0 }));
+      localStorage.setItem("merihcare_requests_read_at", new Date().toISOString());
+      setBadgeCounts((prev) => ({ ...prev, verification: 0, requests: 0 }));
       toast("All notifications marked read", "success");
     } catch (err: any) {
       toast(err.message || "Failed to mark all read", "error");
@@ -378,6 +408,8 @@ function AppContent() {
       setBadgeCounts((prev) => ({ ...prev, verification: 0 }));
       navigate("/verification");
     } else if (n.type === "new_service_request" || n.title?.toLowerCase().includes("request")) {
+      localStorage.setItem("merihcare_requests_read_at", new Date().toISOString());
+      setBadgeCounts((prev) => ({ ...prev, requests: 0 }));
       navigate("/requests");
     } else if (n.type === "complaint" || n.title?.toLowerCase().includes("complaint")) {
       navigate("/complaints");
@@ -388,6 +420,9 @@ function AppContent() {
     if (location.pathname === "/verification") {
       localStorage.setItem("merihcare_verifications_read_at", new Date().toISOString());
       setBadgeCounts((prev) => ({ ...prev, verification: 0 }));
+    } else if (location.pathname === "/requests") {
+      localStorage.setItem("merihcare_requests_read_at", new Date().toISOString());
+      setBadgeCounts((prev) => ({ ...prev, requests: 0 }));
     }
   }, [location.pathname]);
 
