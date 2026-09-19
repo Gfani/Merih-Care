@@ -529,8 +529,12 @@ export class NotificationsService {
     // Parallel multi-channel dispatch for regular notifications
     const channelTasks: Promise<any>[] = [];
 
-    // Service requests and provider notifications for service requests must only notify within the app (in-app record, socket & FCM push),
-    // strictly suppressing SMS (TextBee) and email alerts to providers.
+    // ─── SMS & Email Suppression for Service Requests / Provider Notifications ───
+    // Any appointment or service-request notification type must NEVER be delivered
+    // via SMS (Textbee) or Email (Resend/SendGrid). Delivery is strictly limited to:
+    //   1. In-app database record (NotificationEntity)
+    //   2. WebSocket real-time events (Socket.IO rooms)
+    //   3. FCM push notifications (for background app wakeup)
     const isServiceRequest =
       opts.type === "new_service_request" ||
       opts.type === "appointment_update" ||
@@ -546,10 +550,15 @@ export class NotificationsService {
       userId.startsWith("p-") ||
       opts.data?.providerId !== undefined;
 
+    // isInAppOnly = true  →  SMS and Email dispatchers are SKIPPED entirely.
+    // Conditions that force in-app-only delivery:
+    //   • Caller explicitly requested in_app channel
+    //   • Notification is a service request / appointment notification (ANY role)
+    //   • Recipient is a provider for ANY appointment-type notification
     const isInAppOnly =
       targetChannel === "in_app" ||
       isServiceRequest ||
-      (isProviderRecipient && (isServiceRequest || opts.type.includes("appointment")));
+      isProviderRecipient; // Providers never receive SMS or Email for any notification type
 
     if ((!targetChannel || targetChannel === "all" || targetChannel === "in_app") && (isCritical || prefs.push)) {
       channelTasks.push(
@@ -624,6 +633,28 @@ export class NotificationsService {
         where: { id: attempt.notificationId },
       });
       if (!notification) continue;
+
+      // ── Retry-time SMS/Email suppression ─────────────────────────────────────
+      // If this notification was originally a service request or appointment type,
+      // or if the delivery attempt is SMS/Email, we must NOT retry external dispatch.
+      // The in-app record and socket events already fired at creation time.
+      const isServiceRequestRetry =
+        notification.type === "new_service_request" ||
+        notification.type === "appointment_update" ||
+        notification.type === "appointment_reminder" ||
+        notification.type === "appointment_completed" ||
+        notification.type.startsWith("appointment_");
+
+      if (isServiceRequestRetry && (attempt.channel === "sms" || attempt.channel === "email")) {
+        // Mark as suppressed (not a real failure) so the sweeper stops retrying.
+        attempt.retryCount = 3;
+        attempt.status = "failed";
+        attempt.errorMessage = "[suppressed] SMS/Email retries are disabled for service request and appointment notifications";
+        attempt.nextRetryAt = null;
+        await this.deliveryRepo.save(attempt);
+        logger.log(`[RetrySuppress] Skipped SMS/Email retry for ${notification.type} notification ${notification.id} to ${attempt.userId}`);
+        continue;
+      }
 
       let dataObj: any = {};
       try { dataObj = notification.data ? JSON.parse(notification.data) : {}; } catch {}

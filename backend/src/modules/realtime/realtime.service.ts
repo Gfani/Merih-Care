@@ -58,18 +58,14 @@ export class RealtimeService {
     this.emitToRoom("admin", "emergency_alert", data); // always notify admin room
   }
 
-  /** New service request — broadcast to all online providers and admin portal */
+  /** New service request — broadcast ONLY to the providers and admin rooms.
+   * Never broadcasts globally to all connected sockets (patients, unrelated users). */
   emitNewServiceRequest(data: any) {
     this.emitToRoom("providers", "new_service_request", data);
     this.emitToRoom("admin", "new_service_request", data);
-    if (this.server) {
-      this.server.emit("new_service_request", {
-        v: 1,
-        event: "new_service_request",
-        data,
-        ts: new Date().toISOString(),
-      });
-    }
+    // NOTE: Intentionally NOT calling this.server.emit(...) here.
+    // A global broadcast would deliver new_service_request to every connected socket
+    // (patients, unverified users, etc.) which is incorrect. Room-scoped delivery is used instead.
   }
 
   /** Provider accepted or rejected a request — notify the patient */
