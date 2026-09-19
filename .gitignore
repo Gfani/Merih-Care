@@ -41,6 +41,11 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Databases
+*.sqlite
+*.sqlite*
+*merihcare_db*
+
 # Environment & Secrets
 .env
 .env.*

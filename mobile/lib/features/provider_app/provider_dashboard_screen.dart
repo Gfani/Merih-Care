@@ -17,6 +17,7 @@ class ProviderDashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScreen> {
+  String? _myProviderId;
   int _currentNavIndex = 0;
   bool _isOnline = true;
   double _todayEarnings = 0.0;
@@ -44,12 +45,16 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
       // Open/on-demand requests have no providerId and should reach all providers.
       final targetProviderId = data['providerId'];
       if (targetProviderId != null && targetProviderId.toString().isNotEmpty) {
-        // Resolve current provider's ID from auth state
+        // Resolve current provider's ID from auth state and loaded profile
         final authUser = ref.read(authProvider).user;
         final myUserId = authUser?['id']?.toString() ?? '';
-        final myProviderId = authUser?['providerId']?.toString() ?? '';
+        final myProvAuthId = authUser?['provider']?['id']?.toString() ??
+            authUser?['providerId']?.toString() ??
+            authUser?['provider_id']?.toString() ??
+            '';
         final matches = targetProviderId.toString() == myUserId ||
-            targetProviderId.toString() == myProviderId;
+            (myProvAuthId.isNotEmpty && targetProviderId.toString() == myProvAuthId) ||
+            (_myProviderId != null && targetProviderId.toString() == _myProviderId);
         if (!matches) return; // Not for this provider — ignore entirely
       }
 
@@ -104,6 +109,7 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
       try {
         final provRes = await client.dio.get('/providers/me');
         final dynamic pData = provRes.data is Map<String, dynamic> ? provRes.data : {};
+        _myProviderId = pData['id']?.toString() ?? pData['userId']?.toString();
         if (pData['rating'] != null) {
           ratingVal = (pData['rating'] as num).toDouble();
         }

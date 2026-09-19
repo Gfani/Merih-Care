@@ -12,9 +12,9 @@ export class RedisIoAdapter extends IoAdapter {
     const redisUrl = process.env.REDIS_URL;
     const redisHost = process.env.REDIS_HOST;
 
-    // If no Redis config provided in test environment, skip to in-memory adapter
-    if (!redisUrl && !redisHost && process.env.NODE_ENV === "test") {
-      this.logger.log("Test environment without Redis configuration: using in-memory WebSocket adapter.");
+    // If no Redis config provided, skip to in-memory adapter
+    if (!redisUrl && !redisHost) {
+      this.logger.log("No Redis configuration provided: using in-memory WebSocket adapter.");
       return;
     }
 

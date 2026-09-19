@@ -8,7 +8,8 @@ import * as path from "path";
 import { IdempotencyInterceptor } from "./shared/interceptors/idempotency.interceptor";
 import { TransformInterceptor } from "./shared/interceptors/transform.interceptor";
 import helmet from "helmet";
-import cookieParser from "cookie-parser";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const cookieParser = require("cookie-parser");
 import { RedisIoAdapter } from "./modules/realtime/redis-io.adapter";
 
 async function bootstrap() {
