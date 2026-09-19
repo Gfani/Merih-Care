@@ -38,18 +38,31 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
 
     // Listen to live realtime dispatches from backend
     _serviceReqSub = ref.read(realtimeServiceProvider).serviceRequestsStream.listen((data) {
-      if (mounted && _isOnline) {
-        _loadDashboardData();
-        final serviceName = data['service'] ?? data['serviceType'] ?? 'Care Service';
-        final patientName = data['patientName'] ?? 'Patient';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('🔔 New Patient Care Request: $serviceName for $patientName'),
-            backgroundColor: AppTheme.primaryColor,
-            duration: const Duration(seconds: 4),
-          ),
-        );
+      if (!mounted || !_isOnline) return;
+
+      // If this request is targeted at a specific provider, only respond if it's for us.
+      // Open/on-demand requests have no providerId and should reach all providers.
+      final targetProviderId = data['providerId'];
+      if (targetProviderId != null && targetProviderId.toString().isNotEmpty) {
+        // Resolve current provider's ID from auth state
+        final authUser = ref.read(authProvider).user;
+        final myUserId = authUser?['id']?.toString() ?? '';
+        final myProviderId = authUser?['providerId']?.toString() ?? '';
+        final matches = targetProviderId.toString() == myUserId ||
+            targetProviderId.toString() == myProviderId;
+        if (!matches) return; // Not for this provider — ignore entirely
       }
+
+      _loadDashboardData();
+      final serviceName = data['service'] ?? data['serviceType'] ?? 'Care Service';
+      final patientName = data['patientName'] ?? 'Patient';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🔔 New Patient Care Request: $serviceName for $patientName'),
+          backgroundColor: AppTheme.primaryColor,
+          duration: const Duration(seconds: 4),
+        ),
+      );
     });
 
     _appointmentSub = ref.read(realtimeServiceProvider).appointmentUpdatesStream.listen((_) {

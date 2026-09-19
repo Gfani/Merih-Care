@@ -157,11 +157,11 @@ export class UpdateStatusDto {
 }
 
 export class CancelAppointmentDto {
-  @ApiProperty({ description: "Cancellation reason description" })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ description: "Cancellation reason description" })
+  @IsOptional()
   @IsString()
   @MaxLength(1000)
-  reason: string;
+  reason?: string;
 }
 
 export class RescheduleDto {

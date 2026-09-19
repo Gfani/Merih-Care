@@ -62,6 +62,10 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> with Si
 
   List<dynamic> _getAppointmentsForDate(DateTime date) {
     return _appointments.where((appt) {
+      // Exclude completed and cancelled — the calendar only shows active/upcoming counts
+      final status = (appt['status'] ?? '').toString().toLowerCase();
+      if (status == 'completed' || status == 'cancelled') return false;
+
       final dateStr = (appt['date'] ?? '').toString();
       if (dateStr.isEmpty) return false;
       try {

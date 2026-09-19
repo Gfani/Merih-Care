@@ -46,7 +46,10 @@ class _AppointmentDetailsScreenState extends ConsumerState<AppointmentDetailsScr
   Future<void> _cancelAppointment() async {
     try {
       final client = ref.read(apiClientProvider);
-      await client.dio.put('/appointments/${widget.appointmentId}/cancel');
+      await client.dio.put(
+        '/appointments/${widget.appointmentId}/cancel',
+        data: {'reason': 'Cancelled by patient'},
+      );
       if (mounted) {
         toast('Appointment cancelled successfully', 'info');
         context.pop();
@@ -73,7 +76,12 @@ class _AppointmentDetailsScreenState extends ConsumerState<AppointmentDetailsScr
 
     final provider = _appt?['provider'] ?? {};
     final status = (_appt?['status'] ?? 'SCHEDULED').toString().toUpperCase();
-    final canCancel = status == 'SCHEDULED' || status == 'ACCEPTED';
+    // Allow cancellation from any pre-visit status — patient can cancel a request they just made
+    final canCancel = status == 'SCHEDULED' ||
+        status == 'ACCEPTED' ||
+        status == 'REQUESTED' ||
+        status == 'SEARCHING' ||
+        status == 'PENDING';
 
     return Scaffold(
       appBar: AppBar(title: const Text('Booking Details')),
