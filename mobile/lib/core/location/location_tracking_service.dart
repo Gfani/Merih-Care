@@ -6,9 +6,9 @@ import '../network/realtime_service.dart';
 
 class LocationTrackingService {
   StreamSubscription<Position>? _positionSubscription;
-  Timer? _fallbackTimer;
-  double _lat = 9.0192; // Default Addis Ababa coordinates
-  double _lon = 38.7578;
+  Timer? _gpsTimer;
+  double _lat = 9.02497; // Addis Ababa center
+  double _lon = 38.74689;
   bool _isTracking = false;
 
   final _locationStreamController = StreamController<Position>.broadcast();
@@ -36,129 +36,97 @@ class LocationTrackingService {
     required ApiClient client,
     MobileRealtimeService? realtimeService,
     String? appointmentId,
-  }) {
+  }) async {
     if (_isTracking) return;
     _isTracking = true;
 
-    // 1. Hardware GPS Position Stream
+    // Helper to send coordinates to WebSocket and REST
+    Future<void> sendCoords(double lat, double lng, double accuracy) async {
+      _lat = lat;
+      _lon = lng;
+
+      // 1. Emit to WebSocket (sends both location_update and update_location)
+      if (realtimeService != null) {
+        realtimeService.sendLocationUpdate(
+          appointmentId: appointmentId,
+          latitude: lat,
+          longitude: lng,
+        );
+      }
+
+      // 2. Persist to backend REST database
+      try {
+        if (providerId.isNotEmpty) {
+          await client.dio.put('/locations/$providerId/move', data: {
+            'latitude': lat,
+            'longitude': lng,
+            'accuracy': accuracy,
+          });
+        }
+      } catch (_) {}
+    }
+
+    // 1. Immediate initial GPS fix
+    try {
+      final initialPos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 4),
+      );
+      _locationStreamController.add(initialPos);
+      await sendCoords(initialPos.latitude, initialPos.longitude, initialPos.accuracy);
+    } catch (_) {
+      try {
+        final lastKnown = await Geolocator.getLastKnownPosition();
+        if (lastKnown != null) {
+          _locationStreamController.add(lastKnown);
+          await sendCoords(lastKnown.latitude, lastKnown.longitude, lastKnown.accuracy);
+        } else {
+          await sendCoords(_lat, _lon, 10.0);
+        }
+      } catch (_) {
+        await sendCoords(_lat, _lon, 10.0);
+      }
+    }
+
+    // 2. Hardware GPS Position Stream for continuous motion
     const locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 5, // update every 5 meters
+      distanceFilter: 10,
     );
 
     try {
       _positionSubscription =
           Geolocator.getPositionStream(locationSettings: locationSettings)
-              .listen(
-        (Position position) async {
-          _lat = position.latitude;
-          _lon = position.longitude;
-          _locationStreamController.add(position);
+              .listen((Position position) {
+        _locationStreamController.add(position);
+        sendCoords(position.latitude, position.longitude, position.accuracy);
+      }, onError: (_) {});
+    } catch (_) {}
 
-          // Emit live location over WebSocket
-          if (realtimeService != null) {
-            realtimeService.sendLocationUpdate(
-              appointmentId: appointmentId,
-              latitude: position.latitude,
-              longitude: position.longitude,
-            );
-          }
-
-          // Persist to backend database via REST
-          try {
-            await client.dio.put('/locations/$providerId/move', data: {
-              'latitude': position.latitude,
-              'longitude': position.longitude,
-              'accuracy': position.accuracy,
-            });
-          } catch (_) {}
-        },
-        onError: (_) {
-          _startFallbackTimer(providerId, client, realtimeService, appointmentId);
-        },
-      );
-    } catch (_) {
-      _startFallbackTimer(providerId, client, realtimeService, appointmentId);
-    }
-
-    // Immediate initial fix
-    Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-      timeLimit: const Duration(seconds: 3),
-    ).then((position) async {
-      _lat = position.latitude;
-      _lon = position.longitude;
-      _locationStreamController.add(position);
-
-      if (realtimeService != null) {
-        realtimeService.sendLocationUpdate(
-          appointmentId: appointmentId,
-          latitude: position.latitude,
-          longitude: position.longitude,
-        );
-      }
-
+    // 3. Regular 10-second GPS interval (per requirements)
+    // Ensures updates are consistently emitted to backend even when stationary
+    _gpsTimer?.cancel();
+    _gpsTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+      if (!_isTracking) return;
       try {
-        await client.dio.put('/locations/$providerId/move', data: {
-          'latitude': position.latitude,
-          'longitude': position.longitude,
-          'accuracy': position.accuracy,
-        });
-      } catch (_) {}
-    }).catchError((_) {
-      _startFallbackTimer(providerId, client, realtimeService, appointmentId);
-    });
-  }
-
-  void _startFallbackTimer(
-    String providerId,
-    ApiClient client,
-    MobileRealtimeService? realtimeService,
-    String? appointmentId,
-  ) {
-    if (_fallbackTimer != null) return;
-    _fallbackTimer = Timer.periodic(const Duration(seconds: 6), (_) async {
-      _lat += 0.0001;
-      _lon += 0.0001;
-
-      final simulated = Position(
-        latitude: _lat,
-        longitude: _lon,
-        timestamp: DateTime.now(),
-        accuracy: 10.0,
-        altitude: 2355.0,
-        heading: 45.0,
-        speed: 5.0,
-        speedAccuracy: 1.0,
-        altitudeAccuracy: 5.0,
-        headingAccuracy: 5.0,
-      );
-
-      _locationStreamController.add(simulated);
-
-      if (realtimeService != null) {
-        realtimeService.sendLocationUpdate(
-          appointmentId: appointmentId,
-          latitude: _lat,
-          longitude: _lon,
+        final pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 4),
         );
+        _locationStreamController.add(pos);
+        await sendCoords(pos.latitude, pos.longitude, pos.accuracy);
+      } catch (_) {
+        // Broadcast current known coords if query times out
+        await sendCoords(_lat, _lon, 10.0);
       }
-
-      try {
-        await client.dio.put('/locations/$providerId/move', data: {
-          'latitude': _lat,
-          'longitude': _lon,
-          'accuracy': 10.0,
-        });
-      } catch (_) {}
     });
   }
 
   void stopTracking() {
     _positionSubscription?.cancel();
     _positionSubscription = null;
-    _fallbackTimer?.cancel();
-    _fallbackTimer = null;
+    _gpsTimer?.cancel();
+    _gpsTimer = null;
     _isTracking = false;
   }
 

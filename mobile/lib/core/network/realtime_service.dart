@@ -267,13 +267,23 @@ class MobileRealtimeService {
     final payload = <String, dynamic>{
       'lat': lat,
       'lng': lng,
+      'latitude': lat,
+      'longitude': lng,
     };
     if (appointmentId != null && appointmentId.isNotEmpty) {
       payload['appointmentId'] = appointmentId;
     }
 
     _realtimeSocket?.emit('location_update', payload);
+    _realtimeSocket?.emit('update_location', payload);
     return true;
+  }
+
+  /// Broadcast provider availability status (available, offline, busy)
+  void setStatus(String status) {
+    final payload = {'status': status};
+    _realtimeSocket?.emit('set_status', payload);
+    _realtimeSocket?.emit('provider_status', payload);
   }
 
   /// Accept incoming high-priority dispatch offer

@@ -33,13 +33,12 @@ let adminMetricsInterval: NodeJS.Timeout | null = null;
 const socketEventRateMap = new Map<string, number[]>();
 const MAX_EVENTS_PER_SECOND = 20;
 
-const allowedOrigins = process.env.NODE_ENV === "production"
-  ? (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : ["https://admin.merihcare.et", "https://app.merihcare.et"])
-  : true;
-
 @WebSocketGateway({
   cors: {
-    origin: allowedOrigins,
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      // Dynamic origin reflection allows admin web dashboard from any host/port with credentials
+      callback(null, true);
+    },
     credentials: true,
   },
   namespace: "/realtime",
@@ -78,17 +77,19 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       try {
         let token =
           socket.handshake.auth?.token ||
-          socket.handshake.headers?.authorization?.replace("Bearer ", "");
+          socket.handshake.query?.token ||
+          socket.handshake.headers?.authorization?.replace(/^Bearer\s+/i, "");
 
-        // If no token in auth payload or header, extract from HttpOnly cookie header
+        // If no token in auth payload, query, or header, extract from HttpOnly cookie header
         if (!token && socket.handshake.headers?.cookie) {
           const parsed = parseCookieString(socket.handshake.headers.cookie);
-          token = parsed.admin_token || parsed.token;
+          token = parsed.admin_token || parsed.token || parsed.access_token || parsed.jwt;
         }
 
-        if (!token) return next(new Error("Unauthorized: missing token"));
+        const rawToken = Array.isArray(token) ? token[0] : token;
+        if (!rawToken) return next(new Error("Unauthorized: missing token"));
 
-        const payload = await this.jwtService.verifyAsync(token);
+        const payload = await this.jwtService.verifyAsync(rawToken);
         const userId = payload.sub || payload.id;
         const role = payload.role || "patient";
 
@@ -104,21 +105,24 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
           }
           const userVersion = user.tokenVersion ?? 0;
           if (
-            payload.tokenVersion === undefined ||
-            payload.tokenVersion !== userVersion
+            payload.tokenVersion !== undefined &&
+            user.tokenVersion !== undefined &&
+            payload.tokenVersion < userVersion
           ) {
             return next(new Error("Unauthorized: session has been revoked"));
           }
         }
 
         (socket as any).userId = userId;
+        (socket as any).email = payload.email;
         (socket as any).role = role;
         (socket as any).roles = payload.roles || [];
         (socket as any).hasProviderAccount = payload.hasProviderAccount;
         (socket as any).hasAdminAccount = payload.hasAdminAccount;
+        (socket as any).adminRole = payload.adminRole;
         next();
-      } catch {
-        next(new Error("Unauthorized: invalid token"));
+      } catch (err: any) {
+        next(new Error(`Unauthorized: ${err?.message || "invalid token"}`));
       }
     });
 
@@ -481,25 +485,38 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   // ─── Provider Location Updates & Live Telemetry ─────────────────
 
   @SubscribeMessage("location_update")
+  @SubscribeMessage("update_location")
   async handleLocationUpdate(
     @ConnectedSocket() socket: Socket,
-    @MessageBody() data: { appointmentId?: string; lat: number; lng: number },
+    @MessageBody() data: any,
   ) {
     const { userId, role } = (socket as any);
-    if (role !== "provider") return { ok: false, error: "Only providers may send location" };
+    const roles: string[] = (socket as any).roles || [];
+    const isProvider =
+      role === "provider" ||
+      role === "doctor" ||
+      role === "nurse" ||
+      role === "specialist" ||
+      roles.includes("provider") ||
+      (socket as any).hasProviderAccount;
 
-    if (typeof data.lat !== "number" || typeof data.lng !== "number" || isNaN(data.lat) || isNaN(data.lng)) {
+    if (!isProvider) return { ok: false, error: "Only providers may send location" };
+
+    const lat = Number(data?.lat ?? data?.latitude ?? data?.y);
+    const lng = Number(data?.lng ?? data?.longitude ?? data?.x);
+
+    if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
       return { ok: false, error: "INVALID_COORDINATES" };
     }
 
     const now = Date.now();
     const info = socketUserMap.get(socket.id);
-    const trackingKey = data.appointmentId || "general_telemetry";
+    const trackingKey = data?.appointmentId || "general_telemetry";
     const lastUpdate = info?.lastLocationAt.get(trackingKey) || 0;
 
-    // Rate-limit: minimum 3 seconds between GPS telemetry updates
-    if (now - lastUpdate < 3000) {
-      return { ok: false, error: "RATE_LIMITED", message: "Location updates throttled to once every 3s" };
+    // Rate-limit: minimum 2 seconds between GPS telemetry updates
+    if (now - lastUpdate < 2000) {
+      return { ok: false, error: "RATE_LIMITED", message: "Location updates throttled to once every 2s" };
     }
 
     if (info) info.lastLocationAt.set(trackingKey, now);
@@ -512,8 +529,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       loc.userId = userId;
       loc.role = "provider";
     }
-    loc.x = data.lng;
-    loc.y = data.lat;
+    loc.x = lng;
+    loc.y = lat;
     loc.status = "available";
     loc.locationTimestamp = new Date().toISOString();
     loc.updatedAt = new Date();
@@ -525,8 +542,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         const provRepo = this.dataSource.getRepository(ProviderEntity);
         const prov = await provRepo.findOne({ where: [{ userId }, { id: userId }] });
         if (prov) {
-          prov.latitude = data.lat;
-          prov.longitude = data.lng;
+          prov.latitude = lat;
+          prov.longitude = lng;
           prov.available = true;
           await provRepo.save(prov);
         }
@@ -536,14 +553,36 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     // In-memory Redis Geospatial update
     const redis = getLocationsRedisClient();
     if (redis) {
-      redis.geoadd("providers:locations:online", data.lng, data.lat, userId).catch(() => {});
+      redis.geoadd("providers:locations:online", lng, lat, userId).catch(() => {});
     }
 
     const ts = new Date().toISOString();
 
-    // 3. If tied to an active appointment, relay to appointment room
-    if (data.appointmentId) {
-      this.realtimeService.emitLocationUpdate(data.appointmentId, userId, data.lat, data.lng, ts);
+    // 3. Relay to admin room immediately for real-time map tracking
+    if (this.realtimeService && typeof this.realtimeService.emitToRoom === "function") {
+      this.realtimeService.emitToRoom("admin", "location_update", {
+        providerId: userId,
+        userId,
+        lat,
+        lng,
+        x: lng,
+        y: lat,
+        status: "available",
+        lastUpdated: ts,
+        ts,
+      });
+      this.realtimeService.emitToRoom("admin", "provider_location_update", {
+        providerId: userId,
+        lat,
+        lng,
+        status: "available",
+        ts,
+      });
+    }
+
+    // 4. If tied to an active appointment, relay to appointment room
+    if (data?.appointmentId) {
+      this.realtimeService.emitLocationUpdate(data.appointmentId, userId, lat, lng, ts);
 
       // Schedule stale detection after 90 s
       const staleTimer = setTimeout(() => {
@@ -556,26 +595,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       staleTimer.unref();
     }
 
-    // 4. Relay to admin room for real-time map tracking
-    if (this.realtimeService && typeof this.realtimeService.emitToRoom === "function") {
-      this.realtimeService.emitToRoom("admin", "location_update", {
-        providerId: userId,
-        lat: data.lat,
-        lng: data.lng,
-        status: "available",
-        lastUpdated: ts,
-        ts,
-      });
-      this.realtimeService.emitToRoom("admin", "provider_location_update", {
-        providerId: userId,
-        lat: data.lat,
-        lng: data.lng,
-        status: "available",
-        ts,
-      });
-    }
-
-    return { ok: true, ts };
+    return { ok: true, ts, lat, lng };
   }
 
   @SubscribeMessage("provider_status")

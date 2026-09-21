@@ -86,7 +86,8 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
   }, [connected, connectionEstablished, heartbeatAge]);
 
   useEffect(() => {
-    if (!hasSession) {
+    // Attempt connection if token is available or session exists
+    if (!effectiveToken && typeof window !== "undefined" && !sessionStorage.getItem("admin_user")) {
       setConnectionState("disconnected");
       return;
     }
@@ -96,6 +97,7 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
     const origin = baseUrl.replace(/\/api\/v\d+.*$/, "");
     const socket = io(`${origin}/realtime`, {
       auth: effectiveToken ? { token: effectiveToken } : undefined,
+      query: effectiveToken ? { token: effectiveToken } : undefined,
       withCredentials: true,
       // Default to auto-negotiating ["polling", "websocket"] for maximum network resilience
       transports: fallbackPoll ? ["polling", "websocket"] : ["websocket"],
@@ -106,11 +108,12 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
     });
     socketRef.current = socket;
 
-    // ── Connection established (auth confirmed by server) ─────────────
-    socket.on("connection_established", (payload: RealtimeEvent) => {
+    // ── Immediate connect lifecycle ──────────────────────────────────
+    socket.on("connect", () => {
+      setConnected(true);
       setConnectionEstablished(true);
-      setLastUpdated(payload.ts);
       setConnectionState("connected");
+      setLastUpdated(new Date().toISOString());
 
       // Register with admin room immediately for realtime platform updates
       socket.emit("join_admin", {});
@@ -121,9 +124,17 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
       }
     });
 
-    socket.on("connect", () => {
-      setConnected(true);
+    // ── Connection established (server handshake ack) ────────────────
+    socket.on("connection_established", (payload: RealtimeEvent) => {
+      setConnectionEstablished(true);
+      setLastUpdated(payload?.ts || new Date().toISOString());
+      setConnectionState("connected");
+
       socket.emit("join_admin", {});
+
+      for (const room of joinedRoomsRef.current) {
+        socket.emit(room.event, room.data);
+      }
     });
 
     socket.on("disconnect", () => {

@@ -284,12 +284,14 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
       final realtime = ref.read(realtimeServiceProvider);
       final tracker = ref.read(locationTrackingProvider);
       if (next) {
+        realtime.setStatus('available');
         tracker.startTracking(
           providerId: _myProviderId ?? '',
           client: client,
           realtimeService: realtime,
         );
       } else {
+        realtime.setStatus('offline');
         tracker.stopTracking();
       }
     } catch (e) {

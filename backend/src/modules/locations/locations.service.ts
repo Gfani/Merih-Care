@@ -83,6 +83,7 @@ export class LocationsService {
             const entry = new LocationEntity();
             entry.id = existing?.id || `loc-${memberId}`;
             entry.userId = memberId;
+            (entry as any).providerId = memberId;
             entry.role = existing?.role || "provider";
             entry.status = existing?.status && existing.status !== "offline" ? existing.status : "available";
             entry.accuracy = existing?.accuracy || 5;
@@ -90,13 +91,43 @@ export class LocationsService {
             entry.locationTimestamp = existing?.locationTimestamp || new Date().toISOString();
             entry.x = entry.privacyMode ? Math.round(lng * 100) / 100 : lng;
             entry.y = entry.privacyMode ? Math.round(lat * 100) / 100 : lat;
+            (entry as any).lat = entry.y;
+            (entry as any).lng = entry.x;
+            (entry as any).latitude = entry.y;
+            (entry as any).longitude = entry.x;
+            (entry as any).isOnline = true;
+            (entry as any).name = (existing as any)?.name || `Provider ${memberId.slice(-4)}`;
             onlineProviders.push(entry);
+          }
+
+          // If Redis GEO had no members or fewer than active DB providers, check DB available providers
+          if (onlineProviders.length === 0) {
+            const dbActive = locationsFromDb.filter(
+              (l) => l.role === "provider" && l.status !== "offline" && l.x !== 0 && l.y !== 0
+            );
+            for (const l of dbActive) {
+              const pid = l.userId || l.id;
+              (l as any).providerId = pid;
+              (l as any).lat = l.y;
+              (l as any).lng = l.x;
+              (l as any).latitude = l.y;
+              (l as any).longitude = l.x;
+              (l as any).isOnline = true;
+              onlineProviders.push(l);
+              redis.geoadd("providers:locations:online", l.x, l.y, pid).catch(() => {});
+            }
           }
 
           // Also include any active emergency patients (never offline providers)
           const activePatients = locationsFromDb.filter(
             (l) => l.role === "patient" && (l.status === "critical" || l.status === "active") && l.x !== 0 && l.y !== 0
           );
+          for (const pat of activePatients) {
+            (pat as any).lat = pat.y;
+            (pat as any).lng = pat.x;
+            (pat as any).latitude = pat.y;
+            (pat as any).longitude = pat.x;
+          }
 
           return [...onlineProviders, ...activePatients].sort((a, b) => {
             const aVal = a.status === "critical" ? 1 : 0;
@@ -105,11 +136,39 @@ export class LocationsService {
           });
         } else {
           // Redis has no online providers currently
-          // Include any critical emergency patient overlays, but ZERO offline providers
-          const emergencyPatients = await this.locationRepo.find({
-            where: { role: "patient", status: "critical" },
+          // Populate from any active available providers in DB & seed Redis GEO
+          const locationsFromDb = await this.locationRepo.find();
+          const dbActive = locationsFromDb.filter(
+            (l) => l.role === "provider" && l.status !== "offline" && l.x !== 0 && l.y !== 0
+          );
+          const onlineProviders: LocationEntity[] = [];
+          for (const l of dbActive) {
+            const pid = l.userId || l.id;
+            (l as any).providerId = pid;
+            (l as any).lat = l.y;
+            (l as any).lng = l.x;
+            (l as any).latitude = l.y;
+            (l as any).longitude = l.x;
+            (l as any).isOnline = true;
+            onlineProviders.push(l);
+            redis.geoadd("providers:locations:online", l.x, l.y, pid).catch(() => {});
+          }
+
+          const emergencyPatients = locationsFromDb.filter(
+            (l) => l.role === "patient" && l.status === "critical" && l.x !== 0 && l.y !== 0
+          );
+          for (const pat of emergencyPatients) {
+            (pat as any).lat = pat.y;
+            (pat as any).lng = pat.x;
+            (pat as any).latitude = pat.y;
+            (pat as any).longitude = pat.x;
+          }
+
+          return [...onlineProviders, ...emergencyPatients].sort((a, b) => {
+            const aVal = a.status === "critical" ? 1 : 0;
+            const bVal = b.status === "critical" ? 1 : 0;
+            return bVal - aVal;
           });
-          return emergencyPatients.filter((l) => l.x !== 0 && l.y !== 0);
         }
       } catch (err) {
         // Fallback below if Redis is not configured or fails
@@ -121,11 +180,25 @@ export class LocationsService {
     const locations = await this.locationRepo.find();
     return locations
       .map((loc) => {
+        (loc as any).providerId = loc.userId || loc.id;
+        (loc as any).lat = loc.y;
+        (loc as any).lng = loc.x;
+        (loc as any).latitude = loc.y;
+        (loc as any).longitude = loc.x;
+        (loc as any).isOnline = loc.status !== "offline";
         if (loc.privacyMode) {
+          const px = Math.round(loc.x * 100) / 100;
+          const py = Math.round(loc.y * 100) / 100;
           return {
             ...loc,
-            x: Math.round(loc.x * 100) / 100,
-            y: Math.round(loc.y * 100) / 100,
+            x: px,
+            y: py,
+            lat: py,
+            lng: px,
+            latitude: py,
+            longitude: px,
+            providerId: loc.userId || loc.id,
+            isOnline: loc.status !== "offline",
           };
         }
         if (loc.role === "provider" && loc.status === "offline") {
@@ -133,6 +206,12 @@ export class LocationsService {
             ...loc,
             x: 0,
             y: 0,
+            lat: 0,
+            lng: 0,
+            latitude: 0,
+            longitude: 0,
+            providerId: loc.userId || loc.id,
+            isOnline: false,
           };
         }
         return loc;
