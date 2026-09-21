@@ -10,7 +10,8 @@ export interface LocationPin {
   userId: string;
   role: "provider" | "patient" | string;
   name: string;
-  status: string; // available, busy, critical, offline
+  status: string; // available, busy, critical
+  isOnline?: boolean;
   x: number; // longitude
   y: number; // latitude
   accuracy?: number;
@@ -24,17 +25,6 @@ export const STATUS_META: Record<string, { label: string; color: string }> = {
   critical:    { label: "Emergency", color: "#dc2626" },
   offline:     { label: "Offline", color: "#94a3b8" },
 };
-
-// Map scale helper to align any mock coordinates in Addis Ababa area
-function getGpsCoords(x: number, y: number): [number, number] {
-  if (y > 8.8 && y < 9.2 && x > 38.6 && x < 38.9) {
-    return [y, x];
-  }
-  // Convert standard percentage or Egyptian-area mocks into Addis Ababa GPS area
-  const lat = 9.0192 + ((y - 32) * 0.002);
-  const lng = 38.7578 + ((x - 38) * 0.002);
-  return [lat, lng];
-}
 
 export function AdminMapView({ compact = false }: { compact?: boolean }) {
   const [locations, setLocations] = useState<LocationPin[]>([]);
@@ -61,33 +51,32 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
   const mapRef = useRef<L.Map | null>(null);
   const markersGroupRef = useRef<L.LayerGroup | null>(null);
   const routeLineRef = useRef<L.Polyline | null>(null);
+  const prevCountRef = useRef<number>(0);
 
-  // Fetch initial location list
+  // Fetch initial location list strictly from real-time backend
   const fetchLocations = async () => {
     try {
       setLoading(true);
       setError(null);
       const data = await api.getLocations();
-      let normalized = (data || []).map((loc: any) => ({
-        ...loc,
-        name: loc.name || (loc.userId ? `User ${String(loc.userId).substring(0, 6)}` : `User ${loc.id || "00"}`),
-        role: loc.role || "provider",
-        status: loc.status || "available",
-        x: Number(loc.x ?? loc.longitude ?? 38.7578),
-        y: Number(loc.y ?? loc.latitude ?? 9.0192),
-      }));
+      const raw = Array.isArray(data) ? data : [];
+      const normalized: LocationPin[] = raw
+        .filter((loc: any) => loc.status !== "offline" && loc.isOnline !== false)
+        .map((loc: any) => ({
+          id: String(loc.id || loc.userId || `pin-${Date.now()}`),
+          userId: String(loc.userId || loc.id),
+          name: loc.name || (loc.userId ? `User ${String(loc.userId).substring(0, 6)}` : `User ${loc.id || "00"}`),
+          role: loc.role || "provider",
+          status: loc.status || "available",
+          isOnline: loc.isOnline !== false,
+          x: Number(loc.x ?? loc.longitude ?? loc.lng ?? 0),
+          y: Number(loc.y ?? loc.latitude ?? loc.lat ?? 0),
+          accuracy: loc.accuracy ?? 5,
+          privacyMode: Boolean(loc.privacyMode),
+          locationTimestamp: loc.locationTimestamp || loc.updatedAt || new Date().toISOString(),
+        }))
+        .filter((pin: LocationPin) => !isNaN(pin.x) && !isNaN(pin.y) && !(pin.x === 0 && pin.y === 0));
 
-      // If database currently has no active mobile GPS pings, populate realistic Addis Ababa fleet
-      // so dispatchers have immediate operational visibility rather than an empty 0/0 grid
-      if (normalized.length === 0) {
-        normalized = [
-          { id: "demo-p1", userId: "u-p1", name: "Dr. Meron Alemu (MD)", role: "provider", status: "available", x: 38.7885, y: 9.0125, accuracy: 8 },
-          { id: "demo-p2", userId: "u-p2", name: "Nurse Hana Tadesse", role: "provider", status: "busy", x: 38.7610, y: 9.0250, accuracy: 12 },
-          { id: "demo-p3", userId: "u-p3", name: "Dr. Dawit Kebede", role: "provider", status: "available", x: 38.7420, y: 9.0100, accuracy: 10 },
-          { id: "demo-pat1", userId: "u-pat1", name: "Abebe Bekele", role: "patient", status: "critical", x: 38.7750, y: 9.0210, accuracy: 5 },
-          { id: "demo-pat2", userId: "u-pat2", name: "Sara Yohannes", role: "patient", status: "available", x: 38.7520, y: 9.0320, accuracy: 15 },
-        ];
-      }
       setLocations(normalized);
     } catch (err: any) {
       setError(err.message || "Failed to fetch map locations.");
@@ -103,37 +92,63 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
   // Set up real-time listener for WS updates
   useEffect(() => {
     const handleLocationUpdate = (payload: any) => {
-      const updated = payload.data;
+      const updated = payload?.data || payload;
       if (!updated) return;
+      const targetId = String(updated.providerId || updated.userId || updated.id || "");
+      if (!targetId) return;
+
+      // Drop immediately if marked offline
+      if (updated.status === "offline" || updated.isOnline === false) {
+        setLocations(prev => prev.filter(l => l.userId !== targetId && l.id !== targetId));
+        setSelectedPin(prev => (prev?.userId === targetId || prev?.id === targetId ? null : prev));
+        return;
+      }
+
+      const lat = Number(updated.lat ?? updated.latitude ?? updated.y);
+      const lng = Number(updated.lng ?? updated.longitude ?? updated.x);
+      if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) return;
 
       setLocations(prev => {
-        const idx = prev.findIndex(l => l.userId === updated.providerId);
+        const idx = prev.findIndex(l => l.userId === targetId || l.id === targetId);
         if (idx !== -1) {
           const updatedList = [...prev];
           updatedList[idx] = {
             ...updatedList[idx],
-            x: updated.lng,
-            y: updated.lat,
-            locationTimestamp: updated.lastUpdated || new Date().toISOString(),
+            x: lng,
+            y: lat,
+            status: updated.status || updatedList[idx].status || "available",
+            isOnline: true,
+            locationTimestamp: updated.lastUpdated || updated.timestamp || new Date().toISOString(),
           };
           return updatedList;
         } else {
-          // Add new online provider
+          // New online provider entry
           return [
             ...prev,
             {
-              id: `loc-${Date.now()}`,
-              userId: updated.providerId,
-              role: "provider",
-              name: `Provider ${updated.providerId.slice(-4)}`,
-              status: "available",
-              x: updated.lng,
-              y: updated.lat,
-              locationTimestamp: updated.lastUpdated || new Date().toISOString(),
+              id: `loc-${targetId}`,
+              userId: targetId,
+              role: updated.role || "provider",
+              name: updated.name || `Provider ${targetId.slice(-4)}`,
+              status: updated.status || "available",
+              isOnline: true,
+              x: lng,
+              y: lat,
+              accuracy: updated.accuracy ?? 5,
+              locationTimestamp: updated.lastUpdated || updated.timestamp || new Date().toISOString(),
             },
           ];
         }
       });
+    };
+
+    const handleProviderOffline = (payload: any) => {
+      const data = payload?.data || payload;
+      const targetId = String(data?.providerId || data?.userId || data?.id || "");
+      if (!targetId) return;
+
+      setLocations(prev => prev.filter(l => l.userId !== targetId && l.id !== targetId));
+      setSelectedPin(prev => (prev?.userId === targetId || prev?.id === targetId ? null : prev));
     };
 
     const handleDispatchUpdate = (payload: any) => {
@@ -149,7 +164,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
         } else if (data.providerLat && data.providerLng) {
           pts = [
             [Number(data.providerLat), Number(data.providerLng)],
-            [9.0192, 38.7578],
+            [9.02497, 38.74689],
           ];
         }
 
@@ -169,17 +184,19 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
     };
 
     on("location_update", handleLocationUpdate);
+    on("provider_offline", handleProviderOffline);
     on("dispatch_update", handleDispatchUpdate);
     on("dispatch_offer_sent", handleDispatchUpdate);
 
     return () => {
       off("location_update", handleLocationUpdate);
+      off("provider_offline", handleProviderOffline);
       off("dispatch_update", handleDispatchUpdate);
       off("dispatch_offer_sent", handleDispatchUpdate);
     };
   }, [on, off]);
 
-  // Handle privacy toggle simulation for test environment
+  // Handle privacy toggle
   const togglePrivacy = async () => {
     const nextPrivacy = !myPrivacy;
     setMyPrivacy(nextPrivacy);
@@ -193,7 +210,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       const map = L.map(mapContainerRef.current, {
         zoomControl: false,
         maxZoom: 18,
-      }).setView([9.0192, 38.7578], 13);
+      }).setView([9.02497, 38.74689], 13);
 
       L.control.zoom({ position: "bottomright" }).addTo(map);
 
@@ -229,40 +246,50 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       routeLineRef.current = null;
     }
 
+    // Strict online-only filter
     const filtered = locations.filter(loc => {
+      if (loc.status === "offline" || loc.isOnline === false) return false;
       if (filter === "providers") return loc.role === "provider";
       if (filter === "patients") return loc.role === "patient";
       return true;
     });
 
-    // 1. Manual clustering algorithm for nearby pins
+    // Fit map bounds automatically to active incoming providers
+    if (filtered.length > 0) {
+      const bounds = L.latLngBounds(filtered.map(p => [p.y, p.x] as [number, number]));
+      if (bounds.isValid()) {
+        if (prevCountRef.current !== filtered.length) {
+          map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+          prevCountRef.current = filtered.length;
+        }
+      }
+    }
+
+    // 1. Clustering algorithm for nearby pins
     const clusters: Array<{ lat: number; lng: number; count: number; pins: LocationPin[] }> = [];
     const CLUSTER_THRESHOLD = 0.008; // ~800m threshold
 
     filtered.forEach(pin => {
-      // Offline providers: coordinates masked to 0,0. Do not map on active chart.
-      if (pin.role === "provider" && pin.status === "offline") {
-        return;
-      }
-
-      const [gpsLat, gpsLng] = getGpsCoords(pin.x, pin.y);
+      const lat = pin.y;
+      const lng = pin.x;
+      if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) return;
 
       let added = false;
       for (const c of clusters) {
-        const dist = Math.sqrt(Math.pow(gpsLat - c.lat, 2) + Math.pow(gpsLng - c.lng, 2));
+        const dist = Math.sqrt(Math.pow(lat - c.lat, 2) + Math.pow(lng - c.lng, 2));
         if (dist < CLUSTER_THRESHOLD) {
           c.pins.push(pin);
           c.count++;
           // Centroid adjustment
-          c.lat = c.pins.reduce((sum, p) => sum + getGpsCoords(p.x, p.y)[0], 0) / c.pins.length;
-          c.lng = c.pins.reduce((sum, p) => sum + getGpsCoords(p.x, p.y)[1], 0) / c.pins.length;
+          c.lat = c.pins.reduce((sum, p) => sum + p.y, 0) / c.pins.length;
+          c.lng = c.pins.reduce((sum, p) => sum + p.x, 0) / c.pins.length;
           added = true;
           break;
         }
       }
 
       if (!added) {
-        clusters.push({ lat: gpsLat, lng: gpsLng, count: 1, pins: [pin] });
+        clusters.push({ lat, lng, count: 1, pins: [pin] });
       }
     });
 
@@ -365,8 +392,8 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       const closestProvider = filtered.find(p => p.role === "provider" && p.status === "available");
 
       if (activeEmergency && closestProvider) {
-        const eCoords = getGpsCoords(activeEmergency.x, activeEmergency.y);
-        const pCoords = getGpsCoords(closestProvider.x, closestProvider.y);
+        const eCoords: [number, number] = [activeEmergency.y, activeEmergency.x];
+        const pCoords: [number, number] = [closestProvider.y, closestProvider.x];
 
         const routeLine = L.polyline([pCoords, eCoords], {
           color: "#dc2626",
@@ -377,7 +404,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
 
         routeLineRef.current = routeLine;
 
-        // Draw Haversine eta info
+        // Draw Haversine / OSRM routing ETA
         const distInfo = api.getRoute(pCoords[0], pCoords[1], eCoords[0], eCoords[1]);
         Promise.resolve(distInfo).then(res => setRouteInfo(res));
       } else {
@@ -385,6 +412,13 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       }
     }
   }, [locations, filter, activeDispatch]);
+
+  const filteredPins = locations.filter(loc => {
+    if (loc.status === "offline" || loc.isOnline === false) return false;
+    if (filter === "providers") return loc.role === "provider";
+    if (filter === "patients") return loc.role === "patient";
+    return true;
+  });
 
   const mapHeight = compact ? 280 : 640;
 
@@ -424,7 +458,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
           </div>
         )}
 
-        {/* WebSocket Connection State (LIVE indicator strictly conditional) */}
+        {/* WebSocket Connection State */}
         <div className="absolute top-2 right-2 z-[400] flex items-center gap-1.5 bg-white/95 dark:bg-slate-800/90 rounded-full px-2.5 py-1 shadow-sm border border-[#e2e8ee] dark:border-slate-700">
           <span className={`w-1.5 h-1.5 rounded-full ${isLive ? "bg-[#16a34a] animate-pulse" : "bg-[#dc2626]"}`} />
           <span className="text-[10px] font-bold text-[#18232e] dark:text-slate-100">
@@ -508,13 +542,13 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
           ))}
         </div>
 
-        {/* Count indicators */}
+        {/* Count indicators (Strictly active & online) */}
         <div className="grid grid-cols-2 gap-1.5">
           {[
-            { label: "Providers", count: locations.filter(p => p.role === "provider" && p.status !== "offline").length, color: "#0d7c6a" },
-            { label: "Patients", count: locations.filter(p => p.role === "patient").length, color: "#1b6fba" },
-            { label: "Emergency", count: locations.filter(p => p.status === "critical").length, color: "#dc2626" },
-            { label: "Offline", count: locations.filter(p => p.role === "provider" && p.status === "offline").length, color: "#94a3b8" },
+            { label: "Online Providers", count: filteredPins.filter(p => p.role === "provider").length, color: "#0d7c6a" },
+            { label: "Active Patients", count: filteredPins.filter(p => p.role === "patient").length, color: "#1b6fba" },
+            { label: "Emergencies", count: filteredPins.filter(p => p.status === "critical").length, color: "#dc2626" },
+            { label: "Total Active", count: filteredPins.length, color: "#0284c7" },
           ].map(s => (
             <div key={s.label} className="bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 rounded-[8px] px-2 py-1.5 text-center shadow-xs">
               <p className="text-sm font-bold" style={{ color: s.color }}>{s.count}</p>
@@ -523,41 +557,39 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
           ))}
         </div>
 
-        {/* Pin list (Priority sorted - Emergencies first) */}
+        {/* Pin list (Priority sorted - Emergencies first, Online Only) */}
         {loading ? (
           <div className="text-center py-5 text-xs text-[#8a9aaa]">Loading pins...</div>
         ) : error ? (
           <div className="text-center py-5 text-xs text-red-500">{error}</div>
+        ) : filteredPins.length === 0 ? (
+          <div className="text-center py-8 px-2 text-xs text-[#8a9aaa] bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 rounded-[8px]">
+            No online providers or active patients currently broadcasting GPS.
+          </div>
         ) : (
           <div className="space-y-1.5 overflow-y-auto pr-1" style={{ maxHeight: compact ? 130 : "calc(100vh - 430px)", minHeight: compact ? 120 : 320 }}>
-            {locations
-              .filter(pin => {
-                if (filter === "providers") return pin.role === "provider";
-                if (filter === "patients") return pin.role === "patient";
-                return true;
-              })
-              .map(pin => {
-                const meta = STATUS_META[pin.status] || { label: pin.status, color: "#94a3b8" };
-                return (
-                  <button
-                    key={pin.id}
-                    onClick={() => setSelectedPin(selectedPin?.id === pin.id ? null : pin)}
-                    className={`w-full flex items-center gap-2 px-2 py-2 rounded-[8px] text-left transition-colors ${selectedPin?.id === pin.id ? "bg-[#e6f5f2] dark:bg-slate-700 border border-[#0d7c6a]/20" : "bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 hover:border-[#0d7c6a]/20"}`}
+            {filteredPins.map(pin => {
+              const meta = STATUS_META[pin.status] || { label: pin.status, color: "#16a34a" };
+              return (
+                <button
+                  key={pin.id}
+                  onClick={() => setSelectedPin(selectedPin?.id === pin.id ? null : pin)}
+                  className={`w-full flex items-center gap-2 px-2 py-2 rounded-[8px] text-left transition-colors ${selectedPin?.id === pin.id ? "bg-[#e6f5f2] dark:bg-slate-700 border border-[#0d7c6a]/20" : "bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 hover:border-[#0d7c6a]/20"}`}
+                >
+                  <div
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold shrink-0"
+                    style={{ backgroundColor: pin.role === "provider" ? "#0d7c6a" : "#1b6fba" }}
                   >
-                    <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold shrink-0"
-                      style={{ backgroundColor: pin.role === "provider" ? "#0d7c6a" : "#1b6fba" }}
-                    >
-                      {(pin.name || (pin.userId ? `U-${pin.userId}` : "MC")).substring(0, 2).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[10px] font-semibold text-[#18232e] dark:text-white truncate">{pin.name || `User ${pin.userId || pin.id}`}</p>
-                      <p className="text-[9px] text-[#8a9aaa] dark:text-slate-400 truncate">{pin.role}</p>
-                    </div>
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: meta.color }} />
-                  </button>
-                );
-              })}
+                    {(pin.name || (pin.userId ? `U-${pin.userId}` : "MC")).substring(0, 2).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-semibold text-[#18232e] dark:text-white truncate">{pin.name || `User ${pin.userId || pin.id}`}</p>
+                    <p className="text-[9px] text-[#8a9aaa] dark:text-slate-400 truncate">{pin.role}</p>
+                  </div>
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: meta.color }} />
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -570,7 +602,7 @@ export default function LiveMapSection() {
     <div className="space-y-5 animate-fade-in">
       <div>
         <h2 className="text-lg font-bold text-[#18232e] dark:text-white" style={{ fontFamily: "DM Sans, sans-serif" }}>Live Provider & Patient Map</h2>
-        <p className="text-sm text-[#8a9aaa] mt-0.5">Real-time tracking across Addis Ababa · Leaflet tile integration</p>
+        <p className="text-sm text-[#8a9aaa] mt-0.5">Real-time tracking across Addis Ababa · Genuine GPS feed</p>
       </div>
 
       <div className="bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 rounded-[14px] p-5">
@@ -579,7 +611,6 @@ export default function LiveMapSection() {
             <span className="flex items-center gap-1.5 font-medium"><span className="w-3 h-3 bg-[#0d7c6a] rounded-full inline-block" /> Provider</span>
             <span className="flex items-center gap-1.5 font-medium"><span className="w-3 h-3 bg-[#1b6fba] rounded-full inline-block" /> Patient</span>
             <span className="flex items-center gap-1.5 font-medium"><span className="w-3 h-3 bg-[#dc2626] rounded-full inline-block animate-ping" /> Emergency Alert</span>
-            <span className="flex items-center gap-1.5 font-medium"><span className="w-3 h-3 bg-[#94a3b8] rounded-full inline-block" /> Offline</span>
           </div>
         </div>
         <AdminMapView />

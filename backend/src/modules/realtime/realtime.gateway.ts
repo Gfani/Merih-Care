@@ -22,6 +22,7 @@ import { EmergencyEntity } from "../../database/entities/emergency.entity";
 import { ProviderEntity } from "../../database/entities/provider.entity";
 import { parseCookieString } from "../../shared/utils/cookie.util";
 import { DispatchCascadeService } from "../appointments/dispatch-cascade.service";
+import { getLocationsRedisClient } from "../locations/locations.service";
 
 // In-memory socket tracking
 const socketUserMap = new Map<string, { userId: string; role: string; rooms: Set<string>; lastPong: number; lastLocationAt: Map<string, number> }>();
@@ -211,6 +212,17 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       this.presence.unregisterSession(socket.id);
       if (!this.presence.isOnline(info.userId)) {
         this.realtimeService.emitUserPresence(info.userId, info.role, "offline");
+        if (info.role === "provider") {
+          const redis = getLocationsRedisClient();
+          if (redis) {
+            redis.zrem("providers:locations:online", info.userId).catch(() => {});
+          }
+          this.realtimeService.emitToRoom("admin", "provider_offline", {
+            providerId: info.userId,
+            status: "offline",
+            ts: new Date().toISOString(),
+          });
+        }
       }
     }
     socketUserMap.delete(socket.id);
@@ -521,6 +533,12 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       } catch (_) {}
     }
 
+    // In-memory Redis Geospatial update
+    const redis = getLocationsRedisClient();
+    if (redis) {
+      redis.geoadd("providers:locations:online", data.lng, data.lat, userId).catch(() => {});
+    }
+
     const ts = new Date().toISOString();
 
     // 3. If tied to an active appointment, relay to appointment room
@@ -540,6 +558,14 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
     // 4. Relay to admin room for real-time map tracking
     if (this.realtimeService && typeof this.realtimeService.emitToRoom === "function") {
+      this.realtimeService.emitToRoom("admin", "location_update", {
+        providerId: userId,
+        lat: data.lat,
+        lng: data.lng,
+        status: "available",
+        lastUpdated: ts,
+        ts,
+      });
       this.realtimeService.emitToRoom("admin", "provider_location_update", {
         providerId: userId,
         lat: data.lat,
@@ -550,6 +576,51 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     }
 
     return { ok: true, ts };
+  }
+
+  @SubscribeMessage("provider_status")
+  @SubscribeMessage("set_status")
+  async handleProviderStatus(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() data: { status: string },
+  ) {
+    const { userId } = (socket as any);
+    if (!userId) return { ok: false, error: "UNAUTHORIZED" };
+    const status = data?.status || "offline";
+    const redis = getLocationsRedisClient();
+
+    if (status === "offline") {
+      if (redis) {
+        await redis.zrem("providers:locations:online", userId).catch(() => {});
+      }
+      let loc = await this.locationRepo.findOne({ where: { userId } });
+      if (loc) {
+        loc.status = "offline";
+        await this.locationRepo.save(loc);
+      }
+      this.realtimeService.emitToRoom("admin", "provider_offline", {
+        providerId: userId,
+        status: "offline",
+        ts: new Date().toISOString(),
+      });
+    } else {
+      let loc = await this.locationRepo.findOne({ where: { userId } });
+      if (loc) {
+        loc.status = status;
+        await this.locationRepo.save(loc);
+        if (loc.x && loc.y && redis) {
+          await redis.geoadd("providers:locations:online", loc.x, loc.y, userId).catch(() => {});
+        }
+        this.realtimeService.emitToRoom("admin", "location_update", {
+          providerId: userId,
+          lat: loc.y,
+          lng: loc.x,
+          status: loc.status,
+          lastUpdated: loc.locationTimestamp || new Date().toISOString(),
+        });
+      }
+    }
+    return { ok: true, status };
   }
 
   // ─── Dispatch Offer Acceptance & Decline Handlers ───────────────

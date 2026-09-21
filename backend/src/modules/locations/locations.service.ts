@@ -55,28 +55,82 @@ export class LocationsService {
   ) {}
 
   async getAllLocations(): Promise<LocationEntity[]> {
-    const locations = await this.locationRepo.find();
-    const formatted = locations.map(loc => {
-      // Hide location when provider is offline
-      if (loc.role === "provider" && loc.status === "offline") {
-        loc.x = 0;
-        loc.y = 0;
-      }
-      // Provider privacy controls: mask coordinates if privacyMode is active
-      if (loc.role === "provider" && loc.privacyMode) {
-        // Mask coordinate precision to neighborhood level (~1km accuracy) by rounding to 2 decimals
-        loc.x = Math.round(loc.x * 100) / 100;
-        loc.y = Math.round(loc.y * 100) / 100;
-      }
-      return loc;
-    });
+    const redis = getLocationsRedisClient();
+    if (redis) {
+      try {
+        const members: string[] = await redis.zrange("providers:locations:online", 0, -1);
+        if (Array.isArray(members) && members.length > 0) {
+          const positions: Array<[string, string] | null> = await redis.geopos("providers:locations:online", ...members);
+          const onlineProviders: LocationEntity[] = [];
 
-    // Prioritize emergency/critical status locations first
-    return formatted.sort((a, b) => {
-      const aVal = a.status === "critical" ? 1 : 0;
-      const bVal = b.status === "critical" ? 1 : 0;
-      return bVal - aVal;
-    });
+          // Query provider metadata from DB matching online members
+          const locationsFromDb = await this.locationRepo.find();
+          const locMap = new Map<string, LocationEntity>();
+          for (const l of locationsFromDb) {
+            if (l.userId) locMap.set(l.userId, l);
+            locMap.set(l.id, l);
+          }
+
+          for (let i = 0; i < members.length; i++) {
+            const memberId = members[i];
+            const pos = positions[i];
+            if (!pos) continue;
+            const lng = parseFloat(pos[0]);
+            const lat = parseFloat(pos[1]);
+            if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) continue;
+
+            const existing = locMap.get(memberId);
+            const entry = new LocationEntity();
+            entry.id = existing?.id || `loc-${memberId}`;
+            entry.userId = memberId;
+            entry.role = existing?.role || "provider";
+            entry.status = existing?.status && existing.status !== "offline" ? existing.status : "available";
+            entry.accuracy = existing?.accuracy || 5;
+            entry.privacyMode = existing?.privacyMode || false;
+            entry.locationTimestamp = existing?.locationTimestamp || new Date().toISOString();
+            entry.x = lng;
+            entry.y = lat;
+            onlineProviders.push(entry);
+          }
+
+          // Also include any active emergency patients (never offline providers)
+          const activePatients = locationsFromDb.filter(
+            (l) => l.role === "patient" && (l.status === "critical" || l.status === "active") && l.x !== 0 && l.y !== 0
+          );
+
+          return [...onlineProviders, ...activePatients].sort((a, b) => {
+            const aVal = a.status === "critical" ? 1 : 0;
+            const bVal = b.status === "critical" ? 1 : 0;
+            return bVal - aVal;
+          });
+        } else {
+          // Redis has no online providers currently
+          // Include any critical emergency patient overlays, but ZERO offline providers
+          const emergencyPatients = await this.locationRepo.find({
+            where: { role: "patient", status: "critical" },
+          });
+          return emergencyPatients.filter((l) => l.x !== 0 && l.y !== 0);
+        }
+      } catch (err) {
+        // Fallback below if Redis is not configured or fails
+      }
+    }
+
+    // In environments without Redis (e.g. unit tests without Redis daemon),
+    // strictly return ONLY providers that are NOT offline
+    const locations = await this.locationRepo.find();
+    return locations
+      .filter((loc) => {
+        if (loc.role === "provider") {
+          return loc.status !== "offline" && loc.x !== 0 && loc.y !== 0;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        const aVal = a.status === "critical" ? 1 : 0;
+        const bVal = b.status === "critical" ? 1 : 0;
+        return bVal - aVal;
+      });
   }
 
   async updateLocation(
@@ -187,6 +241,24 @@ export class LocationsService {
         }
       } catch (err) {
         // Safe failover
+      }
+    }
+
+    if (this.realtimeService) {
+      if (status === "offline") {
+        this.realtimeService.emitToRoom("admin", "provider_offline", {
+          providerId: userId,
+          status: "offline",
+          ts: new Date().toISOString(),
+        });
+      } else {
+        this.realtimeService.emitToRoom("admin", "location_update", {
+          providerId: userId,
+          lat: loc.y,
+          lng: loc.x,
+          status,
+          lastUpdated: loc.locationTimestamp || new Date().toISOString(),
+        });
       }
     }
 
