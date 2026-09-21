@@ -12,7 +12,7 @@ import { Server, Socket } from "socket.io";
 import { JwtService } from "@nestjs/jwt";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, DataSource } from "typeorm";
-import { Optional } from "@nestjs/common";
+import { Optional, Inject, forwardRef } from "@nestjs/common";
 import { RealtimeService } from "./realtime.service";
 import { PresenceService } from "./presence.service";
 import { LocationEntity } from "../../database/entities/location.entity";
@@ -21,7 +21,7 @@ import { UserEntity } from "../../database/entities/user.entity";
 import { EmergencyEntity } from "../../database/entities/emergency.entity";
 import { ProviderEntity } from "../../database/entities/provider.entity";
 import { parseCookieString } from "../../shared/utils/cookie.util";
-
+import { DispatchCascadeService } from "../appointments/dispatch-cascade.service";
 
 // In-memory socket tracking
 const socketUserMap = new Map<string, { userId: string; role: string; rooms: Set<string>; lastPong: number; lastLocationAt: Map<string, number> }>();
@@ -62,6 +62,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     private readonly dataSource?: DataSource,
     @Optional()
     presenceService?: PresenceService,
+    @Optional()
+    @Inject(forwardRef(() => DispatchCascadeService))
+    private readonly dispatchCascadeService?: DispatchCascadeService,
   ) {
     this.presence = presenceService || new PresenceService();
   }
@@ -464,50 +467,120 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     return { ok: true, nearbyCount: nearbyProviderRooms.size, appointmentId: data?.appointmentId, ts: new Date().toISOString() };
   }
 
-  // ─── Provider Location Updates ───────────────────────────────────
+  // ─── Provider Location Updates & Live Telemetry ─────────────────
 
   @SubscribeMessage("location_update")
   async handleLocationUpdate(
     @ConnectedSocket() socket: Socket,
-    @MessageBody() data: { appointmentId: string; lat: number; lng: number },
+    @MessageBody() data: { appointmentId?: string; lat: number; lng: number },
   ) {
     const { userId, role } = (socket as any);
     if (role !== "provider") return { ok: false, error: "Only providers may send location" };
 
+    if (typeof data.lat !== "number" || typeof data.lng !== "number" || isNaN(data.lat) || isNaN(data.lng)) {
+      return { ok: false, error: "INVALID_COORDINATES" };
+    }
+
     const now = Date.now();
     const info = socketUserMap.get(socket.id);
-    const lastUpdate = info?.lastLocationAt.get(data.appointmentId) || 0;
+    const trackingKey = data.appointmentId || "general_telemetry";
+    const lastUpdate = info?.lastLocationAt.get(trackingKey) || 0;
 
     // Rate-limit: minimum 3 seconds between GPS telemetry updates
     if (now - lastUpdate < 3000) {
       return { ok: false, error: "RATE_LIMITED", message: "Location updates throttled to once every 3s" };
     }
 
-    if (info) info.lastLocationAt.set(data.appointmentId, now);
+    if (info) info.lastLocationAt.set(trackingKey, now);
 
-    // Persist to DB
-    const loc = await this.locationRepo.findOne({ where: { userId } });
-    if (loc) {
-      loc.x = data.lng;
-      loc.y = data.lat;
-      await this.locationRepo.save(loc);
+    // 1. Persist to LocationEntity
+    let loc = await this.locationRepo.findOne({ where: { userId } });
+    if (!loc) {
+      loc = new LocationEntity();
+      loc.id = `loc-${userId}`;
+      loc.userId = userId;
+      loc.role = "provider";
+    }
+    loc.x = data.lng;
+    loc.y = data.lat;
+    loc.status = "available";
+    loc.locationTimestamp = new Date().toISOString();
+    loc.updatedAt = new Date();
+    await this.locationRepo.save(loc);
+
+    // 2. Persist to ProviderEntity
+    if (this.dataSource && this.dataSource.isInitialized) {
+      try {
+        const provRepo = this.dataSource.getRepository(ProviderEntity);
+        const prov = await provRepo.findOne({ where: [{ userId }, { id: userId }] });
+        if (prov) {
+          prov.latitude = data.lat;
+          prov.longitude = data.lng;
+          prov.available = true;
+          await provRepo.save(prov);
+        }
+      } catch (_) {}
     }
 
-    // Relay to appointment room (includes last-updated timestamp)
     const ts = new Date().toISOString();
-    this.realtimeService.emitLocationUpdate(data.appointmentId, userId, data.lat, data.lng, ts);
 
-    // Schedule stale detection after 90 s
-    const staleTimer = setTimeout(() => {
-      const current = socketUserMap.get(socket.id);
-      const lastAt = current?.lastLocationAt.get(data.appointmentId) ?? 0;
-      if (Date.now() - lastAt >= 90000) {
-        this.realtimeService.emitLocationStale(data.appointmentId, userId);
-      }
-    }, 90000);
-    staleTimer.unref();
+    // 3. If tied to an active appointment, relay to appointment room
+    if (data.appointmentId) {
+      this.realtimeService.emitLocationUpdate(data.appointmentId, userId, data.lat, data.lng, ts);
+
+      // Schedule stale detection after 90 s
+      const staleTimer = setTimeout(() => {
+        const current = socketUserMap.get(socket.id);
+        const lastAt = current?.lastLocationAt.get(data.appointmentId!) ?? 0;
+        if (Date.now() - lastAt >= 90000) {
+          this.realtimeService.emitLocationStale(data.appointmentId!, userId);
+        }
+      }, 90000);
+      staleTimer.unref();
+    }
+
+    // 4. Relay to admin room for real-time map tracking
+    this.realtimeService.emitToRoom("admin", "provider_location_update", {
+      providerId: userId,
+      lat: data.lat,
+      lng: data.lng,
+      status: "available",
+      ts,
+    });
 
     return { ok: true, ts };
+  }
+
+  // ─── Dispatch Offer Acceptance & Decline Handlers ───────────────
+
+  @SubscribeMessage("accept_offer")
+  async handleAcceptOffer(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() data: { appointmentId: string },
+  ) {
+    const { userId } = (socket as any);
+    if (!data?.appointmentId) return { ok: false, message: "appointmentId required" };
+
+    if (this.dispatchCascadeService) {
+      const res = await this.dispatchCascadeService.handleAccept(data.appointmentId, userId);
+      return res;
+    }
+    return { ok: false, message: "Dispatch cascade service unavailable" };
+  }
+
+  @SubscribeMessage("decline_offer")
+  async handleDeclineOffer(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() data: { appointmentId: string },
+  ) {
+    const { userId } = (socket as any);
+    if (!data?.appointmentId) return { ok: false, message: "appointmentId required" };
+
+    if (this.dispatchCascadeService) {
+      await this.dispatchCascadeService.handleDecline(data.appointmentId, userId);
+      return { ok: true, message: "Offer declined" };
+    }
+    return { ok: false, message: "Dispatch cascade service unavailable" };
   }
 
   // ─── Presence Inquiries ──────────────────────────────────────────

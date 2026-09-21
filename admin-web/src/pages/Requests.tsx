@@ -3,7 +3,7 @@ import { SearchBar, Select, Card, DataTable, StatusBadge, SkeletonCard, Button, 
 import { api } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useRealtimeSocket } from "../hooks/useRealtimeSocket";
-import { Inbox, Clock, CheckCircle2, AlertCircle, Eye, RefreshCw } from "lucide-react";
+import { Inbox, Clock, CheckCircle2, AlertCircle, Eye, RefreshCw, MessageSquare, Lock } from "lucide-react";
 
 export default function RequestsSection() {
   const { token } = useAuth();
@@ -13,6 +13,14 @@ export default function RequestsSection() {
   const [loading, setLoading] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState<any>(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [chatTranscript, setChatTranscript] = useState<{
+    conversationId: string | null;
+    messages: any[];
+    isClosed: boolean;
+    readOnly: boolean;
+    appointmentStatus: string | null;
+  } | null>(null);
+  const [loadingChat, setLoadingChat] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -48,6 +56,14 @@ export default function RequestsSection() {
     }
   }, []);
 
+  const loadChatTranscript = useCallback((appointmentId: string) => {
+    setLoadingChat(true);
+    api.getAppointmentTranscript(appointmentId)
+      .then((res) => setChatTranscript(res))
+      .catch(() => setChatTranscript(null))
+      .finally(() => setLoadingChat(false));
+  }, []);
+
   const handleRealtimeEvent = useCallback((event: string, payload: any) => {
     if (event === "new_service_request" || event === "appointment_status_update") {
       const data = payload?.data || payload;
@@ -66,10 +82,23 @@ export default function RequestsSection() {
       } else {
         loadData();
       }
+    } else if (event === "new_message") {
+      const data = payload?.data || payload;
+      if (selectedRequest?.id && (data?.appointmentId === selectedRequest.id || data?.conversationId === chatTranscript?.conversationId)) {
+        loadChatTranscript(selectedRequest.id);
+      }
     }
-  }, [loadData]);
+  }, [loadData, selectedRequest, chatTranscript, loadChatTranscript]);
 
   useRealtimeSocket({ token, onEvent: handleRealtimeEvent });
+
+  useEffect(() => {
+    if (selectedRequest?.id && detailsModalOpen) {
+      loadChatTranscript(selectedRequest.id);
+    } else {
+      setChatTranscript(null);
+    }
+  }, [selectedRequest, detailsModalOpen, loadChatTranscript]);
 
   useEffect(() => {
     loadData();
@@ -345,6 +374,54 @@ export default function RequestsSection() {
                   <span className="text-[#18232e] dark:text-white">{selectedRequest.visitNotes}</span>
                 </div>
               )}
+            </div>
+
+            {/* Service-Lifecycle-Bound Chat Transcript */}
+            <div className="p-3 bg-white dark:bg-slate-850 rounded-lg border border-[#e2e8ee] dark:border-slate-700 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 font-bold text-xs text-[#18232e] dark:text-white">
+                  <MessageSquare size={14} className="text-[#0d7c6a]" />
+                  <span>Service Chat Transcript</span>
+                </div>
+                {chatTranscript?.isClosed || ["completed", "cancelled", "rejected", "expired"].includes(selectedRequest.status) ? (
+                  <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 dark:bg-amber-950/60 dark:text-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Lock size={10} /> Session Closed
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-300 px-2 py-0.5 rounded-full">
+                    Active Session
+                  </span>
+                )}
+              </div>
+
+              {/* Lifecycle Closure Banner */}
+              {(chatTranscript?.isClosed || ["completed", "cancelled", "rejected", "expired"].includes(selectedRequest.status)) && (
+                <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-md flex items-center gap-2 text-amber-900 dark:text-amber-200 text-xs font-medium">
+                  <Lock size={14} className="shrink-0 text-amber-700" />
+                  <span>This service session has ended. Chat is now closed.</span>
+                </div>
+              )}
+
+              {/* Message transcript list */}
+              <div className="max-h-44 overflow-y-auto space-y-2 p-2 bg-[#f8fafc] dark:bg-slate-900 rounded-md border border-[#e2e8ee] dark:border-slate-800">
+                {loadingChat ? (
+                  <div className="py-4 text-center text-[#8a9aaa] text-[11px]">Loading transcript...</div>
+                ) : !chatTranscript?.messages?.length ? (
+                  <div className="py-4 text-center text-[#8a9aaa] text-[11px]">No chat messages recorded for this service session.</div>
+                ) : (
+                  chatTranscript.messages.map((m: any) => (
+                    <div key={m.id || Math.random()} className="p-2 rounded bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 text-[11px]">
+                      <div className="flex justify-between text-[10px] text-[#8a9aaa] mb-1">
+                        <span className="font-semibold text-[#4a5a6a] dark:text-slate-300">
+                          {m.senderId === selectedRequest.patientId ? "Patient" : "Provider"}
+                        </span>
+                        <span>{new Date(m.createdAt || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                      </div>
+                      <p className="text-[#18232e] dark:text-white">{m.text}</p>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
 
             <div className="flex justify-end pt-2">

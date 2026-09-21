@@ -42,6 +42,7 @@ class MobileRealtimeService {
   final _chatMessagesController = StreamController<Map<String, dynamic>>.broadcast();
   final _typingController = StreamController<Map<String, dynamic>>.broadcast();
   final _messagesReadController = StreamController<Map<String, dynamic>>.broadcast();
+  final _serviceOffersController = StreamController<Map<String, dynamic>>.broadcast();
 
   final Set<String> _joinedRooms = {};
   DateTime? _lastLocationSentAt;
@@ -57,6 +58,7 @@ class MobileRealtimeService {
   Stream<Map<String, dynamic>> get chatMessagesStream => _chatMessagesController.stream;
   Stream<Map<String, dynamic>> get typingStream => _typingController.stream;
   Stream<Map<String, dynamic>> get messagesReadStream => _messagesReadController.stream;
+  Stream<Map<String, dynamic>> get serviceOffersStream => _serviceOffersController.stream;
 
   RealtimeConnectionState get currentState => _currentState;
   bool get isConnected => _currentState == RealtimeConnectionState.connected;
@@ -150,6 +152,26 @@ class MobileRealtimeService {
       if (payload.isNotEmpty) _emergencyAlertsController.add(payload);
     });
 
+    // High-priority live dispatch service offer event listener
+    _realtimeSocket!.on('service_offer', (data) {
+      final payload = unwrap(data);
+      if (payload.isNotEmpty) _serviceOffersController.add(payload);
+    });
+
+    _realtimeSocket!.on('offer_cancelled', (data) {
+      final payload = unwrap(data);
+      if (payload.isNotEmpty) {
+        _serviceOffersController.add({...payload, 'event': 'offer_cancelled'});
+      }
+    });
+
+    _realtimeSocket!.on('offer_expired', (data) {
+      final payload = unwrap(data);
+      if (payload.isNotEmpty) {
+        _serviceOffersController.add({...payload, 'event': 'offer_expired'});
+      }
+    });
+
     // Initialize /chat socket
     _chatSocket = io.io(
       '$_baseUrl/chat',
@@ -212,7 +234,7 @@ class MobileRealtimeService {
 
   /// Send provider location with 3-second client-side throttle & optional privacy masking
   bool sendLocationUpdate({
-    required String appointmentId,
+    String? appointmentId,
     required double latitude,
     required double longitude,
     bool privacyMode = false,
@@ -233,12 +255,26 @@ class MobileRealtimeService {
       lng = double.parse(lng.toStringAsFixed(2));
     }
 
-    _realtimeSocket?.emit('location_update', {
-      'appointmentId': appointmentId,
+    final payload = <String, dynamic>{
       'lat': lat,
       'lng': lng,
-    });
+    };
+    if (appointmentId != null && appointmentId.isNotEmpty) {
+      payload['appointmentId'] = appointmentId;
+    }
+
+    _realtimeSocket?.emit('location_update', payload);
     return true;
+  }
+
+  /// Accept incoming high-priority dispatch offer
+  void acceptOffer(String appointmentId) {
+    _realtimeSocket?.emit('accept_offer', {'appointmentId': appointmentId});
+  }
+
+  /// Decline incoming dispatch offer (cascades to next closest provider)
+  void declineOffer(String appointmentId) {
+    _realtimeSocket?.emit('decline_offer', {'appointmentId': appointmentId});
   }
 
   /// Send chat message
@@ -296,5 +332,6 @@ class MobileRealtimeService {
     _chatMessagesController.close();
     _typingController.close();
     _messagesReadController.close();
+    _serviceOffersController.close();
   }
 }

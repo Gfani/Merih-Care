@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -22,7 +23,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String? _conversationId;
   String _otherPartyName = 'Care Specialist';
   bool _isOtherOnline = true;
+  bool _isChatClosed = false;
   StreamSubscription? _chatMsgSub;
+  StreamSubscription? _aptSub;
 
   @override
   void initState() {
@@ -33,6 +36,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void dispose() {
     _chatMsgSub?.cancel();
+    _aptSub?.cancel();
     if (_conversationId != null) {
       ref.read(realtimeServiceProvider).leaveConversation(_conversationId!);
     }
@@ -48,10 +52,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final currentUserId = auth.user?['id']?.toString() ?? '';
 
     try {
-      // 1. Fetch appointment details to determine specialist/patient name
+      // 1. Fetch appointment details to determine specialist/patient name and status
       try {
         final aptRes = await client.dio.get('/appointments/${widget.appointmentId}');
         final apt = aptRes.data is Map<String, dynamic> ? aptRes.data : {};
+        final status = (apt['status'] ?? '').toString().toLowerCase().trim();
+        const activeStatuses = ['accepted', 'on_the_way', 'arrived', 'in_progress'];
+        if (status.isNotEmpty && !activeStatuses.contains(status)) {
+          _isChatClosed = true;
+        }
+
         final isProvider = auth.user?['role'] == 'provider';
         if (isProvider) {
           _otherPartyName = apt['patientName']?.toString() ?? 'Patient';
@@ -97,6 +107,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       try {
         final msgRes = await client.dio.get('/chat/conversations/$_conversationId/messages');
         final dynamic msgData = msgRes.data;
+        if (msgData is Map<String, dynamic>) {
+          if (msgData['isClosed'] == true || msgData['readOnly'] == true) {
+            _isChatClosed = true;
+          }
+        }
+
         final List rawMsgs = (msgData is List)
             ? msgData
             : (msgData is Map<String, dynamic> && msgData['data'] is List
@@ -134,6 +150,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               }
             });
             _scrollToBottom();
+          }
+        }
+      });
+
+      // 6. Listen to appointment status updates via WebSocket
+      _aptSub = ref.read(realtimeServiceProvider).appointmentUpdatesStream.listen((data) {
+        final aptId = (data['id'] ?? data['appointmentId'])?.toString();
+        if (aptId == widget.appointmentId) {
+          final status = (data['status'] ?? '').toString().toLowerCase().trim();
+          const activeStatuses = ['accepted', 'on_the_way', 'arrived', 'in_progress'];
+          if (mounted) {
+            setState(() {
+              if (status.isNotEmpty && !activeStatuses.contains(status)) {
+                _isChatClosed = true;
+              }
+            });
           }
         }
       });
@@ -179,6 +211,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _sendMessage() async {
+    if (_isChatClosed) return;
+
     final text = _textController.text.trim();
     if (text.isEmpty) return;
 
@@ -227,14 +261,37 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           }
         });
       }
-    } catch (_) {
+    } catch (e) {
+      bool sessionClosed = false;
+      if (e is DioException) {
+        final respData = e.response?.data;
+        if (respData is Map &&
+            (respData['errorCode'] == 'CHAT_SESSION_CLOSED' || respData['code'] == 'CHAT_SESSION_CLOSED')) {
+          sessionClosed = true;
+        } else if (e.response?.statusCode == 403) {
+          sessionClosed = true;
+        }
+      }
       if (mounted) {
         setState(() {
-          final idx = _messages.indexWhere((m) => m['id'] == tempId);
-          if (idx >= 0) {
-            _messages[idx]['status'] = 'sent';
+          if (sessionClosed) {
+            _isChatClosed = true;
+            _messages.removeWhere((m) => m['id'] == tempId);
+          } else {
+            final idx = _messages.indexWhere((m) => m['id'] == tempId);
+            if (idx >= 0) {
+              _messages[idx]['status'] = 'sent';
+            }
           }
         });
+        if (sessionClosed) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('This service session has ended. Chat is now closed.'),
+              backgroundColor: Colors.amber,
+            ),
+          );
+        }
       }
     }
   }
@@ -356,46 +413,71 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       ),
           ),
           SafeArea(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: Colors.grey.shade200)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF4F7F9),
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: TextField(
-                        controller: _textController,
-                        onSubmitted: (_) => _sendMessage(),
-                        decoration: const InputDecoration(
-                          hintText: 'Type your message...',
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
+            child: _isChatClosed
+                ? Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFFBEB),
+                      border: Border(top: BorderSide(color: Colors.amber.shade300)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.lock_outline, color: Colors.amber.shade900, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'This service session has ended. Chat is now closed.',
+                            style: TextStyle(
+                              color: Colors.amber.shade900,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
+                    ),
+                  )
+                : Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border(top: BorderSide(color: Colors.grey.shade200)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF4F7F9),
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: TextField(
+                              controller: _textController,
+                              onSubmitted: (_) => _sendMessage(),
+                              decoration: const InputDecoration(
+                                hintText: 'Type your message...',
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        InkWell(
+                          onTap: _sendMessage,
+                          borderRadius: BorderRadius.circular(24),
+                          child: CircleAvatar(
+                            radius: 20,
+                            backgroundColor: theme.primaryColor,
+                            child: const Icon(Icons.send, color: Colors.white, size: 18),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  InkWell(
-                    onTap: _sendMessage,
-                    borderRadius: BorderRadius.circular(24),
-                    child: CircleAvatar(
-                      radius: 20,
-                      backgroundColor: theme.primaryColor,
-                      child: const Icon(Icons.send, color: Colors.white, size: 18),
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ),
         ],
       ),

@@ -9,6 +9,7 @@ import {
   MessageReportEntity,
 } from "../../database/entities/chat-chat.entity";
 import { AuditLogEntity } from "../../database/entities/logs-delivery.entity";
+import { AppointmentEntity } from "../../database/entities/appointment.entity";
 
 @Injectable()
 export class ChatService {
@@ -127,6 +128,34 @@ export class ChatService {
     const conv = await this.conversationRepo.findOne({ where: { id: conversationId } });
     if (!conv) throw new NotFoundException("Conversation not found");
 
+    // Service-Lifecycle-Bound Messaging Guard:
+    // Verify that the associated appointment status is actively ongoing (accepted, on_the_way, arrived, in_progress).
+    // If appointment status is completed, cancelled, rejected, expired, or no_show, reject incoming messages
+    // immediately with error code CHAT_SESSION_CLOSED and return a read-only state.
+    if (conv.appointmentId && this.dataSource && this.dataSource.isInitialized) {
+      const aptRepo = this.dataSource.getRepository(AppointmentEntity);
+      const apt = await aptRepo.findOne({ where: { id: conv.appointmentId } });
+      if (apt) {
+        const activeStatuses = ["accepted", "on_the_way", "arrived", "in_progress"];
+        const normalizedStatus = (apt.status || "").toLowerCase().trim();
+        if (!activeStatuses.includes(normalizedStatus)) {
+          const err: any = new ForbiddenException({
+            statusCode: 403,
+            errorCode: "CHAT_SESSION_CLOSED",
+            error: "Forbidden",
+            message: "This service session has ended. Chat is now closed.",
+            readOnly: true,
+            appointmentId: apt.id,
+            appointmentStatus: apt.status,
+          });
+          err.code = "CHAT_SESSION_CLOSED";
+          err.readOnly = true;
+          err.appointmentStatus = apt.status;
+          throw err;
+        }
+      }
+    }
+
     const message = new MessageEntity();
     message.id = `msg-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     message.conversationId = conversationId;
@@ -152,7 +181,15 @@ export class ChatService {
     userId: string,
     page = 1,
     limit = 30,
-  ): Promise<{ messages: MessageEntity[]; total: number; page: number; totalPages: number }> {
+  ): Promise<{
+    messages: MessageEntity[];
+    total: number;
+    page: number;
+    totalPages: number;
+    isClosed: boolean;
+    readOnly: boolean;
+    appointmentStatus: string | null;
+  }> {
     const participant = await this.participantRepo.findOne({
       where: { conversationId, userId },
     });
@@ -160,6 +197,18 @@ export class ChatService {
 
     const conv = await this.conversationRepo.findOne({ where: { id: conversationId } });
     if (!conv) throw new NotFoundException("Conversation not found");
+
+    let isClosed = false;
+    let appointmentStatus: string | null = null;
+    if (conv.appointmentId && this.dataSource && this.dataSource.isInitialized) {
+      const aptRepo = this.dataSource.getRepository(AppointmentEntity);
+      const apt = await aptRepo.findOne({ where: { id: conv.appointmentId } });
+      if (apt) {
+        appointmentStatus = apt.status;
+        const activeStatuses = ["accepted", "on_the_way", "arrived", "in_progress"];
+        isClosed = !activeStatuses.includes((apt.status || "").toLowerCase().trim());
+      }
+    }
 
     const skip = (page - 1) * limit;
 
@@ -180,6 +229,53 @@ export class ChatService {
       total,
       page,
       totalPages: Math.ceil(total / limit),
+      isClosed,
+      readOnly: isClosed,
+      appointmentStatus,
+    };
+  }
+
+  async getAppointmentTranscript(appointmentId: string): Promise<{
+    conversationId: string | null;
+    messages: MessageEntity[];
+    isClosed: boolean;
+    readOnly: boolean;
+    appointmentStatus: string | null;
+  }> {
+    const conv = await this.conversationRepo.findOne({ where: { appointmentId } });
+    if (!conv) {
+      return {
+        conversationId: null,
+        messages: [],
+        isClosed: false,
+        readOnly: false,
+        appointmentStatus: null,
+      };
+    }
+
+    let isClosed = false;
+    let appointmentStatus: string | null = null;
+    if (this.dataSource && this.dataSource.isInitialized) {
+      const aptRepo = this.dataSource.getRepository(AppointmentEntity);
+      const apt = await aptRepo.findOne({ where: { id: appointmentId } });
+      if (apt) {
+        appointmentStatus = apt.status;
+        const activeStatuses = ["accepted", "on_the_way", "arrived", "in_progress"];
+        isClosed = !activeStatuses.includes((apt.status || "").toLowerCase().trim());
+      }
+    }
+
+    const messages = await this.messageRepo.find({
+      where: { conversationId: conv.id, isDeleted: false },
+      order: { createdAt: "ASC" },
+    } as any);
+
+    return {
+      conversationId: conv.id,
+      messages,
+      isClosed,
+      readOnly: true,
+      appointmentStatus,
     };
   }
 

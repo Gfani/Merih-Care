@@ -8,6 +8,7 @@ import { ProviderEntity } from "../../database/entities/provider.entity";
 import { ServiceEntity } from "../../database/entities/service.entity";
 import { RealtimeService } from "../realtime/realtime.service";
 import { NotificationsService } from "../notifications/notifications.service";
+import { DispatchCascadeService } from "./dispatch-cascade.service";
 import * as crypto from "crypto";
 
 @Injectable()
@@ -24,6 +25,8 @@ export class AppointmentsService {
     @Optional()
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService?: NotificationsService,
+    @Optional()
+    private readonly dispatchCascadeService?: DispatchCascadeService,
   ) {}
 
   async getAllAppointments(limit = 50, offset = 0, patientId?: string, caller?: any): Promise<AppointmentEntity[]> {
@@ -286,11 +289,17 @@ export class AppointmentsService {
       this.realtimeService.emitToRoom("admin", "new_service_request", eventPayload);
       this.realtimeService.emitToRoom("admin", "appointment_status_update", eventPayload);
 
-      // If open / unassigned request without a specific doctor, broadcast to providers room
+      // If open / unassigned request without a specific doctor:
       if (!result.providerId) {
-        this.realtimeService.emitNewServiceRequest(eventPayload);
-        this.realtimeService.emitToRoom("providers", "new_service_request", eventPayload);
-        this.realtimeService.emitToRoom("providers", "appointment_status_update", eventPayload);
+        if (this.dispatchCascadeService) {
+          const lat = data.latitude ?? data.lat;
+          const lng = data.longitude ?? data.lng;
+          this.dispatchCascadeService.startCascade(result, lat, lng).catch(() => {});
+        } else {
+          this.realtimeService.emitNewServiceRequest(eventPayload);
+          this.realtimeService.emitToRoom("providers", "new_service_request", eventPayload);
+          this.realtimeService.emitToRoom("providers", "appointment_status_update", eventPayload);
+        }
       }
 
       // 2. Persist notification and notify all Platform Administrators

@@ -56,7 +56,7 @@ class LocationTrackingService {
           _locationStreamController.add(position);
 
           // Emit live location over WebSocket
-          if (appointmentId != null && realtimeService != null) {
+          if (realtimeService != null) {
             realtimeService.sendLocationUpdate(
               appointmentId: appointmentId,
               latitude: position.latitude,
@@ -90,7 +90,7 @@ class LocationTrackingService {
       _lon = position.longitude;
       _locationStreamController.add(position);
 
-      if (appointmentId != null && realtimeService != null) {
+      if (realtimeService != null) {
         realtimeService.sendLocationUpdate(
           appointmentId: appointmentId,
           latitude: position.latitude,
@@ -136,7 +136,7 @@ class LocationTrackingService {
 
       _locationStreamController.add(simulated);
 
-      if (appointmentId != null && realtimeService != null) {
+      if (realtimeService != null) {
         realtimeService.sendLocationUpdate(
           appointmentId: appointmentId,
           latitude: _lat,

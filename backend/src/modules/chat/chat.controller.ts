@@ -126,6 +126,11 @@ export class ChatController {
     );
   }
 
+  @Get("appointments/:appointmentId/transcript")
+  async getAppointmentTranscript(@Param("appointmentId") appointmentId: string) {
+    return this.chatService.getAppointmentTranscript(appointmentId);
+  }
+
   @Post("conversations/:id/messages")
   async sendMessage(
     @Param("id") conversationId: string,

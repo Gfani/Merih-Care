@@ -1231,4 +1231,32 @@ export const api = {
       throw error;
     }
   },
+
+  async getAppointmentTranscript(appointmentId: string): Promise<{
+    conversationId: string | null;
+    messages: any[];
+    isClosed: boolean;
+    readOnly: boolean;
+    appointmentStatus: string | null;
+  }> {
+    try {
+      const res = await axios.get(`${API_URL}/chat/appointments/${appointmentId}/transcript`, { headers: getHeaders() });
+      const data = res.data;
+      return {
+        conversationId: data?.conversationId || null,
+        messages: Array.isArray(data?.messages) ? data.messages : [],
+        isClosed: !!data?.isClosed,
+        readOnly: true,
+        appointmentStatus: data?.appointmentStatus || null,
+      };
+    } catch {
+      return {
+        conversationId: null,
+        messages: [],
+        isClosed: false,
+        readOnly: true,
+        appointmentStatus: null,
+      };
+    }
+  },
 };

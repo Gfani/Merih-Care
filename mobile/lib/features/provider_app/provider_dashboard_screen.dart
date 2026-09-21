@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/network/network_providers.dart';
 import '../auth/auth_provider.dart';
 import '../../core/location/location_service.dart';
+import '../../core/location/location_tracking_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/create_design_widgets.dart';
 import '../../shared/widgets/offline_banner.dart';
@@ -30,12 +31,25 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
   Timer? _pollTimer;
   StreamSubscription? _serviceReqSub;
   StreamSubscription? _appointmentSub;
+  StreamSubscription? _serviceOfferSub;
+  String? _currentOfferAptId;
 
   @override
   void initState() {
     super.initState();
     ref.read(realtimeServiceProvider).joinProviders();
     _loadDashboardData();
+
+    // Stream live GPS coordinates every 5-8 seconds when Online
+    if (_isOnline) {
+      final client = ref.read(apiClientProvider);
+      final realtime = ref.read(realtimeServiceProvider);
+      ref.read(locationTrackingProvider).startTracking(
+        providerId: _myProviderId ?? '',
+        client: client,
+        realtimeService: realtime,
+      );
+    }
 
     // Listen to live realtime dispatches from backend
     _serviceReqSub = ref.read(realtimeServiceProvider).serviceRequestsStream.listen((data) {
@@ -76,6 +90,43 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
       }
     });
 
+    // Listen for high-priority Uber-style incoming service offers
+    _serviceOfferSub = ref.read(realtimeServiceProvider).serviceOffersStream.listen((data) {
+      if (!mounted || !_isOnline) return;
+
+      final event = data['event'];
+      final aptId = data['appointmentId']?.toString();
+
+      if (event == 'offer_cancelled' || event == 'offer_expired') {
+        if (_currentOfferAptId == aptId) {
+          Navigator.of(context, rootNavigator: true).pop();
+          _currentOfferAptId = null;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(event == 'offer_expired' ? 'Offer timed out and cascaded to next clinician.' : 'Offer was reassigned.'),
+              backgroundColor: Colors.grey.shade800,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Check if this offer is intended for this provider
+      final targetUserId = data['providerUserId']?.toString();
+      final targetProvId = data['providerId']?.toString();
+      final authUser = ref.read(authProvider).user;
+      final myUserId = authUser?['id']?.toString() ?? '';
+
+      if (targetUserId != null && targetUserId.isNotEmpty && targetUserId != myUserId) {
+        if (_myProviderId != null && targetProvId != null && targetProvId != _myProviderId) {
+          return; // Not for this provider
+        }
+      }
+
+      _showIncomingOfferModal(data);
+    });
+
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       if (mounted && _isOnline) {
         _loadDashboardData();
@@ -87,7 +138,9 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
   void dispose() {
     _serviceReqSub?.cancel();
     _appointmentSub?.cancel();
+    _serviceOfferSub?.cancel();
     _pollTimer?.cancel();
+    ref.read(locationTrackingProvider).stopTracking();
     super.dispose();
   }
 
@@ -115,6 +168,16 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
         }
         if (pData['reviewCount'] != null) {
           reviews = (pData['reviewCount'] as num).toInt();
+        }
+
+        // Background GPS Telemetry Streaming when online
+        if (_isOnline) {
+          final realtime = ref.read(realtimeServiceProvider);
+          ref.read(locationTrackingProvider).startTracking(
+            providerId: _myProviderId ?? '',
+            client: client,
+            realtimeService: realtime,
+          );
         }
       } catch (_) {
         final authUser = ref.read(authProvider).user;
@@ -217,17 +280,81 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
     try {
       final client = ref.read(apiClientProvider);
       await client.dio.put('/providers/me', data: {'available': next});
+
+      final realtime = ref.read(realtimeServiceProvider);
+      final tracker = ref.read(locationTrackingProvider);
+      if (next) {
+        tracker.startTracking(
+          providerId: _myProviderId ?? '',
+          client: client,
+          realtimeService: realtime,
+        );
+      } else {
+        tracker.stopTracking();
+      }
     } catch (e) {
       print('[PROVIDER] Failed to sync availability: $e');
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(_isOnline ? 'You are now Online and receiving patient dispatches.' : 'You are now Offline.'),
+        content: Text(_isOnline ? 'You are now Online and streaming live GPS coordinates.' : 'You are now Offline.'),
         backgroundColor: _isOnline ? AppTheme.primaryColor : AppTheme.textSecondary,
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  void _showIncomingOfferModal(Map<String, dynamic> offer) {
+    final aptId = offer['appointmentId']?.toString();
+    if (aptId == null) return;
+    if (_currentOfferAptId == aptId) return; // already displaying this offer
+    _currentOfferAptId = aptId;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => ServiceOfferModal(
+        offer: offer,
+        onAccept: () {
+          Navigator.of(dialogCtx, rootNavigator: true).pop();
+          _currentOfferAptId = null;
+          ref.read(realtimeServiceProvider).acceptOffer(aptId);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Care Offer Accepted! Initializing service session.'),
+              backgroundColor: AppTheme.primaryColor,
+            ),
+          );
+          _loadDashboardData();
+        },
+        onDecline: () {
+          Navigator.of(dialogCtx, rootNavigator: true).pop();
+          _currentOfferAptId = null;
+          ref.read(realtimeServiceProvider).declineOffer(aptId);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Offer declined. Cascading to next available clinician.'),
+              backgroundColor: Color(0xFFDC2626),
+            ),
+          );
+        },
+        onTimeout: () {
+          Navigator.of(dialogCtx, rootNavigator: true).pop();
+          _currentOfferAptId = null;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Offer expired (30s window elapsed). Cascaded to next clinician.'),
+              backgroundColor: Colors.grey,
+            ),
+          );
+        },
+      ),
+    ).then((_) {
+      if (_currentOfferAptId == aptId) {
+        _currentOfferAptId = null;
+      }
+    });
   }
 
   @override
@@ -664,6 +791,278 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
         const SizedBox(height: 2),
         Text(label, style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
       ],
+    );
+  }
+}
+
+class ServiceOfferModal extends StatefulWidget {
+  final Map<String, dynamic> offer;
+  final VoidCallback onAccept;
+  final VoidCallback onDecline;
+  final VoidCallback onTimeout;
+
+  const ServiceOfferModal({
+    super.key,
+    required this.offer,
+    required this.onAccept,
+    required this.onDecline,
+    required this.onTimeout,
+  });
+
+  @override
+  State<ServiceOfferModal> createState() => _ServiceOfferModalState();
+}
+
+class _ServiceOfferModalState extends State<ServiceOfferModal> {
+  late int _secondsRemaining;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    final totalTimeout = (widget.offer['timeoutSeconds'] as num?)?.toInt() ?? 30;
+    final expiresAt = (widget.offer['expiresAt'] as num?)?.toInt();
+    if (expiresAt != null) {
+      final remaining = ((expiresAt - DateTime.now().millisecondsSinceEpoch) / 1000).ceil();
+      _secondsRemaining = remaining > 0 ? remaining : totalTimeout;
+    } else {
+      _secondsRemaining = totalTimeout;
+    }
+
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_secondsRemaining <= 1) {
+        timer.cancel();
+        widget.onTimeout();
+      } else {
+        setState(() {
+          _secondsRemaining--;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final offer = widget.offer;
+    final patientName = offer['patientName']?.toString() ?? 'Patient';
+    final service = offer['service']?.toString() ?? 'Urgent Clinical Visit';
+    final address = offer['address']?.toString() ?? 'Addis Ababa';
+    final distanceKm = offer['distanceKm'] != null ? '${offer['distanceKm']} km' : 'Nearby';
+    final etaMinutes = offer['etaMinutes'] != null ? '${offer['etaMinutes']} min' : '5 min';
+    final fee = offer['fee'] ?? offer['amount'] ?? 0;
+    final progress = (_secondsRemaining / 30.0).clamp(0.0, 1.0);
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      backgroundColor: Colors.white,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Top Badge & Countdown Indicator
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE6F4F1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.bolt, color: AppTheme.primaryColor, size: 14),
+                      SizedBox(width: 4),
+                      Text(
+                        'HIGH PRIORITY OFFER',
+                        style: TextStyle(
+                          color: AppTheme.primaryColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Circular Timer Widget
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: CircularProgressIndicator(
+                        value: progress,
+                        strokeWidth: 4,
+                        backgroundColor: Colors.grey.shade200,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          _secondsRemaining <= 10 ? const Color(0xFFDC2626) : AppTheme.primaryColor,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${_secondsRemaining}s',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: _secondsRemaining <= 10 ? const Color(0xFFDC2626) : AppTheme.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Service Title & Gross Fee
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        service,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Patient: $patientName',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppTheme.textMuted,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFBBF7D0)),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'EARNINGS',
+                        style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Color(0xFF166534)),
+                      ),
+                      Text(
+                        'ETB $fee',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF16A34A),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Distance & ETA Chips
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.near_me_outlined, size: 16, color: AppTheme.primaryColor),
+                  const SizedBox(width: 6),
+                  Text(
+                    distanceKm,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                  ),
+                  const Spacer(),
+                  const Icon(Icons.timer_outlined, size: 16, color: AppTheme.secondaryColor),
+                  const SizedBox(width: 6),
+                  Text(
+                    'ETA $etaMinutes',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.secondaryColor),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Location
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.location_on_outlined, size: 16, color: AppTheme.textMuted),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    address,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 22),
+
+            // Accept & Decline Buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: widget.onDecline,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFDC2626),
+                      side: const BorderSide(color: Color(0xFFFECACA)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: const Text('Decline', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton(
+                    onPressed: widget.onAccept,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0F766E),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: const Text('Accept Offer', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

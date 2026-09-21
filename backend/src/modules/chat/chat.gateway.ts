@@ -132,7 +132,22 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       this.server.to(`conv:${data.conversationId}`).emit("new_message", message);
       return { event: "send_message", data: { success: true, messageId: message.id } };
     } catch (err: any) {
-      socket.emit("error", { message: err.message });
+      const isClosed = err?.code === "CHAT_SESSION_CLOSED" || err?.response?.errorCode === "CHAT_SESSION_CLOSED";
+      socket.emit("error", {
+        code: isClosed ? "CHAT_SESSION_CLOSED" : "CHAT_ERROR",
+        message: err.message,
+        readOnly: isClosed,
+        conversationId: data.conversationId,
+      });
+      return {
+        event: "send_message",
+        data: {
+          success: false,
+          error: err.message,
+          code: isClosed ? "CHAT_SESSION_CLOSED" : "CHAT_ERROR",
+          readOnly: isClosed,
+        },
+      };
     }
   }
 

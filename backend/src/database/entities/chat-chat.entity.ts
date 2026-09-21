@@ -1,4 +1,5 @@
-import { Entity, Column, PrimaryColumn, Index } from "typeorm";
+import { Entity, Column, PrimaryColumn, Index, ManyToOne, JoinColumn } from "typeorm";
+import { AppointmentEntity } from "./appointment.entity";
 
 @Entity("conversations")
 export class ConversationEntity {
@@ -11,6 +12,10 @@ export class ConversationEntity {
   @Column({ nullable: true })
   @Index()
   appointmentId: string; // links chat to appointment context
+
+  @ManyToOne(() => AppointmentEntity, { onDelete: "CASCADE", nullable: true })
+  @JoinColumn({ name: "appointmentId" })
+  appointment?: AppointmentEntity;
 
   @Column({ default: false })
   isProtected: boolean; // medical info protection flag

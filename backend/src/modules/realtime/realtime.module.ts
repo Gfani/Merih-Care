@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { JwtModule } from "@nestjs/jwt";
 import { ConfigModule, ConfigService } from "@nestjs/config";
@@ -7,6 +7,7 @@ import { RealtimeService } from "./realtime.service";
 import { PresenceService } from "./presence.service";
 import { LocationEntity } from "../../database/entities/location.entity";
 import { AppointmentEntity } from "../../database/entities/appointment.entity";
+import { AppointmentsModule } from "../appointments/appointments.module";
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { AppointmentEntity } from "../../database/entities/appointment.entity";
       }),
       inject: [ConfigService],
     }),
+    forwardRef(() => AppointmentsModule),
   ],
   providers: [RealtimeGateway, RealtimeService, PresenceService],
   exports: [RealtimeService, PresenceService],
