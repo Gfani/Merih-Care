@@ -394,6 +394,7 @@ export class DispatchCascadeService {
     };
     this.realtimeService.emitToRoom(`patient:${session.patientId}`, "dispatch_update", patientDispatchPayload);
     this.realtimeService.emitToRoom(`appointment:${session.appointmentId}`, "dispatch_update", patientDispatchPayload);
+    this.realtimeService.emitToRoom("admin", "dispatch_update", patientDispatchPayload);
 
     // Keep dispatchers in admin room informed of live cascade progress
     this.realtimeService.emitToRoom("admin", "dispatch_offer_sent", {
@@ -565,6 +566,23 @@ export class DispatchCascadeService {
       });
     }
     this.realtimeService.emitToRoom("admin", "appointment_status_update", updatePayload);
+    this.realtimeService.emitToRoom("admin", "dispatch_update", {
+      event: "dispatch_update",
+      appointmentId: apt.id,
+      status: "accepted",
+      providerId: acceptedCandidate.providerId,
+      providerUserId: acceptedCandidate.userId,
+      providerName: acceptedCandidate.name,
+      providerPhone: acceptedCandidate.phone,
+      providerAvatar: acceptedCandidate.avatar,
+      providerSpecialty: acceptedCandidate.specialty,
+      providerLat: acceptedCandidate.latitude,
+      providerLng: acceptedCandidate.longitude,
+      etaMinutes: acceptedCandidate.etaMinutes,
+      distanceKm: acceptedCandidate.distanceKm,
+      routePoints: acceptedCandidate.routePoints || [],
+      conversationId,
+    });
     this.realtimeService.emitAppointmentUpdate(apt.id, "accepted", updatePayload);
 
     return { success: true, message: "Offer accepted successfully.", appointment: apt };

@@ -43,6 +43,16 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
   const [filter, setFilter] = useState<"all" | "providers" | "patients">("all");
   const [selectedPin, setSelectedPin] = useState<LocationPin | null>(null);
   const [routeInfo, setRouteInfo] = useState<{ distance: string; eta: number } | null>(null);
+  const [activeDispatch, setActiveDispatch] = useState<{
+    appointmentId: string;
+    status: string;
+    providerName?: string;
+    providerLat?: number;
+    providerLng?: number;
+    routePoints?: Array<[number, number]>;
+    distanceKm?: number;
+    etaMinutes?: number;
+  } | null>(null);
   const [myPrivacy, setMyPrivacy] = useState(false);
   const { token } = useAuth();
   const { isLive, connectionState, on, off } = useRealtimeSocket({ token: token || undefined });
@@ -114,9 +124,46 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       });
     };
 
+    const handleDispatchUpdate = (payload: any) => {
+      const data = payload?.data || payload;
+      if (!data) return;
+      if (data.status === "searching" || data.status === "accepted" || data.status === "on_the_way") {
+        let pts: Array<[number, number]> = [];
+        if (Array.isArray(data.routePoints) && data.routePoints.length > 0) {
+          pts = data.routePoints.map((pt: any) => [
+            Number(pt.lat ?? pt[0]),
+            Number(pt.lng ?? pt[1]),
+          ]);
+        } else if (data.providerLat && data.providerLng) {
+          pts = [
+            [Number(data.providerLat), Number(data.providerLng)],
+            [9.0192, 38.7578],
+          ];
+        }
+
+        setActiveDispatch({
+          appointmentId: String(data.appointmentId || "apt-dispatch"),
+          status: String(data.status),
+          providerName: data.providerName || "Matched Clinician",
+          providerLat: data.providerLat ? Number(data.providerLat) : undefined,
+          providerLng: data.providerLng ? Number(data.providerLng) : undefined,
+          routePoints: pts,
+          distanceKm: data.distanceKm ? Number(data.distanceKm) : undefined,
+          etaMinutes: data.etaMinutes ? Number(data.etaMinutes) : undefined,
+        });
+      } else if (data.status === "completed" || data.status === "cancelled") {
+        setActiveDispatch(null);
+      }
+    };
+
     on("location_update", handleLocationUpdate);
+    on("dispatch_update", handleDispatchUpdate);
+    on("dispatch_offer_sent", handleDispatchUpdate);
+
     return () => {
       off("location_update", handleLocationUpdate);
+      off("dispatch_update", handleDispatchUpdate);
+      off("dispatch_offer_sent", handleDispatchUpdate);
     };
   }, [on, off]);
 
@@ -284,30 +331,43 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       }
     });
 
-    // 3. Render Route Polyline if emergency/critical patient is active
-    const activeEmergency = filtered.find(p => p.role === "patient" && p.status === "critical");
-    const closestProvider = filtered.find(p => p.role === "provider" && p.status === "available");
-
-    if (activeEmergency && closestProvider) {
-      const eCoords = getGpsCoords(activeEmergency.x, activeEmergency.y);
-      const pCoords = getGpsCoords(closestProvider.x, closestProvider.y);
-
-      const routeLine = L.polyline([pCoords, eCoords], {
-        color: "#dc2626",
-        weight: 4,
-        dashArray: "6, 10",
-        opacity: 0.8,
+    // 3. Render Route Polyline for On-Demand Dispatch OR Emergency
+    if (activeDispatch && activeDispatch.routePoints && activeDispatch.routePoints.length > 1) {
+      const isAccepted = activeDispatch.status === "accepted" || activeDispatch.status === "on_the_way";
+      const routeLine = L.polyline(activeDispatch.routePoints, {
+        color: isAccepted ? "#0d7c6a" : "#0284c7",
+        weight: 4.5,
+        dashArray: isAccepted ? undefined : "6, 8",
+        opacity: 0.9,
       }).addTo(map);
 
       routeLineRef.current = routeLine;
-
-      // Draw Haversine eta info
-      const distInfo = api.getRoute(pCoords[0], pCoords[1], eCoords[0], eCoords[1]);
-      Promise.resolve(distInfo).then(res => setRouteInfo(res));
-    } else {
       setRouteInfo(null);
+    } else {
+      const activeEmergency = filtered.find(p => p.role === "patient" && p.status === "critical");
+      const closestProvider = filtered.find(p => p.role === "provider" && p.status === "available");
+
+      if (activeEmergency && closestProvider) {
+        const eCoords = getGpsCoords(activeEmergency.x, activeEmergency.y);
+        const pCoords = getGpsCoords(closestProvider.x, closestProvider.y);
+
+        const routeLine = L.polyline([pCoords, eCoords], {
+          color: "#dc2626",
+          weight: 4,
+          dashArray: "6, 10",
+          opacity: 0.8,
+        }).addTo(map);
+
+        routeLineRef.current = routeLine;
+
+        // Draw Haversine eta info
+        const distInfo = api.getRoute(pCoords[0], pCoords[1], eCoords[0], eCoords[1]);
+        Promise.resolve(distInfo).then(res => setRouteInfo(res));
+      } else {
+        setRouteInfo(null);
+      }
     }
-  }, [locations, filter]);
+  }, [locations, filter, activeDispatch]);
 
   const height = compact ? 260 : 440;
 
@@ -324,6 +384,27 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
         <div className="absolute top-2 left-2 z-[400] text-[11px] text-[#5a7a96] font-semibold bg-white/95 dark:bg-slate-800/90 px-2 py-1 rounded-[6px] backdrop-blur-sm shadow-sm">
           Addis Ababa
         </div>
+
+        {/* On-Demand Dispatch Status Badge */}
+        {activeDispatch && (
+          <div className="absolute top-10 left-2 z-[400] bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm rounded-[10px] shadow-lg p-2.5 border border-[#0d7c6a]/30 max-w-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 text-[10px] font-bold text-[#0d7c6a]">
+                <span className="w-2 h-2 rounded-full bg-[#0d7c6a] animate-pulse" />
+                ON-DEMAND DISPATCH
+              </span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-200">
+                {activeDispatch.status === "searching" ? "Matching (30s)" : "Clinician En Route"}
+              </span>
+            </div>
+            <p className="text-xs font-bold text-[#18232e] dark:text-white mt-1 truncate">
+              {activeDispatch.providerName || "Assigned Clinician"}
+            </p>
+            <p className="text-[11px] text-[#5a7a96] dark:text-slate-300">
+              ETA: ~{activeDispatch.etaMinutes ?? 5} min ({activeDispatch.distanceKm ?? 1.2} km)
+            </p>
+          </div>
+        )}
 
         {/* WebSocket Connection State (LIVE indicator strictly conditional) */}
         <div className="absolute top-2 right-2 z-[400] flex items-center gap-1.5 bg-white/95 dark:bg-slate-800/90 rounded-full px-2.5 py-1 shadow-sm border border-[#e2e8ee] dark:border-slate-700">
