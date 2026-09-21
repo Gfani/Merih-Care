@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional } from "@nestjs/common";
 import { DataSource } from "typeorm";
 import { RealtimeService } from "../realtime/realtime.service";
 import { ChatService } from "../chat/chat.service";
+import { LocationsService, getLocationsRedisClient } from "../locations/locations.service";
 import { AppointmentEntity } from "../../database/entities/appointment.entity";
 import { ProviderEntity } from "../../database/entities/provider.entity";
 import { LocationEntity } from "../../database/entities/location.entity";
@@ -17,9 +18,11 @@ export interface CandidateProvider {
   specialty?: string;
   distanceKm: number;
   etaMinutes: number;
+  etaSeconds?: number;
   latitude: number;
   longitude: number;
   routePoints?: Array<{ lat: number; lng: number }>;
+  geometry?: any;
 }
 
 export interface CascadeSession {
@@ -56,22 +59,29 @@ function calculateHaversineKm(lat1: number, lon1: number, lat2: number, lon2: nu
 }
 
 /**
- * Calculates real-world road route, distance, and ETA using OSRM routing engine with
- * a resilient city-traffic road network simulation fallback.
+ * Calculates real-world road route, distance, and ETA using free Open Source Routing Machine (OSRM)
+ * public API (https://router.project-osrm.org/route/v1/driving/{origin_lng},{origin_lat};{dest_lng},{dest_lat}?overview=full&geometries=geojson)
+ * with a resilient city-traffic road network simulation fallback.
  */
 async function calculateRoadRoute(
   originLat: number,
   originLng: number,
   destLat: number,
   destLng: number,
-): Promise<{ distanceKm: number; etaMinutes: number; etaSeconds: number; routePoints: Array<{ lat: number; lng: number }> }> {
+): Promise<{
+  distanceKm: number;
+  etaMinutes: number;
+  etaSeconds: number;
+  routePoints: Array<{ lat: number; lng: number }>;
+  geometry?: any;
+}> {
   const straightDistKm = calculateHaversineKm(originLat, originLng, destLat, destLng);
 
-  // 1. Attempt road routing API if reachable
+  // 1. Attempt free OSRM public routing API
   try {
     const url = `https://router.project-osrm.org/route/v1/driving/${originLng},${originLat};${destLng},${destLat}?overview=full&geometries=geojson`;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 1600);
+    const timer = setTimeout(() => controller.abort(), 2000);
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timer);
 
@@ -81,11 +91,20 @@ async function calculateRoadRoute(
         const route = data.routes[0];
         const distanceKm = Number((route.distance / 1000).toFixed(2));
         const etaSeconds = Math.round(route.duration);
-        const etaMinutes = Math.max(2, Math.round(etaSeconds / 60));
+        const etaMinutes = Math.max(1, Math.round(etaSeconds / 60));
         const coordinates: [number, number][] = route.geometry?.coordinates || [];
-        const routePoints = coordinates.map((c) => ({ lat: Number(c[1].toFixed(6)), lng: Number(c[0].toFixed(6)) }));
+        const routePoints = coordinates.map((c) => ({
+          lat: Number(c[1].toFixed(6)),
+          lng: Number(c[0].toFixed(6)),
+        }));
         if (routePoints.length >= 2) {
-          return { distanceKm, etaMinutes, etaSeconds, routePoints };
+          return {
+            distanceKm,
+            etaMinutes,
+            etaSeconds,
+            routePoints,
+            geometry: route.geometry,
+          };
         }
       }
     }
@@ -94,13 +113,10 @@ async function calculateRoadRoute(
   }
 
   // 2. High-precision urban street network simulation fallback
-  // Urban road circuity factor: real road networks are ~1.28x straight line
   const roadDistKm = Number((straightDistKm * 1.28).toFixed(2));
-  // Average city traffic speed: ~22 km/h
   const etaMinutes = Math.max(3, Math.round((roadDistKm / 22) * 60 + 2));
   const etaSeconds = etaMinutes * 60;
 
-  // Generate realistic street waypoints with gentle curvature along avenues
   const steps = Math.max(5, Math.min(14, Math.round(straightDistKm * 3)));
   const routePoints: Array<{ lat: number; lng: number }> = [];
   routePoints.push({ lat: Number(originLat.toFixed(6)), lng: Number(originLng.toFixed(6)) });
@@ -118,7 +134,16 @@ async function calculateRoadRoute(
 
   routePoints.push({ lat: Number(destLat.toFixed(6)), lng: Number(destLng.toFixed(6)) });
 
-  return { distanceKm: roadDistKm, etaMinutes, etaSeconds, routePoints };
+  return {
+    distanceKm: roadDistKm,
+    etaMinutes,
+    etaSeconds,
+    routePoints,
+    geometry: {
+      type: "LineString",
+      coordinates: routePoints.map((pt) => [pt.lng, pt.lat]),
+    },
+  };
 }
 
 @Injectable()
@@ -131,23 +156,27 @@ export class DispatchCascadeService {
     private readonly realtimeService: RealtimeService,
     @Optional()
     private readonly chatService?: ChatService,
+    @Optional()
+    private readonly locationsService?: LocationsService,
   ) {}
 
   /**
-   * Find verified and online providers matching specialty within radiusKm, ranked by ETA.
+   * Find verified and online providers matching specialty within radiusKm (default 5km),
+   * querying Redis GEOADD/GEOSEARCH when available, fetching OSRM shortest path routes & ETAs,
+   * and ranking candidates strictly by the shortest OSRM driving duration.
    */
   async findRankedCandidates(
     patientLat: number,
     patientLng: number,
     specialtyOrService?: string,
-    radiusKm = 10,
+    radiusKm = 5,
   ): Promise<CandidateProvider[]> {
     if (!this.dataSource || !this.dataSource.isInitialized) return [];
 
     const provRepo = this.dataSource.getRepository(ProviderEntity);
     const locRepo = this.dataSource.getRepository(LocationEntity);
 
-    // 1. Fetch available & active providers
+    // 1. Fetch active & available providers from database
     const providers = await provRepo.find({
       where: { available: true, status: "active" },
       relations: ["user"],
@@ -155,14 +184,88 @@ export class DispatchCascadeService {
 
     if (providers.length === 0) return [];
 
-    // 2. Fetch live telemetry coordinates from LocationEntity
-    const locations = await locRepo.find({
-      where: { role: "provider" },
-    });
+    // 2. Query Redis in-memory geospatial index for online providers within radiusKm
+    let redisProviders: Array<{ providerId: string; lat: number; lng: number; distanceKm: number }> = [];
+    if (this.locationsService) {
+      try {
+        redisProviders = await this.locationsService.findNearbyOnlineProviders(patientLat, patientLng, radiusKm);
+      } catch (err: any) {
+        this.logger.warn(`Redis nearby provider search notice: ${err?.message || err}`);
+      }
+    } else {
+      const redis = getLocationsRedisClient();
+      if (redis) {
+        try {
+          let results: any = null;
+          if (typeof redis.geosearch === "function") {
+            results = await redis.geosearch(
+              "providers:locations:online",
+              "FROMLONLAT",
+              patientLng,
+              patientLat,
+              "BYRADIUS",
+              radiusKm,
+              "km",
+              "WITHCOORD",
+              "WITHDIST",
+              "ASC",
+            );
+          } else if (typeof redis.georadius === "function") {
+            results = await redis.georadius(
+              "providers:locations:online",
+              patientLng,
+              patientLat,
+              radiusKm,
+              "km",
+              "WITHCOORD",
+              "WITHDIST",
+              "ASC",
+            );
+          }
+
+          if (Array.isArray(results) && results.length > 0) {
+            redisProviders = results
+              .map((item: any) => {
+                const member = Array.isArray(item) ? item[0] : item.member;
+                const dist = Array.isArray(item) ? parseFloat(item[1]) : parseFloat(item.distance || "0");
+                const coords = Array.isArray(item)
+                  ? item[2]
+                  : item.coordinates
+                  ? [item.coordinates.longitude, item.coordinates.latitude]
+                  : [0, 0];
+                const lng = Array.isArray(coords) ? parseFloat(coords[0]) : 0;
+                const lat = Array.isArray(coords) ? parseFloat(coords[1]) : 0;
+                return {
+                  providerId: String(member),
+                  lat,
+                  lng,
+                  distanceKm: isNaN(dist) ? 0 : dist,
+                };
+              })
+              .filter((p: any) => !isNaN(p.lat) && !isNaN(p.lng) && (p.lat !== 0 || p.lng !== 0));
+          }
+        } catch (err: any) {
+          this.logger.warn(`Direct Redis nearby search notice: ${err?.message || err}`);
+        }
+      }
+    }
+
+    // Map Redis coordinates by providerId
+    const redisMap = new Map<string, { lat: number; lng: number; distanceKm: number }>();
+    for (const rp of redisProviders) {
+      redisMap.set(rp.providerId, rp);
+    }
+
+    // 3. Fallback coordinate map from LocationEntity if Redis has no entries
     const locMap = new Map<string, { lat: number; lng: number }>();
-    for (const loc of locations) {
-      if (loc.userId && typeof loc.y === "number" && typeof loc.x === "number") {
-        locMap.set(loc.userId, { lat: loc.y, lng: loc.x });
+    if (redisMap.size === 0) {
+      const locations = await locRepo.find({
+        where: { role: "provider" },
+      });
+      for (const loc of locations) {
+        if (loc.userId && typeof loc.y === "number" && typeof loc.x === "number") {
+          locMap.set(loc.userId, { lat: loc.y, lng: loc.x });
+        }
       }
     }
 
@@ -170,18 +273,28 @@ export class DispatchCascadeService {
     const candidates: CandidateProvider[] = [];
 
     for (const prov of providers) {
-      // Determine coordinates: prefer live location, fallback to provider profile coordinates
+      // Determine coordinates: prefer Redis geospatial location, fallback to locRepo, then provider profile
       let pLat = prov.latitude;
       let pLng = prov.longitude;
 
-      if (prov.userId && locMap.has(prov.userId)) {
+      const redisMatch = (prov.userId && redisMap.get(prov.userId)) || redisMap.get(prov.id);
+      if (redisMatch) {
+        pLat = redisMatch.lat;
+        pLng = redisMatch.lng;
+      } else if (prov.userId && locMap.has(prov.userId)) {
         const live = locMap.get(prov.userId)!;
         pLat = live.lat;
         pLng = live.lng;
       }
 
       if (typeof pLat !== "number" || typeof pLng !== "number" || isNaN(pLat) || isNaN(pLng)) {
-        continue; // Skip providers with no coordinates
+        continue; // Skip providers with no valid coordinates
+      }
+
+      // Proximity check: if Redis was used and provider wasn't found in Redis radius, skip
+      const straightDistKm = calculateHaversineKm(patientLat, patientLng, pLat, pLng);
+      if (straightDistKm > radiusKm) {
+        continue;
       }
 
       // Check specialty match if requested
@@ -197,7 +310,6 @@ export class DispatchCascadeService {
           normSpecialty.includes(provSpecialty);
 
         if (!matches && prov.verified) {
-          // If strict specialty match fails, continue unless general care
           if (normSpecialty.includes("doctor") && !provTitle.includes("dr") && !provSpecialty.includes("doctor")) {
             continue;
           }
@@ -207,12 +319,7 @@ export class DispatchCascadeService {
         }
       }
 
-      const distanceKm = calculateHaversineKm(patientLat, patientLng, pLat, pLng);
-
-      // Filter by radius (e.g. 10km)
-      if (distanceKm > radiusKm) continue;
-
-      // Calculate true drivable road route, road distance & ETA
+      // Ping OSRM API for true driving route, distance, and ETA duration
       const roadRoute = await calculateRoadRoute(pLat, pLng, patientLat, patientLng);
 
       candidates.push({
@@ -224,14 +331,20 @@ export class DispatchCascadeService {
         specialty: prov.specialty || prov.title,
         distanceKm: roadRoute.distanceKm,
         etaMinutes: roadRoute.etaMinutes,
+        etaSeconds: roadRoute.etaSeconds,
         latitude: pLat,
         longitude: pLng,
         routePoints: roadRoute.routePoints,
+        geometry: roadRoute.geometry,
       });
     }
 
-    // Rank candidates in ascending order by ETA (closest clinician first)
-    return candidates.sort((a, b) => a.etaMinutes - b.etaMinutes);
+    // Rank candidates strictly in ascending order by shortest OSRM driving duration
+    return candidates.sort((a, b) => {
+      const durA = typeof a.etaSeconds === "number" ? a.etaSeconds : a.etaMinutes * 60;
+      const durB = typeof b.etaSeconds === "number" ? b.etaSeconds : b.etaMinutes * 60;
+      return durA - durB;
+    });
   }
 
   /**
@@ -241,7 +354,7 @@ export class DispatchCascadeService {
     appointment: AppointmentEntity,
     patientLat?: number,
     patientLng?: number,
-    radiusKm = 10,
+    radiusKm = 5,
   ): Promise<CascadeSession | null> {
     // Default to Addis Ababa central coordinates if not provided
     const lat = typeof patientLat === "number" ? patientLat : 9.0222;
@@ -356,6 +469,7 @@ export class DispatchCascadeService {
       patientLng: session.patientLng,
       distanceKm: candidate.distanceKm,
       etaMinutes: candidate.etaMinutes,
+      etaSeconds: candidate.etaSeconds,
       fee: session.amount,
       timeoutSeconds: timeoutSec,
       expiresAt: session.expiresAt,
@@ -364,6 +478,7 @@ export class DispatchCascadeService {
       providerId: candidate.providerId,
       providerUserId: candidate.userId,
       routePoints: candidate.routePoints || [],
+      routeGeometry: candidate.geometry || null,
     };
 
     // Emit targeted high-priority event to the candidate's rooms
@@ -388,7 +503,9 @@ export class DispatchCascadeService {
       providerLng: candidate.longitude,
       distanceKm: candidate.distanceKm,
       etaMinutes: candidate.etaMinutes,
+      etaSeconds: candidate.etaSeconds,
       routePoints: candidate.routePoints || [],
+      routeGeometry: candidate.geometry || null,
       timeoutSeconds: timeoutSec,
       expiresAt: session.expiresAt,
     };

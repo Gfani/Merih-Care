@@ -286,4 +286,141 @@ describe("Temporary Lifecycle-Bound Messaging & Proximity Dispatch Cascade", () 
       );
     });
   });
+
+  describe("Redis Geospatial Radius Detection & OSRM Routing", () => {
+    let locationsService: any;
+    let mockLocRepo: any;
+    let mockHistoryRepo: any;
+    let mockRedis: any;
+
+    beforeEach(() => {
+      const { LocationsService, setLocationsRedisClientForTesting, resetLocationsRedisClientForTesting } = require("../src/modules/locations/locations.service");
+      resetLocationsRedisClientForTesting();
+
+      mockRedis = {
+        geoadd: jest.fn().mockResolvedValue(1),
+        zrem: jest.fn().mockResolvedValue(1),
+        geosearch: jest.fn().mockResolvedValue([
+          ["u-prov1", "1.25", ["38.7578", "9.0192"]],
+          ["u-prov2", "3.40", ["38.7885", "9.0125"]],
+        ]),
+        georadius: jest.fn(),
+      };
+
+      setLocationsRedisClientForTesting(mockRedis);
+
+      mockLocRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+        save: jest.fn().mockImplementation((entity) => Promise.resolve(entity)),
+        find: jest.fn().mockResolvedValue([]),
+      };
+
+      mockHistoryRepo = {
+        save: jest.fn().mockResolvedValue({}),
+      };
+
+      locationsService = new LocationsService(mockLocRepo, mockHistoryRepo);
+    });
+
+    afterEach(() => {
+      const { resetLocationsRedisClientForTesting } = require("../src/modules/locations/locations.service");
+      resetLocationsRedisClientForTesting();
+    });
+
+    it("should execute Redis GEOADD with longitude preceding latitude when provider updates location", async () => {
+      await locationsService.updateLocation("u-prov1", 9.0192, 38.7578);
+
+      expect(mockRedis.geoadd).toHaveBeenCalledWith(
+        "providers:locations:online",
+        38.7578, // longitude
+        9.0192,  // latitude
+        "u-prov1",
+      );
+    });
+
+    it("should execute Redis ZREM when provider goes offline", async () => {
+      mockLocRepo.findOne.mockResolvedValue({
+        id: "loc-1",
+        userId: "u-prov1",
+        status: "available",
+        x: 38.7578,
+        y: 9.0192,
+      });
+
+      await locationsService.setStatus("u-prov1", "offline");
+
+      expect(mockRedis.zrem).toHaveBeenCalledWith(
+        "providers:locations:online",
+        "u-prov1",
+      );
+    });
+
+    it("should query Redis GEOSEARCH within 5km radius and parse coordinates", async () => {
+      const nearby = await locationsService.findNearbyOnlineProviders(9.0222, 38.7468, 5);
+
+      expect(mockRedis.geosearch).toHaveBeenCalledWith(
+        "providers:locations:online",
+        "FROMLONLAT",
+        38.7468,
+        9.0222,
+        "BYRADIUS",
+        5,
+        "km",
+        "WITHCOORD",
+        "WITHDIST",
+        "ASC",
+      );
+
+      expect(nearby.length).toBe(2);
+      expect(nearby[0].providerId).toBe("u-prov1");
+      expect(nearby[0].lng).toBe(38.7578);
+      expect(nearby[0].lat).toBe(9.0192);
+      expect(nearby[0].distanceKm).toBe(1.25);
+    });
+
+    it("should pass Redis nearby providers into DispatchCascadeService and sort by OSRM ETA", async () => {
+      const mockProvRepo = {
+        find: jest.fn().mockResolvedValue([
+          {
+            id: "prov-2",
+            userId: "u-prov2",
+            name: "Dr. Farther",
+            phone: "+251922222222",
+            available: true,
+            status: "active",
+            verified: true,
+            title: "Doctor",
+          },
+          {
+            id: "prov-1",
+            userId: "u-prov1",
+            name: "Dr. Closer",
+            phone: "+251911111111",
+            available: true,
+            status: "active",
+            verified: true,
+            title: "Doctor",
+          },
+        ]),
+      };
+
+      const mockDs: any = {
+        isInitialized: true,
+        getRepository: jest.fn().mockImplementation((entity) => {
+          if (entity.name === "ProviderEntity") return mockProvRepo;
+          return { find: jest.fn().mockResolvedValue([]) };
+        }),
+      };
+
+      const cascade = new DispatchCascadeService(mockDs, {} as any, undefined, locationsService);
+      const candidates = await cascade.findRankedCandidates(9.0222, 38.7468, "Doctor", 5);
+
+      expect(candidates.length).toBe(2);
+      expect(candidates[0].name).toBe("Dr. Closer");
+      expect(candidates[1].name).toBe("Dr. Farther");
+      expect(candidates[0].etaMinutes).toBeLessThanOrEqual(candidates[1].etaMinutes);
+      expect(candidates[0].routePoints).toBeDefined();
+      expect(candidates[0].geometry).toBeDefined();
+    });
+  });
 });

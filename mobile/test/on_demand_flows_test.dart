@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:merihcare/core/network/api_client.dart';
 import 'package:merihcare/core/network/network_providers.dart';
 import 'package:merihcare/features/patient/on_demand_flow_screen.dart';
+import 'package:merihcare/features/patient/booking_screen.dart';
 import 'package:merihcare/features/provider_app/provider_active_flow_screen.dart';
 
 class _MockTestAdapter implements HttpClientAdapter {
@@ -70,6 +71,30 @@ void main() {
 
       // Cleanly unmount to cancel periodic timers
       await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('BookingScreen renders free OpenStreetMap canvas and care spot preview', (WidgetTester tester) async {
+      final mockClient = ApiClient();
+      mockClient.dio.httpClientAdapter = _MockTestAdapter();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(mockClient),
+          ],
+          child: const MaterialApp(
+            home: BookingScreen(providerId: 'p-1'),
+          ),
+        ),
+      );
+
+      expect(find.text('Schedule Care'), findsOneWidget);
+      expect(find.text('Care Location Address'), findsOneWidget);
+      expect(find.text('© OpenStreetMap'), findsOneWidget);
+      expect(find.textContaining('transit'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 100));
     });
   });
 }

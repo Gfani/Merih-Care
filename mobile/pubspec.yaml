@@ -46,8 +46,9 @@ dependencies:
   # Authentication
   google_sign_in: ^6.2.2
 
-  # Maps
-  google_maps_flutter: ^2.5.3
+  # Maps (100% Free OpenStreetMap via flutter_map)
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
 
   # Image/file picker
   image_picker: ^1.0.7
@@ -56,8 +57,6 @@ dependencies:
   # Common UI/Icons
   cupertino_icons: ^1.0.6
   geolocator: ^12.0.0
-  flutter_map: ^8.3.2
-  latlong2: ^0.10.1
 
 dev_dependencies:
   flutter_test:

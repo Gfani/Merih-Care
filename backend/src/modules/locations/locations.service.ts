@@ -6,6 +6,43 @@ import { LocationHistoryEntity } from "../../database/entities/emergency-relatio
 import { RealtimeService } from "../realtime/realtime.service";
 import * as crypto from "crypto";
 
+let locationsRedisClient: any = null;
+let locationsRedisInitialized = false;
+
+export function setLocationsRedisClientForTesting(client: any) {
+  locationsRedisClient = client;
+  locationsRedisInitialized = true;
+}
+
+export function resetLocationsRedisClientForTesting() {
+  locationsRedisClient = null;
+  locationsRedisInitialized = false;
+}
+
+export function getLocationsRedisClient(): any {
+  if (locationsRedisInitialized) return locationsRedisClient;
+  locationsRedisInitialized = true;
+  const redisUrl =
+    process.env.REDIS_URL ||
+    (process.env.REDIS_HOST ? `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT || 6379}` : null);
+  if (redisUrl) {
+    try {
+      const RedisLib = require("ioredis");
+      const client = new RedisLib(redisUrl, {
+        lazyConnect: true,
+        connectTimeout: 2000,
+        maxRetriesPerRequest: 1,
+        retryStrategy: () => null,
+      });
+      client.on("error", () => {});
+      locationsRedisClient = client;
+    } catch {
+      locationsRedisClient = null;
+    }
+  }
+  return locationsRedisClient;
+}
+
 @Injectable()
 export class LocationsService {
   constructor(
@@ -84,6 +121,22 @@ export class LocationsService {
     history.timestamp = new Date().toISOString();
     await this.historyRepo.save(history);
 
+    // In-memory Redis Geospatial update
+    const redis = getLocationsRedisClient();
+    if (redis) {
+      try {
+        const providerMemberId = loc.userId || id;
+        if (loc.status !== "offline") {
+          // Redis GEOADD: key longitude latitude member (longitude MUST precede latitude in Redis)
+          await redis.geoadd("providers:locations:online", longitude, latitude, providerMemberId);
+        } else {
+          await redis.zrem("providers:locations:online", providerMemberId);
+        }
+      } catch (err) {
+        // Safe failover if Redis command encounters an error
+      }
+    }
+
     if (this.realtimeService) {
       this.realtimeService.emitToRoom("admin", "location_update", {
         providerId: loc.userId || id,
@@ -121,7 +174,118 @@ export class LocationsService {
       loc.y = 9.0192;
     }
     loc.status = status;
-    return this.locationRepo.save(loc);
+    const saved = await this.locationRepo.save(loc);
+
+    // Synchronize Redis Geospatial index
+    const redis = getLocationsRedisClient();
+    if (redis) {
+      try {
+        if (status === "offline") {
+          await redis.zrem("providers:locations:online", userId);
+        } else if (typeof loc.x === "number" && typeof loc.y === "number" && (loc.x !== 0 || loc.y !== 0)) {
+          await redis.geoadd("providers:locations:online", loc.x, loc.y, userId);
+        }
+      } catch (err) {
+        // Safe failover
+      }
+    }
+
+    return saved;
+  }
+
+  /**
+   * Find online providers within radiusKm using Redis GEOSEARCH / GEORADIUS.
+   * Resiliently falls back to database locations if Redis is unpopulated, offline, or unavailable.
+   */
+  async findNearbyOnlineProviders(
+    patientLat: number,
+    patientLng: number,
+    radiusKm = 5,
+  ): Promise<Array<{ providerId: string; lat: number; lng: number; distanceKm: number }>> {
+    const redis = getLocationsRedisClient();
+    if (redis) {
+      try {
+        let results: any = null;
+        if (typeof redis.geosearch === "function") {
+          results = await redis.geosearch(
+            "providers:locations:online",
+            "FROMLONLAT",
+            patientLng,
+            patientLat,
+            "BYRADIUS",
+            radiusKm,
+            "km",
+            "WITHCOORD",
+            "WITHDIST",
+            "ASC",
+          );
+        } else if (typeof redis.georadius === "function") {
+          results = await redis.georadius(
+            "providers:locations:online",
+            patientLng,
+            patientLat,
+            radiusKm,
+            "km",
+            "WITHCOORD",
+            "WITHDIST",
+            "ASC",
+          );
+        }
+
+        if (Array.isArray(results) && results.length > 0) {
+          const parsed = results
+            .map((item: any) => {
+              const member = Array.isArray(item) ? item[0] : item.member;
+              const dist = Array.isArray(item) ? parseFloat(item[1]) : parseFloat(item.distance || "0");
+              const coords = Array.isArray(item)
+                ? item[2]
+                : item.coordinates
+                ? [item.coordinates.longitude, item.coordinates.latitude]
+                : [0, 0];
+              const lng = Array.isArray(coords) ? parseFloat(coords[0]) : 0;
+              const lat = Array.isArray(coords) ? parseFloat(coords[1]) : 0;
+              return {
+                providerId: String(member),
+                lat,
+                lng,
+                distanceKm: isNaN(dist) ? 0 : dist,
+              };
+            })
+            .filter((p: any) => !isNaN(p.lat) && !isNaN(p.lng) && (p.lat !== 0 || p.lng !== 0));
+
+          if (parsed.length > 0) {
+            return parsed;
+          }
+        }
+      } catch (err) {
+        // Fallback to database search
+      }
+    }
+
+    // Database fallback
+    const locations = await this.locationRepo.find({ where: { role: "provider" } });
+    const nearby: Array<{ providerId: string; lat: number; lng: number; distanceKm: number }> = [];
+
+    for (const loc of locations) {
+      if (loc.status === "offline") continue;
+      const lat = loc.y;
+      const lng = loc.x;
+      if (typeof lat !== "number" || typeof lng !== "number" || isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
+        continue;
+      }
+      const distInfo = this.calculateDistanceAndEta(patientLat, patientLng, lat, lng);
+      const distKm = parseFloat(distInfo.distance);
+      if (distKm <= radiusKm) {
+        nearby.push({
+          providerId: loc.userId || loc.id,
+          lat,
+          lng,
+          distanceKm: distKm,
+        });
+      }
+    }
+
+    return nearby.sort((a, b) => a.distanceKm - b.distanceKm);
   }
 
   checkGeofenceArrival(
