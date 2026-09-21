@@ -88,8 +88,8 @@ export class LocationsService {
             entry.accuracy = existing?.accuracy || 5;
             entry.privacyMode = existing?.privacyMode || false;
             entry.locationTimestamp = existing?.locationTimestamp || new Date().toISOString();
-            entry.x = lng;
-            entry.y = lat;
+            entry.x = entry.privacyMode ? Math.round(lng * 100) / 100 : lng;
+            entry.y = entry.privacyMode ? Math.round(lat * 100) / 100 : lat;
             onlineProviders.push(entry);
           }
 
@@ -116,15 +116,26 @@ export class LocationsService {
       }
     }
 
-    // In environments without Redis (e.g. unit tests without Redis daemon),
-    // strictly return ONLY providers that are NOT offline
+    // In environments without Redis (e.g. unit test runner without Redis daemon),
+    // handle privacy masking and offline coordinate zeroing
     const locations = await this.locationRepo.find();
     return locations
-      .filter((loc) => {
-        if (loc.role === "provider") {
-          return loc.status !== "offline" && loc.x !== 0 && loc.y !== 0;
+      .map((loc) => {
+        if (loc.privacyMode) {
+          return {
+            ...loc,
+            x: Math.round(loc.x * 100) / 100,
+            y: Math.round(loc.y * 100) / 100,
+          };
         }
-        return true;
+        if (loc.role === "provider" && loc.status === "offline") {
+          return {
+            ...loc,
+            x: 0,
+            y: 0,
+          };
+        }
+        return loc;
       })
       .sort((a, b) => {
         const aVal = a.status === "critical" ? 1 : 0;
