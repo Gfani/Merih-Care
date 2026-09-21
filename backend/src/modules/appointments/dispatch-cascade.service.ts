@@ -6,6 +6,7 @@ import { AppointmentEntity } from "../../database/entities/appointment.entity";
 import { ProviderEntity } from "../../database/entities/provider.entity";
 import { LocationEntity } from "../../database/entities/location.entity";
 import { AppointmentStatusHistoryEntity } from "../../database/entities/appointment-history.entity";
+import { ConversationEntity, ConversationParticipantEntity } from "../../database/entities/chat-chat.entity";
 
 export interface CandidateProvider {
   providerId: string;
@@ -383,14 +384,45 @@ export class DispatchCascadeService {
 
     // Auto-initialize temporary chat room strictly bound to this appointment
     let conversationId: string | null = null;
-    if (this.chatService && apt.patientId) {
+    if (apt.patientId) {
       try {
-        const conv = await this.chatService.createConversation(
-          [apt.patientId, acceptedCandidate.userId],
-          apt.id,
-          false,
-        );
-        conversationId = conv.id;
+        if (this.chatService) {
+          const conv = await this.chatService.createConversation(
+            [apt.patientId, acceptedCandidate.userId],
+            apt.id,
+            false,
+          );
+          conversationId = conv.id;
+        } else {
+          // Direct DB creation using DataSource without requiring ChatService injection
+          const convRepo = this.dataSource.getRepository(ConversationEntity);
+          const partRepo = this.dataSource.getRepository(ConversationParticipantEntity);
+          const conv = new ConversationEntity();
+          conv.id = `conv-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+          conv.type = "appointment";
+          conv.appointmentId = apt.id;
+          conv.isProtected = false;
+          conv.createdAt = new Date().toISOString();
+          await convRepo.save(conv);
+
+          const p1 = new ConversationParticipantEntity();
+          p1.id = `part-${Date.now()}-0`;
+          p1.conversationId = conv.id;
+          p1.userId = apt.patientId;
+          p1.role = "owner";
+          p1.joinedAt = new Date().toISOString();
+          await partRepo.save(p1);
+
+          const p2 = new ConversationParticipantEntity();
+          p2.id = `part-${Date.now()}-1`;
+          p2.conversationId = conv.id;
+          p2.userId = acceptedCandidate.userId;
+          p2.role = "member";
+          p2.joinedAt = new Date().toISOString();
+          await partRepo.save(p2);
+
+          conversationId = conv.id;
+        }
         this.logger.log(`Auto-initialized lifecycle-bound chat conversation ${conversationId} for apt ${apt.id}`);
       } catch (err: any) {
         this.logger.error(`Failed to auto-create conversation for apt ${apt.id}: ${err.message}`);

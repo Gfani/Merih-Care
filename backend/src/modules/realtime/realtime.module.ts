@@ -1,4 +1,4 @@
-import { Module, forwardRef } from "@nestjs/common";
+import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { JwtModule } from "@nestjs/jwt";
 import { ConfigModule, ConfigService } from "@nestjs/config";
@@ -7,7 +7,7 @@ import { RealtimeService } from "./realtime.service";
 import { PresenceService } from "./presence.service";
 import { LocationEntity } from "../../database/entities/location.entity";
 import { AppointmentEntity } from "../../database/entities/appointment.entity";
-import { AppointmentsModule } from "../appointments/appointments.module";
+import { DispatchCascadeService } from "../appointments/dispatch-cascade.service";
 
 @Module({
   imports: [
@@ -19,9 +19,8 @@ import { AppointmentsModule } from "../appointments/appointments.module";
       }),
       inject: [ConfigService],
     }),
-    forwardRef(() => AppointmentsModule),
   ],
-  providers: [RealtimeGateway, RealtimeService, PresenceService],
-  exports: [RealtimeService, PresenceService],
+  providers: [RealtimeGateway, RealtimeService, PresenceService, DispatchCascadeService],
+  exports: [RealtimeService, PresenceService, DispatchCascadeService],
 })
 export class RealtimeModule {}

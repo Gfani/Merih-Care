@@ -63,7 +63,6 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     @Optional()
     presenceService?: PresenceService,
     @Optional()
-    @Inject(forwardRef(() => DispatchCascadeService))
     private readonly dispatchCascadeService?: DispatchCascadeService,
   ) {
     this.presence = presenceService || new PresenceService();
