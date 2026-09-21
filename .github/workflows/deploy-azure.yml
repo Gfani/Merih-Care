@@ -14,19 +14,21 @@ jobs:
   deploy-backend:
     name: Deploy Backend to Azure Container Apps
     runs-on: ubuntu-latest
+    if: "${{ secrets.AZURE_CREDENTIALS != '' && secrets.ACR_NAME != '' }}"
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Sanitize Azure Credentials
+        id: sanitize-creds
         env:
           RAW_CREDS: ${{ secrets.AZURE_CREDENTIALS }}
         run: |
           node -e '
             let str = (process.env.RAW_CREDS || "").trim();
             if (!str) {
-              console.error("::error::The secret AZURE_CREDENTIALS is empty or not set in GitHub Secrets!");
-              process.exit(1);
+              console.log("::notice::The secret AZURE_CREDENTIALS is empty or not set in GitHub Secrets. Skipping deployment.");
+              process.exit(0);
             }
             if (!str.startsWith("{")) {
               const braceIdx = str.indexOf("{");
@@ -53,18 +55,22 @@ jobs:
           '
 
       - name: Azure Login
+        if: env.CLEANED_AZURE_CREDENTIALS != ''
         uses: azure/login@v2
         with:
           creds: ${{ env.CLEANED_AZURE_CREDENTIALS }}
 
       - name: Set up Docker Buildx
+        if: env.CLEANED_AZURE_CREDENTIALS != ''
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to Azure Container Registry (ACR)
+        if: env.CLEANED_AZURE_CREDENTIALS != ''
         run: |
           az acr login --name ${{ secrets.ACR_NAME }}
 
       - name: Build and Push Backend Image
+        if: env.CLEANED_AZURE_CREDENTIALS != ''
         uses: docker/build-push-action@v5
         with:
           context: ./backend
@@ -75,6 +81,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Deploy Image to Azure Container Apps
+        if: env.CLEANED_AZURE_CREDENTIALS != ''
         uses: azure/container-apps-deploy-action@v1
         with:
           acrName: ${{ secrets.ACR_NAME }}
@@ -85,19 +92,21 @@ jobs:
   deploy-admin-web:
     name: Deploy Admin Web to Azure Container Apps
     runs-on: ubuntu-latest
+    if: "${{ secrets.AZURE_CREDENTIALS != '' && secrets.ACR_NAME != '' }}"
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Sanitize Azure Credentials
+        id: sanitize-creds-admin
         env:
           RAW_CREDS: ${{ secrets.AZURE_CREDENTIALS }}
         run: |
           node -e '
             let str = (process.env.RAW_CREDS || "").trim();
             if (!str) {
-              console.error("::error::The secret AZURE_CREDENTIALS is empty or not set in GitHub Secrets!");
-              process.exit(1);
+              console.log("::notice::The secret AZURE_CREDENTIALS is empty or not set in GitHub Secrets. Skipping deployment.");
+              process.exit(0);
             }
             if (!str.startsWith("{")) {
               const braceIdx = str.indexOf("{");
@@ -124,18 +133,22 @@ jobs:
           '
 
       - name: Azure Login
+        if: env.CLEANED_AZURE_CREDENTIALS != ''
         uses: azure/login@v2
         with:
           creds: ${{ env.CLEANED_AZURE_CREDENTIALS }}
 
       - name: Set up Docker Buildx
+        if: env.CLEANED_AZURE_CREDENTIALS != ''
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to Azure Container Registry (ACR)
+        if: env.CLEANED_AZURE_CREDENTIALS != ''
         run: |
           az acr login --name ${{ secrets.ACR_NAME }}
 
       - name: Build and Push Admin Web Image
+        if: env.CLEANED_AZURE_CREDENTIALS != ''
         uses: docker/build-push-action@v5
         with:
           context: ./admin-web
@@ -148,6 +161,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Deploy Admin Web Image to Azure Container Apps
+        if: env.CLEANED_AZURE_CREDENTIALS != ''
         uses: azure/container-apps-deploy-action@v1
         with:
           acrName: ${{ secrets.ACR_NAME }}

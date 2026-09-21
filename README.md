@@ -37,7 +37,8 @@ The platform consists of four core components:
 merihcare/
 ├── .github/                 # GitHub workflows & CI/CD configurations
 │   └── workflows/
-│       └── ci.yml           # Continuous Integration workflow
+│       ├── ci-cd.yml        # Unified CI/CD testing & verification pipeline
+│       └── deploy-azure.yml # Microsoft Azure Container Apps deployment workflow
 ├── admin-web/               # Admin web dashboard (Vite + React)
 │   ├── src/                 # Application source code (pages, components, hooks, api, etc.)
 │   ├── package.json         # Node dependencies & npm scripts
