@@ -43,6 +43,7 @@ class MobileRealtimeService {
   final _typingController = StreamController<Map<String, dynamic>>.broadcast();
   final _messagesReadController = StreamController<Map<String, dynamic>>.broadcast();
   final _serviceOffersController = StreamController<Map<String, dynamic>>.broadcast();
+  final _dispatchUpdatesController = StreamController<Map<String, dynamic>>.broadcast();
 
   final Set<String> _joinedRooms = {};
   DateTime? _lastLocationSentAt;
@@ -59,6 +60,7 @@ class MobileRealtimeService {
   Stream<Map<String, dynamic>> get typingStream => _typingController.stream;
   Stream<Map<String, dynamic>> get messagesReadStream => _messagesReadController.stream;
   Stream<Map<String, dynamic>> get serviceOffersStream => _serviceOffersController.stream;
+  Stream<Map<String, dynamic>> get dispatchUpdatesStream => _dispatchUpdatesController.stream;
 
   RealtimeConnectionState get currentState => _currentState;
   bool get isConnected => _currentState == RealtimeConnectionState.connected;
@@ -169,6 +171,13 @@ class MobileRealtimeService {
       final payload = unwrap(data);
       if (payload.isNotEmpty) {
         _serviceOffersController.add({...payload, 'event': 'offer_expired'});
+      }
+    });
+
+    _realtimeSocket!.on('dispatch_update', (data) {
+      final payload = unwrap(data);
+      if (payload.isNotEmpty) {
+        _dispatchUpdatesController.add(payload);
       }
     });
 
@@ -333,5 +342,6 @@ class MobileRealtimeService {
     _typingController.close();
     _messagesReadController.close();
     _serviceOffersController.close();
+    _dispatchUpdatesController.close();
   }
 }

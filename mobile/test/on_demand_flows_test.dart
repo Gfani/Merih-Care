@@ -1,15 +1,45 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
+import 'package:merihcare/core/network/api_client.dart';
+import 'package:merihcare/core/network/network_providers.dart';
 import 'package:merihcare/features/patient/on_demand_flow_screen.dart';
 import 'package:merihcare/features/provider_app/provider_active_flow_screen.dart';
+
+class _MockTestAdapter implements HttpClientAdapter {
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    return ResponseBody.fromString(
+      '[]',
+      200,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
 
 void main() {
   group('On-Demand & Provider Active Flows Test', () {
     testWidgets('Patient OnDemandFlowScreen renders initial service select step', (WidgetTester tester) async {
+      final mockClient = ApiClient();
+      mockClient.dio.httpClientAdapter = _MockTestAdapter();
+
       await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(mockClient),
+          ],
+          child: const MaterialApp(
             home: OnDemandFlowScreen(),
           ),
         ),
@@ -21,6 +51,7 @@ void main() {
       expect(find.text('Physiotherapy Session'), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(milliseconds: 100));
     });
 
     testWidgets('ProviderActiveFlowScreen renders incoming dispatch countdown alert', (WidgetTester tester) async {
