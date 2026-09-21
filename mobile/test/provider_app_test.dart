@@ -6,6 +6,8 @@ import 'package:merihcare/core/location/location_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   setUp(() {
     // Avoid secure storage native calls in unit test runner
     FlutterSecureStorage.setMockInitialValues({});
@@ -45,6 +47,30 @@ void main() {
       final service = container.read(locationTrackingProvider);
 
       expect(service.isTracking, false);
+      expect(service.isOnline, true);
+    });
+
+    test('Should respond to providerOnlineStatusProvider changes', () {
+      final container = ProviderContainer();
+      final service = container.read(locationTrackingProvider);
+
+      expect(container.read(providerOnlineStatusProvider), true);
+      expect(service.isOnline, true);
+
+      // Toggling offline should trigger stopTracking and mark offline
+      container.read(providerOnlineStatusProvider.notifier).state = false;
+      expect(service.isOnline, false);
+      expect(service.isTracking, false);
+    });
+
+    test('Should reset tracking state and emit offline event on stopTracking', () {
+      final container = ProviderContainer();
+      final service = container.read(locationTrackingProvider);
+
+      service.stopTracking();
+      expect(service.isTracking, false);
+      expect(service.isOnline, false);
+      expect(container.read(providerOnlineStatusProvider), false);
     });
   });
 

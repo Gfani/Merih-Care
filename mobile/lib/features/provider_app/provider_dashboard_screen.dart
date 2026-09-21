@@ -37,10 +37,11 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
   @override
   void initState() {
     super.initState();
+    _isOnline = ref.read(providerOnlineStatusProvider);
     ref.read(realtimeServiceProvider).joinProviders();
     _loadDashboardData();
 
-    // Stream live GPS coordinates every 5-8 seconds when Online
+    // Stream live GPS coordinates every 10 seconds when Online
     if (_isOnline) {
       final client = ref.read(apiClientProvider);
       final realtime = ref.read(realtimeServiceProvider);
@@ -140,7 +141,8 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
     _appointmentSub?.cancel();
     _serviceOfferSub?.cancel();
     _pollTimer?.cancel();
-    ref.read(locationTrackingProvider).stopTracking();
+    final realtime = ref.read(realtimeServiceProvider);
+    ref.read(locationTrackingProvider).stopTracking(realtimeService: realtime);
     super.dispose();
   }
 
@@ -276,6 +278,7 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
 
   Future<void> _toggleOnline() async {
     final next = !_isOnline;
+    ref.read(providerOnlineStatusProvider.notifier).state = next;
     setState(() => _isOnline = next);
     try {
       final client = ref.read(apiClientProvider);
@@ -291,8 +294,8 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
           realtimeService: realtime,
         );
       } else {
-        realtime.setStatus('offline');
-        tracker.stopTracking();
+        // Toggling offline explicitly emits provider_offline and pauses/cancels getPositionStream
+        tracker.stopTracking(realtimeService: realtime);
       }
     } catch (e) {
       print('[PROVIDER] Failed to sync availability: $e');

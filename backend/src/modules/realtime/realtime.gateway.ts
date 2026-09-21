@@ -662,9 +662,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   @SubscribeMessage("provider_status")
   @SubscribeMessage("set_status")
+  @SubscribeMessage("provider_offline")
   async handleProviderStatus(
     @ConnectedSocket() socket: Socket,
-    @MessageBody() data: { status: string },
+    @MessageBody() data: { status?: string },
   ) {
     const { userId } = (socket as any);
     if (!userId) return { ok: false, error: "UNAUTHORIZED" };
@@ -680,11 +681,17 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         loc.status = "offline";
         await this.locationRepo.save(loc);
       }
-      this.realtimeService.emitToRoom("admin", "provider_offline", {
+      const offlinePayload = {
         providerId: userId,
         status: "offline",
         ts: new Date().toISOString(),
-      });
+      };
+      if (this.server) {
+        this.server.to?.("admin_room")?.emit("provider_offline", offlinePayload);
+        this.server.to?.("admin")?.emit("provider_offline", offlinePayload);
+      }
+      this.realtimeService.emitToRoom("admin", "provider_offline", offlinePayload);
+      this.realtimeService.emitToRoom("admin_room", "provider_offline", offlinePayload);
     } else {
       let loc = await this.locationRepo.findOne({ where: { userId } });
       if (loc) {

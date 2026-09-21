@@ -70,6 +70,14 @@
 	<string>Merihcare uses your location to match you with nearby home healthcare providers and emergency ambulance dispatch.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Merihcare uses your location to track caregiver transit and emergency healthcare response in real time.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Merihcare uses your background location to transmit live GPS updates for dispatch and transit tracking.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Merihcare requires camera access to take profile photos and scan medical documents, licenses, and prescription records.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

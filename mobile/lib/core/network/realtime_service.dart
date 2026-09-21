@@ -64,10 +64,22 @@ class MobileRealtimeService {
 
   RealtimeConnectionState get currentState => _currentState;
   bool get isConnected => _currentState == RealtimeConnectionState.connected;
+  io.Socket? get socket => _realtimeSocket;
+  io.Socket? get realtimeSocket => _realtimeSocket;
+  String? get token => _token;
 
   void _updateState(RealtimeConnectionState state) {
     _currentState = state;
     _connectionStateController.add(state);
+  }
+
+  /// Ensure connection is alive; reconnect if dropped during background suspension
+  void ensureConnected() {
+    if (_realtimeSocket == null || !_realtimeSocket!.connected) {
+      if (_token != null && _token!.isNotEmpty) {
+        connect(token: _token!, baseUrl: _baseUrl);
+      }
+    }
   }
 
   /// Connect to both /realtime and /chat namespaces
@@ -284,6 +296,29 @@ class MobileRealtimeService {
     final payload = {'status': status};
     _realtimeSocket?.emit('set_status', payload);
     _realtimeSocket?.emit('provider_status', payload);
+  }
+
+  /// Explicitly emit offline event before socket disconnect
+  void emitProviderOffline() {
+    _realtimeSocket?.emit('provider_offline', <String, dynamic>{});
+    setStatus('offline');
+  }
+
+  /// Directly emit location update matching backend requirement
+  void emitLocationUpdate({
+    required double lat,
+    required double lng,
+    String? appointmentId,
+  }) {
+    final payload = <String, dynamic>{
+      'lat': lat,
+      'lng': lng,
+    };
+    if (appointmentId != null && appointmentId.isNotEmpty) {
+      payload['appointmentId'] = appointmentId;
+    }
+    _realtimeSocket?.emit('location_update', payload);
+    _realtimeSocket?.emit('update_location', payload);
   }
 
   /// Accept incoming high-priority dispatch offer
