@@ -54,7 +54,7 @@ export class LocationsService {
     private readonly realtimeService?: RealtimeService,
   ) {}
 
-  async getAllLocations(): Promise<LocationEntity[]> {
+  async getActiveProviderLocations(): Promise<LocationEntity[]> {
     const redis = getLocationsRedisClient();
     if (redis) {
       try {
@@ -221,6 +221,10 @@ export class LocationsService {
         const bVal = b.status === "critical" ? 1 : 0;
         return bVal - aVal;
       });
+  }
+
+  async getAllLocations(): Promise<LocationEntity[]> {
+    return this.getActiveProviderLocations();
   }
 
   async updateLocation(

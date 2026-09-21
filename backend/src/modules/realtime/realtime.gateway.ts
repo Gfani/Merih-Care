@@ -33,18 +33,7 @@ let adminMetricsInterval: NodeJS.Timeout | null = null;
 const socketEventRateMap = new Map<string, number[]>();
 const MAX_EVENTS_PER_SECOND = 20;
 
-@WebSocketGateway({
-  cors: {
-    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      // Dynamic origin reflection allows admin web dashboard from any host/port with credentials
-      callback(null, true);
-    },
-    credentials: true,
-  },
-  namespace: "/realtime",
-  pingInterval: 25000,
-  pingTimeout: 35000,
-})
+@WebSocketGateway({ namespace: "/realtime", cors: { origin: "*" } })
 export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
@@ -388,7 +377,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       return { ok: false, error: "Forbidden" };
     }
 
+    socket.join("admin_room");
     socket.join("admin");
+    socketUserMap.get(socket.id)?.rooms.add("admin_room");
     socketUserMap.get(socket.id)?.rooms.add("admin");
     adminSocketCount.count += 1;
 
@@ -399,7 +390,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       this.broadcastAdminMetrics(); // immediate first push
     }
 
-    return { ok: true, room: "admin", ts: new Date().toISOString() };
+    return { ok: true, room: "admin_room", ts: new Date().toISOString() };
   }
 
   @SubscribeMessage("join_providers")
@@ -545,6 +536,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
   // ─── Provider Location Updates & Live Telemetry ─────────────────
 
+  @SubscribeMessage("provider_location_update")
   @SubscribeMessage("location_update")
   @SubscribeMessage("update_location")
   async handleLocationUpdate(
@@ -619,26 +611,35 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
     const ts = new Date().toISOString();
 
-    // 3. Relay to admin room immediately for real-time map tracking
+    // 3. Immediately broadcast the update to the admin dashboard
+    const broadcastData = {
+      providerId: userId,
+      userId,
+      lat,
+      lng,
+      latitude: lat,
+      longitude: lng,
+      x: lng,
+      y: lat,
+      status: "available",
+      lastUpdated: ts,
+      ts,
+    };
+
+    if (this.server && typeof (this.server as any).to === "function") {
+      this.server.to("admin_room").emit("location_update", { data: broadcastData });
+      this.server.to("admin").emit("location_update", { data: broadcastData });
+      this.server.to("admin_room").emit("location_update", broadcastData);
+      this.server.to("admin").emit("location_update", broadcastData);
+    }
+
     if (this.realtimeService && typeof this.realtimeService.emitToRoom === "function") {
-      this.realtimeService.emitToRoom("admin", "location_update", {
-        providerId: userId,
-        userId,
-        lat,
-        lng,
-        x: lng,
-        y: lat,
-        status: "available",
-        lastUpdated: ts,
-        ts,
-      });
-      this.realtimeService.emitToRoom("admin", "provider_location_update", {
-        providerId: userId,
-        lat,
-        lng,
-        status: "available",
-        ts,
-      });
+      this.realtimeService.emitToRoom("admin_room", "location_update", { data: broadcastData });
+      this.realtimeService.emitToRoom("admin", "location_update", { data: broadcastData });
+      this.realtimeService.emitToRoom("admin_room", "location_update", broadcastData);
+      this.realtimeService.emitToRoom("admin", "location_update", broadcastData);
+      this.realtimeService.emitToRoom("admin_room", "provider_location_update", broadcastData);
+      this.realtimeService.emitToRoom("admin", "provider_location_update", broadcastData);
     }
 
     // 4. If tied to an active appointment, relay to appointment room

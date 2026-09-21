@@ -41,7 +41,7 @@ export class LocationsController {
 
   @Get()
   async getLocations() {
-    return this.locationsService.getAllLocations();
+    return this.locationsService.getActiveProviderLocations();
   }
 
   @Put("privacy")
