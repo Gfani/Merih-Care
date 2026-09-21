@@ -133,74 +133,135 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     heartbeatTimer.unref();
   }
 
-  handleConnection(socket: Socket) {
-    const userId = (socket as any).userId;
-    const role = (socket as any).role;
-    const roles: string[] = (socket as any).roles || [];
-    if (!userId) { socket.disconnect(); return; }
+  async handleConnection(socket: Socket) {
+    try {
+      let userId = (socket as any).userId;
+      let role = (socket as any).role;
+      let roles: string[] = (socket as any).roles || [];
 
-    const isProvider = role === "provider" || roles.includes("provider") || (socket as any).hasProviderAccount;
-    const isAdmin =
-      role === "admin" ||
-      role === "super_admin" ||
-      roles.includes("admin") ||
-      (socket as any).hasAdminAccount ||
-      !!(socket as any).adminRole ||
-      (typeof role === "string" && role.includes("admin"));
+      // Validate JWT token in handleConnection lifecycle hook if not already populated
+      if (!userId) {
+        let token =
+          socket.handshake.auth?.token ||
+          socket.handshake.query?.token ||
+          socket.handshake.headers?.authorization?.replace(/^Bearer\s+/i, "");
 
-    // Auto-join personal room
-    const personalRoom = isProvider ? `provider:${userId}` : (isAdmin ? `admin:${userId}` : `patient:${userId}`);
-    socket.join(personalRoom);
+        if (!token && socket.handshake.headers?.cookie) {
+          const parsed = parseCookieString(socket.handshake.headers.cookie);
+          token = parsed.admin_token || parsed.token || parsed.access_token || parsed.jwt;
+        }
 
-    // Join providers broadcast room
-    if (isProvider) {
-      socket.join("providers");
-      socket.join(`provider:${userId}`);
-    }
+        const rawToken = Array.isArray(token) ? token[0] : token;
+        if (!rawToken) {
+          socket.disconnect(true);
+          return;
+        }
 
-    // Auto-join admin room for immediate real-time dashboard events
-    if (isAdmin) {
-      socket.join("admin");
-      socket.join(`admin:${userId}`);
-      adminSocketCount.count += 1;
-      if (!adminMetricsInterval) {
-        adminMetricsInterval = setInterval(() => this.broadcastAdminMetrics(), 10000);
-        adminMetricsInterval.unref();
-      }
-    }
+        const payload = await this.jwtService.verifyAsync(rawToken);
+        userId = payload.sub || payload.id;
+        role = payload.role || "patient";
+        roles = payload.roles || [];
 
-    const roomsSet = new Set([personalRoom]);
-    if (isAdmin) roomsSet.add("admin");
-    if (isProvider) {
-      roomsSet.add("providers");
-      if (this.dataSource && this.dataSource.isInitialized) {
-        this.dataSource.getRepository(ProviderEntity).findOne({ where: { userId } }).then((prov) => {
-          if (prov) {
-            const provRoom = `provider:${prov.id}`;
-            socket.join(provRoom);
-            roomsSet.add(provRoom);
+        // Check real-time database state for immediate suspension / removal / revocation enforcement
+        if (this.dataSource && this.dataSource.isInitialized && userId) {
+          const userRepo = this.dataSource.getRepository(UserEntity);
+          const user = await userRepo.findOne({ where: { id: userId } });
+          if (!user || user.status === "suspended") {
+            socket.disconnect(true);
+            return;
           }
-        }).catch(() => {});
+          const userVersion = user.tokenVersion ?? 0;
+          if (
+            payload.tokenVersion !== undefined &&
+            user.tokenVersion !== undefined &&
+            payload.tokenVersion < userVersion
+          ) {
+            socket.disconnect(true);
+            return;
+          }
+        }
+
+        (socket as any).userId = userId;
+        (socket as any).email = payload.email;
+        (socket as any).role = role;
+        (socket as any).roles = roles;
+        (socket as any).hasProviderAccount = payload.hasProviderAccount;
+        (socket as any).hasAdminAccount = payload.hasAdminAccount;
+        (socket as any).adminRole = payload.adminRole;
       }
+
+      if (!userId) {
+        socket.disconnect(true);
+        return;
+      }
+
+      const isProvider = role === "provider" || roles.includes("provider") || (socket as any).hasProviderAccount;
+      const isAdmin =
+        role === "admin" ||
+        role === "super_admin" ||
+        roles.includes("admin") ||
+        roles.includes("super_admin") ||
+        (socket as any).hasAdminAccount ||
+        !!(socket as any).adminRole ||
+        (typeof role === "string" && role.includes("admin"));
+
+      // Auto-join personal room
+      const personalRoom = isProvider ? `provider:${userId}` : (isAdmin ? `admin:${userId}` : `patient:${userId}`);
+      socket.join(personalRoom);
+
+      // Join providers broadcast room
+      if (isProvider) {
+        socket.join("providers");
+        socket.join(`provider:${userId}`);
+      }
+
+      // Auto-join admin room for immediate real-time dashboard events
+      if (isAdmin) {
+        socket.join("admin");
+        socket.join(`admin:${userId}`);
+        adminSocketCount.count += 1;
+        if (!adminMetricsInterval) {
+          adminMetricsInterval = setInterval(() => this.broadcastAdminMetrics(), 10000);
+          adminMetricsInterval.unref();
+        }
+      }
+
+      const roomsSet = new Set([personalRoom]);
+      if (isAdmin) roomsSet.add("admin");
+      if (isProvider) {
+        roomsSet.add("providers");
+        if (this.dataSource && this.dataSource.isInitialized) {
+          this.dataSource.getRepository(ProviderEntity).findOne({ where: { userId } }).then((prov) => {
+            if (prov) {
+              const provRoom = `provider:${prov.id}`;
+              socket.join(provRoom);
+              roomsSet.add(provRoom);
+            }
+          }).catch(() => {});
+        }
+      }
+
+      socketUserMap.set(socket.id, {
+        userId,
+        role,
+        rooms: roomsSet,
+        lastPong: Date.now(),
+        lastLocationAt: new Map(),
+      });
+
+      this.presence.registerSession(socket.id, userId, role, Array.from(roomsSet));
+      this.realtimeService.emitUserPresence(userId, role, "online");
+
+      // Emit connection established — client must receive this to show LIVE badge
+      socket.emit("connection_established", {
+        v: 1,
+        event: "connection_established",
+        data: { userId, role, sessionId: socket.id },
+        ts: new Date().toISOString(),
+      });
+    } catch (err) {
+      socket.disconnect(true);
     }
-
-    socketUserMap.set(socket.id, {
-      userId, role,
-      rooms: roomsSet,
-      lastPong: Date.now(),
-      lastLocationAt: new Map(),
-    });
-
-    this.presence.registerSession(socket.id, userId, role, Array.from(roomsSet));
-    this.realtimeService.emitUserPresence(userId, role, "online");
-
-    // Emit connection established — client must receive this to show LIVE badge
-    socket.emit("connection_established", {
-      v: 1,
-      event: "connection_established",
-      data: { userId, role, sessionId: socket.id },
-      ts: new Date().toISOString(),
-    });
   }
 
   handleDisconnect(socket: Socket) {
