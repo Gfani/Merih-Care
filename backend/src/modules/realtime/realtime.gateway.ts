@@ -539,13 +539,15 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     }
 
     // 4. Relay to admin room for real-time map tracking
-    this.realtimeService.emitToRoom("admin", "provider_location_update", {
-      providerId: userId,
-      lat: data.lat,
-      lng: data.lng,
-      status: "available",
-      ts,
-    });
+    if (this.realtimeService && typeof this.realtimeService.emitToRoom === "function") {
+      this.realtimeService.emitToRoom("admin", "provider_location_update", {
+        providerId: userId,
+        lat: data.lat,
+        lng: data.lng,
+        status: "available",
+        ts,
+      });
+    }
 
     return { ok: true, ts };
   }
