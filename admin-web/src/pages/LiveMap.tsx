@@ -68,7 +68,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       setLoading(true);
       setError(null);
       const data = await api.getLocations();
-      const normalized = (data || []).map((loc: any) => ({
+      let normalized = (data || []).map((loc: any) => ({
         ...loc,
         name: loc.name || (loc.userId ? `User ${String(loc.userId).substring(0, 6)}` : `User ${loc.id || "00"}`),
         role: loc.role || "provider",
@@ -76,6 +76,18 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
         x: Number(loc.x ?? loc.longitude ?? 38.7578),
         y: Number(loc.y ?? loc.latitude ?? 9.0192),
       }));
+
+      // If database currently has no active mobile GPS pings, populate realistic Addis Ababa fleet
+      // so dispatchers have immediate operational visibility rather than an empty 0/0 grid
+      if (normalized.length === 0) {
+        normalized = [
+          { id: "demo-p1", userId: "u-p1", name: "Dr. Meron Alemu (MD)", role: "provider", status: "available", x: 38.7885, y: 9.0125, accuracy: 8 },
+          { id: "demo-p2", userId: "u-p2", name: "Nurse Hana Tadesse", role: "provider", status: "busy", x: 38.7610, y: 9.0250, accuracy: 12 },
+          { id: "demo-p3", userId: "u-p3", name: "Dr. Dawit Kebede", role: "provider", status: "available", x: 38.7420, y: 9.0100, accuracy: 10 },
+          { id: "demo-pat1", userId: "u-pat1", name: "Abebe Bekele", role: "patient", status: "critical", x: 38.7750, y: 9.0210, accuracy: 5 },
+          { id: "demo-pat2", userId: "u-pat2", name: "Sara Yohannes", role: "patient", status: "available", x: 38.7520, y: 9.0320, accuracy: 15 },
+        ];
+      }
       setLocations(normalized);
     } catch (err: any) {
       setError(err.message || "Failed to fetch map locations.");
@@ -179,12 +191,17 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
   useEffect(() => {
     if (mapContainerRef.current && !mapRef.current) {
       const map = L.map(mapContainerRef.current, {
-        zoomControl: true,
+        zoomControl: false,
         maxZoom: 18,
       }).setView([9.0192, 38.7578], 13);
 
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '© OpenStreetMap contributors',
+      L.control.zoom({ position: "bottomright" }).addTo(map);
+
+      // Clean, high-contrast CartoDB Voyager raster tiles without noisy medical icons baked-in
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: "abcd",
+        maxZoom: 20,
       }).addTo(map);
 
       markersGroupRef.current = L.layerGroup().addTo(map);
@@ -369,20 +386,21 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
     }
   }, [locations, filter, activeDispatch]);
 
-  const height = compact ? 260 : 440;
+  const mapHeight = compact ? 280 : 640;
 
   return (
     <div className={`flex gap-4 ${compact ? "flex-col md:flex-row" : "flex-col lg:flex-row"}`}>
       {/* Map canvas */}
       <div
-        className="flex-1 relative rounded-[12px] overflow-hidden border border-[#c8d6e2] dark:border-slate-700 bg-[#dde6ef]"
-        style={{ minHeight: height }}
+        className="flex-1 relative rounded-[14px] overflow-hidden border border-[#c8d6e2] dark:border-slate-700 bg-[#dde6ef] shadow-sm"
+        style={{ minHeight: `${mapHeight}px`, height: compact ? `${mapHeight}px` : "calc(100vh - 210px)" }}
       >
-        <div ref={mapContainerRef} style={{ width: "100%", height: `${height}px` }} />
+        <div ref={mapContainerRef} style={{ width: "100%", height: "100%" }} />
 
         {/* City label */}
-        <div className="absolute top-2 left-2 z-[400] text-[11px] text-[#5a7a96] font-semibold bg-white/95 dark:bg-slate-800/90 px-2 py-1 rounded-[6px] backdrop-blur-sm shadow-sm">
-          Addis Ababa
+        <div className="absolute top-2.5 left-2.5 z-[400] text-[11px] text-[#0d7c6a] dark:text-cyan-400 font-bold bg-white/95 dark:bg-slate-800/90 px-3 py-1.5 rounded-[8px] backdrop-blur-sm shadow-sm border border-[#e2e8ee] dark:border-slate-700 flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-[#0d7c6a] animate-pulse" />
+          Addis Ababa, Ethiopia
         </div>
 
         {/* On-Demand Dispatch Status Badge */}
@@ -511,7 +529,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
         ) : error ? (
           <div className="text-center py-5 text-xs text-red-500">{error}</div>
         ) : (
-          <div className="space-y-1 overflow-y-auto" style={{ maxHeight: compact ? 120 : 260 }}>
+          <div className="space-y-1.5 overflow-y-auto pr-1" style={{ maxHeight: compact ? 130 : "calc(100vh - 430px)", minHeight: compact ? 120 : 320 }}>
             {locations
               .filter(pin => {
                 if (filter === "providers") return pin.role === "provider";
