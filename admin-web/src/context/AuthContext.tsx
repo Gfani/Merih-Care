@@ -19,6 +19,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 function isTokenValid(token: string | null): boolean {
   if (!token) return false;
+  if (!token.includes(".")) return true;
   try {
     const parts = token.split(".");
     if (parts.length !== 3) return false;
@@ -33,8 +34,17 @@ function isTokenValid(token: string | null): boolean {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => api.getStoredToken());
+  const [token, setToken] = useState<string | null>(() => {
+    const t = api.getStoredToken();
+    if (t && !isTokenValid(t)) {
+      api.clearSessionTokens();
+      return null;
+    }
+    return t;
+  });
   const [user, setUser] = useState<User | null>(() => {
+    const t = api.getStoredToken();
+    if (t && !isTokenValid(t)) return null;
     const raw = typeof window !== "undefined" ? sessionStorage.getItem("admin_user") : null;
     if (!raw || raw === "undefined" || raw === "null") return null;
     try {
@@ -43,14 +53,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return null;
     }
   });
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => !!token || !!user);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => isTokenValid(token) && !!user);
   const [isLoading, setIsLoading] = useState<boolean>(() => !token);
 
   useEffect(() => {
     let isMounted = true;
     const validateActiveSession = async () => {
       const storedToken = api.getStoredToken();
-      if (storedToken && !token) {
+      if (storedToken && isTokenValid(storedToken) && !token) {
         setToken(storedToken);
       }
       try {
@@ -59,13 +69,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(profile);
           setIsAuthenticated(true);
           const currentToken = api.getStoredToken();
-          if (currentToken) setToken(currentToken);
+          if (currentToken && isTokenValid(currentToken)) setToken(currentToken);
         }
       } catch {
         // Attempt silent token refresh via HttpOnly refresh_token cookie or session storage
         try {
           const refreshed = await api.refreshToken();
-          if (isMounted && refreshed) {
+          if (isMounted && refreshed && isTokenValid(refreshed)) {
             setToken(refreshed);
             const profile = await api.getMe();
             if (isMounted && profile) {
@@ -76,8 +86,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         } catch (_) {}
 
-        // If validation failed and there is no active token, clear session
-        if (isMounted && !api.getStoredToken()) {
+        // If validation failed, clear stale session completely
+        if (isMounted) {
           api.clearSessionTokens();
           setToken(null);
           setUser(null);

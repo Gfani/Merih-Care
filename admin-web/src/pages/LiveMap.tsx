@@ -89,6 +89,22 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
     fetchLocations();
   }, []);
 
+  // Re-sync locations whenever live connection is established
+  useEffect(() => {
+    if (isLive) {
+      fetchLocations();
+    }
+  }, [isLive]);
+
+  // Periodic fallback refresh every 20s if socket is disconnected/reconnecting
+  useEffect(() => {
+    if (isLive) return;
+    const interval = setInterval(() => {
+      fetchLocations();
+    }, 20000);
+    return () => clearInterval(interval);
+  }, [isLive]);
+
   // Set up real-time listener for WS updates
   useEffect(() => {
     const handleLocationUpdate = (payload: any) => {
