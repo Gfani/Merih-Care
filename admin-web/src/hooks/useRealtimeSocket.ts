@@ -69,6 +69,7 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
   const socketRef = useRef<Socket | null>(null);
   const lastPongRef = useRef<number | null>(null);
   const joinedRoomsRef = useRef<Array<{ event: string; data: any }>>([]);
+  const listenersRef = useRef<Map<string, Set<(payload: any) => void>>>(new Map());
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
@@ -107,6 +108,13 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
       reconnectionDelayMax: 30000,
     });
     socketRef.current = socket;
+
+    // ── Attach all registered dynamic listeners ───────────────────────
+    listenersRef.current.forEach((handlers, evt) => {
+      handlers.forEach((h) => {
+        socket.on(evt, h);
+      });
+    });
 
     // ── Immediate connect lifecycle ──────────────────────────────────
     socket.on("connect", () => {
@@ -166,6 +174,8 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
       "new_service_request",
       "provider_response",
       "location_update",
+      "provider_location_update",
+      "provider_offline",
       "provider_location_stale",
       "emergency_alert",
       "notification",
@@ -210,10 +220,15 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
   }, [effectiveToken, hasSession, baseUrl, fallbackPoll]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const on = useCallback((event: string, handler: (payload: any) => void) => {
+    if (!listenersRef.current.has(event)) {
+      listenersRef.current.set(event, new Set());
+    }
+    listenersRef.current.get(event)!.add(handler);
     socketRef.current?.on(event, handler);
   }, []);
 
   const off = useCallback((event: string, handler: (payload: any) => void) => {
+    listenersRef.current.get(event)?.delete(handler);
     socketRef.current?.off(event, handler);
   }, []);
 

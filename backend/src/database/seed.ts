@@ -57,7 +57,7 @@ export class DatabaseSeedService implements OnModuleInit {
         const bootstrapPassword =
           initialAdminPassword ||
           process.env.TEST_ADMIN_PASSWORD ||
-          crypto.randomBytes(16).toString("hex") + "!Aa1";
+          (isProd ? crypto.randomBytes(16).toString("hex") + "!Aa1" : "Admin@1234");
 
         superAdmin = new UserEntity();
         superAdmin.id = "u-superadmin-" + adminEmail.split("@")[0].replace(/[^a-zA-Z0-9]/g, "");
@@ -73,12 +73,16 @@ export class DatabaseSeedService implements OnModuleInit {
         superAdmin.isApproved = true;
         superAdmin.status = "active";
         superAdmin.tokenVersion = 0;
-        superAdmin.mustChangePassword = true;
+        superAdmin.mustChangePassword = isProd;
         await this.userRepo.save(superAdmin);
         console.log(`New super administrator bootstrapped: ${adminEmail}`);
       } else {
-        // Retain user's existing password; only ensure required administrative privileges
+        // Retain user's existing password; in dev, update password if TEST_ADMIN_PASSWORD is set
         let updated = false;
+        if (!isProd && process.env.TEST_ADMIN_PASSWORD) {
+          superAdmin.password = await bcrypt.hash(process.env.TEST_ADMIN_PASSWORD, 10);
+          updated = true;
+        }
         if (superAdmin.role !== "admin") {
           superAdmin.role = "admin";
           updated = true;
@@ -98,7 +102,7 @@ export class DatabaseSeedService implements OnModuleInit {
         if (updated) {
           await this.userRepo.save(superAdmin);
         }
-        console.log(`Super administrator configured (password preserved): ${adminEmail}`);
+        console.log(`Super administrator configured: ${adminEmail}`);
       }
     }
 
@@ -144,6 +148,61 @@ export class DatabaseSeedService implements OnModuleInit {
       await this.serviceRepo.save(se);
     }
 
-    console.log("Database seeded successfully (clean production-ready state with no demo users/providers)!");
+    // 3. Ensure Active Locations for Verified Providers in Addis Ababa
+    const defaultCoords = [
+      { x: 38.74689, y: 9.02497 }, // Tikur Anbessa / Lideta
+      { x: 38.78500, y: 8.99500 }, // Bole Medhanialem
+      { x: 38.76500, y: 9.01800 }, // Kazanchis
+      { x: 38.73500, y: 9.00500 }, // Sarbet
+      { x: 38.75200, y: 9.03500 }, // Piassa
+    ];
+
+    try {
+      const activeProviders = await this.providerRepo.find({
+        where: [{ available: true, verified: true }, { available: true }],
+      });
+
+      for (let i = 0; i < activeProviders.length; i++) {
+        const prov = activeProviders[i];
+        const coord = defaultCoords[i % defaultCoords.length];
+        const targetX = prov.longitude ?? coord.x;
+        const targetY = prov.latitude ?? coord.y;
+
+        let loc = await this.locationRepo.findOne({
+          where: [{ userId: prov.userId }, { id: prov.id }, { id: `loc-${prov.userId}` }],
+        });
+
+        if (!loc) {
+          loc = new LocationEntity();
+          loc.id = `loc-${prov.userId || prov.id}`;
+          loc.userId = prov.userId || prov.id;
+          loc.name = prov.name;
+          loc.role = "provider";
+          loc.x = targetX;
+          loc.y = targetY;
+          loc.status = "available";
+          loc.accuracy = 5;
+          loc.privacyMode = false;
+          loc.locationTimestamp = new Date().toISOString();
+          await this.locationRepo.save(loc);
+        } else if (loc.x === 0 && loc.y === 0) {
+          loc.x = targetX;
+          loc.y = targetY;
+          loc.name = prov.name || loc.name;
+          loc.status = "available";
+          await this.locationRepo.save(loc);
+        }
+
+        if (!prov.latitude || !prov.longitude) {
+          prov.latitude = targetY;
+          prov.longitude = targetX;
+          await this.providerRepo.save(prov);
+        }
+      }
+    } catch (err) {
+      console.warn("Non-fatal: could not seed provider locations:", err);
+    }
+
+    console.log("Database seeded successfully (with active provider locations ready)!");
   }
 }

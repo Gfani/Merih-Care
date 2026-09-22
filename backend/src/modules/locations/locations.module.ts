@@ -4,12 +4,13 @@ import { LocationsService } from "./locations.service";
 import { LocationsController } from "./locations.controller";
 import { LocationEntity } from "../../database/entities/location.entity";
 import { LocationHistoryEntity } from "../../database/entities/emergency-relation.entity";
+import { ProviderEntity } from "../../database/entities/provider.entity";
 import { AuthModule } from "../auth/auth.module";
 import { RealtimeModule } from "../realtime/realtime.module";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([LocationEntity, LocationHistoryEntity]),
+    TypeOrmModule.forFeature([LocationEntity, LocationHistoryEntity, ProviderEntity]),
     AuthModule,
     RealtimeModule,
   ],

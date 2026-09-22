@@ -33,7 +33,19 @@ let adminMetricsInterval: NodeJS.Timeout | null = null;
 const socketEventRateMap = new Map<string, number[]>();
 const MAX_EVENTS_PER_SECOND = 20;
 
-@WebSocketGateway({ namespace: "/realtime", cors: { origin: "*" } })
+const allowedRealtimeOrigins = process.env.NODE_ENV === "production"
+  ? (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : ["https://admin.merihcare.et", "https://app.merihcare.et", "https://admin.merihcare.live", "https://app.merihcare.live"])
+  : true;
+
+@WebSocketGateway({
+  cors: {
+    origin: allowedRealtimeOrigins,
+    credentials: true,
+  },
+  namespace: "/realtime",
+  pingInterval: 25000,
+  pingTimeout: 35000,
+})
 export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
@@ -207,6 +219,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       // Auto-join admin room for immediate real-time dashboard events
       if (isAdmin) {
         socket.join("admin");
+        socket.join("admin_room");
         socket.join(`admin:${userId}`);
         adminSocketCount.count += 1;
         if (!adminMetricsInterval) {
@@ -216,7 +229,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       }
 
       const roomsSet = new Set([personalRoom]);
-      if (isAdmin) roomsSet.add("admin");
+      if (isAdmin) {
+        roomsSet.add("admin");
+        roomsSet.add("admin_room");
+      }
       if (isProvider) {
         roomsSet.add("providers");
         if (this.dataSource && this.dataSource.isInitialized) {
@@ -589,6 +605,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     loc.updatedAt = new Date();
     await this.locationRepo.save(loc);
 
+    let providerName = loc.name;
     // 2. Persist to ProviderEntity
     if (this.dataSource && this.dataSource.isInitialized) {
       try {
@@ -598,9 +615,18 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
           prov.latitude = lat;
           prov.longitude = lng;
           prov.available = true;
+          if (prov.name) providerName = prov.name;
           await provRepo.save(prov);
         }
       } catch (_) {}
+    }
+
+    if (!providerName && (socket as any).name) {
+      providerName = (socket as any).name;
+    }
+    if (providerName && !loc.name) {
+      loc.name = providerName;
+      await this.locationRepo.save(loc).catch(() => {});
     }
 
     // In-memory Redis Geospatial update
@@ -615,6 +641,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     const broadcastData = {
       providerId: userId,
       userId,
+      name: providerName || loc.name || `Provider ${userId.slice(-4)}`,
+      role: "provider",
       lat,
       lng,
       latitude: lat,
@@ -622,6 +650,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       x: lng,
       y: lat,
       status: "available",
+      isOnline: true,
       lastUpdated: ts,
       ts,
     };

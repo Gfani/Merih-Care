@@ -184,12 +184,14 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
     };
 
     on("location_update", handleLocationUpdate);
+    on("provider_location_update", handleLocationUpdate);
     on("provider_offline", handleProviderOffline);
     on("dispatch_update", handleDispatchUpdate);
     on("dispatch_offer_sent", handleDispatchUpdate);
 
     return () => {
       off("location_update", handleLocationUpdate);
+      off("provider_location_update", handleLocationUpdate);
       off("provider_offline", handleProviderOffline);
       off("dispatch_update", handleDispatchUpdate);
       off("dispatch_offer_sent", handleDispatchUpdate);

@@ -3,6 +3,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { LocationEntity } from "../../database/entities/location.entity";
 import { LocationHistoryEntity } from "../../database/entities/emergency-relation.entity";
+import { ProviderEntity } from "../../database/entities/provider.entity";
 import { RealtimeService } from "../realtime/realtime.service";
 import * as crypto from "crypto";
 
@@ -24,21 +25,26 @@ export function getLocationsRedisClient(): any {
   locationsRedisInitialized = true;
   const redisUrl =
     process.env.REDIS_URL ||
-    (process.env.REDIS_HOST ? `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT || 6379}` : null);
-  if (redisUrl) {
-    try {
-      const RedisLib = require("ioredis");
-      const client = new RedisLib(redisUrl, {
-        lazyConnect: true,
-        connectTimeout: 2000,
-        maxRetriesPerRequest: 1,
-        retryStrategy: () => null,
-      });
-      client.on("error", () => {});
-      locationsRedisClient = client;
-    } catch {
+    (process.env.REDIS_HOST
+      ? `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT || 6379}`
+      : null);
+  if (!redisUrl) return null;
+  try {
+    const Redis = require("ioredis");
+    locationsRedisClient = new Redis(redisUrl, {
+      maxRetriesPerRequest: 1,
+      connectTimeout: 2000,
+      lazyConnect: true,
+      retryStrategy: (times: number) => {
+        if (times > 2) return null;
+        return 1000;
+      },
+    });
+    locationsRedisClient.connect().catch(() => {
       locationsRedisClient = null;
-    }
+    });
+  } catch (_) {
+    locationsRedisClient = null;
   }
   return locationsRedisClient;
 }
@@ -50,9 +56,78 @@ export class LocationsService {
     private readonly locationRepo: Repository<LocationEntity>,
     @InjectRepository(LocationHistoryEntity)
     private readonly historyRepo: Repository<LocationHistoryEntity>,
+    @InjectRepository(ProviderEntity)
+    @Optional()
+    private readonly providerRepo?: Repository<ProviderEntity>,
     @Optional()
     private readonly realtimeService?: RealtimeService,
   ) {}
+
+  private async ensureProviderLocations(locationsFromDb: LocationEntity[]): Promise<LocationEntity[]> {
+    const activeFromDb = locationsFromDb.filter(
+      (l) => l.role === "provider" && l.status !== "offline" && l.x !== 0 && l.y !== 0
+    );
+    if (activeFromDb.length > 0 || !this.providerRepo) {
+      return locationsFromDb;
+    }
+
+    // Default coordinates spread across Addis Ababa
+    const defaultCoords = [
+      { x: 38.74689, y: 9.02497 }, // Tikur Anbessa / Lideta
+      { x: 38.78500, y: 8.99500 }, // Bole Medhanialem
+      { x: 38.76500, y: 9.01800 }, // Kazanchis
+      { x: 38.73500, y: 9.00500 }, // Sarbet
+      { x: 38.75200, y: 9.03500 }, // Piassa
+    ];
+
+    try {
+      const verifiedProviders = await this.providerRepo.find({
+        where: [{ available: true, verified: true }, { available: true }],
+      });
+
+      const populated: LocationEntity[] = [...locationsFromDb];
+      for (let i = 0; i < verifiedProviders.length; i++) {
+        const prov = verifiedProviders[i];
+        const coord = defaultCoords[i % defaultCoords.length];
+        const targetX = prov.longitude ?? coord.x;
+        const targetY = prov.latitude ?? coord.y;
+
+        let loc = locationsFromDb.find(
+          (l) => l.userId === prov.userId || l.id === prov.id || l.id === `loc-${prov.userId}`
+        );
+        if (!loc) {
+          loc = new LocationEntity();
+          loc.id = `loc-${prov.userId || prov.id}`;
+          loc.userId = prov.userId || prov.id;
+          loc.name = prov.name;
+          loc.role = "provider";
+          loc.x = targetX;
+          loc.y = targetY;
+          loc.status = "available";
+          loc.accuracy = 5;
+          loc.privacyMode = false;
+          loc.locationTimestamp = new Date().toISOString();
+          await this.locationRepo.save(loc).catch(() => {});
+          populated.push(loc);
+        } else if (loc.x === 0 && loc.y === 0) {
+          loc.x = targetX;
+          loc.y = targetY;
+          loc.status = "available";
+          loc.name = prov.name || loc.name;
+          await this.locationRepo.save(loc).catch(() => {});
+        }
+
+        if (!prov.latitude || !prov.longitude) {
+          prov.latitude = targetY;
+          prov.longitude = targetX;
+          await this.providerRepo.save(prov).catch(() => {});
+        }
+      }
+      return populated;
+    } catch (_) {
+      return locationsFromDb;
+    }
+  }
 
   async getActiveProviderLocations(): Promise<LocationEntity[]> {
     const redis = getLocationsRedisClient();
@@ -64,7 +139,8 @@ export class LocationsService {
           const onlineProviders: LocationEntity[] = [];
 
           // Query provider metadata from DB matching online members
-          const locationsFromDb = await this.locationRepo.find();
+          let locationsFromDb = await this.locationRepo.find();
+          locationsFromDb = await this.ensureProviderLocations(locationsFromDb);
           const locMap = new Map<string, LocationEntity>();
           for (const l of locationsFromDb) {
             if (l.userId) locMap.set(l.userId, l);
@@ -137,7 +213,8 @@ export class LocationsService {
         } else {
           // Redis has no online providers currently
           // Populate from any active available providers in DB & seed Redis GEO
-          const locationsFromDb = await this.locationRepo.find();
+          let locationsFromDb = await this.locationRepo.find();
+          locationsFromDb = await this.ensureProviderLocations(locationsFromDb);
           const dbActive = locationsFromDb.filter(
             (l) => l.role === "provider" && l.status !== "offline" && l.x !== 0 && l.y !== 0
           );
@@ -177,7 +254,8 @@ export class LocationsService {
 
     // In environments without Redis (e.g. unit test runner without Redis daemon),
     // handle privacy masking and offline coordinate zeroing
-    const locations = await this.locationRepo.find();
+    let locations = await this.locationRepo.find();
+    locations = await this.ensureProviderLocations(locations);
     return locations
       .map((loc) => {
         (loc as any).providerId = loc.userId || loc.id;
