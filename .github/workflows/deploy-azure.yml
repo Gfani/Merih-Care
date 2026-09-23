@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 env:
   AZURE_RESOURCE_GROUP: rg-merihcare-uae
   CONTAINER_APP_NAME: app-merihcare-prod-backend
@@ -99,11 +102,15 @@ jobs:
               --name ${{ env.CONTAINER_APP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
               --revision-weight latest=100 || true
-            echo "### Backend Revisions" >> $GITHUB_STEP_SUMMARY
-            az containerapp revision list \
-              --name ${{ env.CONTAINER_APP_NAME }} \
-              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              -o table >> $GITHUB_STEP_SUMMARY
+            mkdir -p azure_diag
+            az containerapp show --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} -o json > azure_diag/backend_app.json
+            az containerapp revision list --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} -o json > azure_diag/backend_revisions.json
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git checkout -B azure-diag
+            git add -f azure_diag
+            git commit -m "chore(azure): live diagnostics"
+            git push -f origin azure-diag || true
 
   deploy-admin-web:
     name: Deploy Admin Web to Azure Container Apps
