@@ -1,0 +1,281 @@
+=== SHIFTING TRAFFIC TO LATEST REVISION ===
+ERROR: Containerapp 'app-merihcare-prod-backend' is configured for single revision. Set revision mode to multiple in order to set ingress traffic. Try `az containerapp revision set-mode -h` for more details.
+=== BACKEND APP DETAILS ===
+WARNING: The behavior of this command has been altered by the following extension: containerapp
+{
+  "image": "crmerihcareprodgdbkco.azurecr.io/merihcare-backend:2a8def0c7f41adaefade055fad049f53c23fe248",
+  "latestRevision": "app-merihcare-prod-backend--0000096",
+  "name": "app-merihcare-prod-backend",
+  "readyRevision": "app-merihcare-prod-backend--0000096",
+  "traffic": [
+    {
+      "latestRevision": true,
+      "weight": 100
+    }
+  ]
+}
+=== REVISION LIST ===
+CreatedTime                Active    Replicas    TrafficWeight    HealthState    ProvisioningState    Name
+-------------------------  --------  ----------  ---------------  -------------  -------------------  -----------------------------------
+2026-09-19T20:40:12+00:00  True      1           0                Healthy        Provisioned          app-merihcare-prod-backend--0000076
+2026-09-23T13:23:39+00:00  True      1           100              Healthy        Provisioned          app-merihcare-prod-backend--0000096
+=== REVISION DETAILS (app-merihcare-prod-backend--0000096) ===
+{
+  "id": "/subscriptions/b8118f5d-51c5-4e39-97c1-6af20d709669/resourceGroups/rg-merihcare-uae/providers/Microsoft.App/containerApps/app-merihcare-prod-backend/revisions/app-merihcare-prod-backend--0000096",
+  "name": "app-merihcare-prod-backend--0000096",
+  "properties": {
+    "active": true,
+    "createdTime": "2026-09-23T13:23:39+00:00",
+    "fqdn": "app-merihcare-prod-backend--0000096.agreeablemoss-f06ffa43.uaenorth.azurecontainerapps.io",
+    "healthState": "Healthy",
+    "provisioningState": "Provisioned",
+    "replicas": 1,
+    "runningState": "Running",
+    "template": {
+      "containers": [
+        {
+          "env": [
+            {
+              "name": "NODE_ENV",
+              "value": "production"
+            },
+            {
+              "name": "PORT",
+              "value": "3000"
+            },
+            {
+              "name": "API_PREFIX",
+              "value": "api/v1"
+            },
+            {
+              "name": "DB_TYPE",
+              "value": "postgres"
+            },
+            {
+              "name": "DB_HOST",
+              "value": "psql-merihcare-prod-gdbkco.postgres.database.azure.com"
+            },
+            {
+              "name": "DB_PORT",
+              "value": "5432"
+            },
+            {
+              "name": "DB_USERNAME",
+              "value": "merihcare_admin"
+            },
+            {
+              "name": "DB_PASSWORD",
+              "secretRef": "db-password"
+            },
+            {
+              "name": "DB_DATABASE",
+              "value": "merihcare_db"
+            },
+            {
+              "name": "DB_SSL",
+              "value": "true"
+            },
+            {
+              "name": "JWT_SECRET",
+              "secretRef": "jwt-secret"
+            },
+            {
+              "name": "UPLOADS_DIR",
+              "value": "/app/uploads"
+            },
+            {
+              "name": "CHAPA_SECRET_KEY",
+              "secretRef": "chapa-secret"
+            }
+          ],
+          "image": "crmerihcareprodgdbkco.azurecr.io/merihcare-backend:2a8def0c7f41adaefade055fad049f53c23fe248",
+          "name": "backend",
+          "probes": [
+            {
+              "httpGet": {
+                "path": "/api/v1/health",
+                "port": 3000
+              },
+              "initialDelaySeconds": 15,
+              "periodSeconds": 30,
+              "type": "Liveness"
+            }
+          ],
+          "resources": {
+            "cpu": 0.5,
+            "memory": "1Gi"
+          },
+          "volumeMounts": [
+            {
+              "mountPath": "/app/uploads",
+              "volumeName": "uploads-volume"
+            }
+          ]
+        }
+      ],
+      "initContainers": null,
+      "revisionSuffix": null,
+      "scale": {
+        "cooldownPeriod": null,
+        "maxReplicas": 5,
+        "minReplicas": 1,
+        "pollingInterval": null,
+        "rules": [
+          {
+            "http": {
+              "metadata": {
+                "concurrentRequests": "50"
+              }
+            },
+            "name": "http-scaling"
+          }
+        ]
+      },
+      "serviceBinds": null,
+      "terminationGracePeriodSeconds": null,
+      "volumes": [
+        {
+          "name": "uploads-volume",
+          "storageName": "uploads-storage",
+          "storageType": "AzureFile"
+        }
+      ]
+    },
+    "trafficWeight": 100
+  },
+  "resourceGroup": "rg-merihcare-uae",
+  "type": "Microsoft.App/containerapps/revisions"
+}
+=== REPLICAS (app-merihcare-prod-backend--0000096) ===
+WARNING: The behavior of this command has been altered by the following extension: containerapp
+[
+  {
+    "id": "/subscriptions/b8118f5d-51c5-4e39-97c1-6af20d709669/resourceGroups/rg-merihcare-uae/providers/Microsoft.App/containerApps/app-merihcare-prod-backend/revisions/app-merihcare-prod-backend--0000096/replicas/app-merihcare-prod-backend--0000096-6c5f9d7d5c-fzcp6",
+    "name": "app-merihcare-prod-backend--0000096-6c5f9d7d5c-fzcp6",
+    "properties": {
+      "containers": [
+        {
+          "containerId": "containerd://baaf22207c7f6c3ac2043113eeb019c1e0d4c8fa995bc9fda9dcce8f58ddd222",
+          "debugEndpoint": "wss://uaenorth.azurecontainerapps.dev/subscriptions/b8118f5d-51c5-4e39-97c1-6af20d709669/resourceGroups/rg-merihcare-uae/containerApps/app-merihcare-prod-backend/revisions/app-merihcare-prod-backend--0000096/replicas/app-merihcare-prod-backend--0000096-6c5f9d7d5c-fzcp6/debug?targetContainer=backend",
+          "execEndpoint": "wss://uaenorth.azurecontainerapps.dev/subscriptions/b8118f5d-51c5-4e39-97c1-6af20d709669/resourceGroups/rg-merihcare-uae/containerApps/app-merihcare-prod-backend/revisions/app-merihcare-prod-backend--0000096/replicas/app-merihcare-prod-backend--0000096-6c5f9d7d5c-fzcp6/containers/backend/exec",
+          "logStreamEndpoint": "https://uaenorth.azurecontainerapps.dev/subscriptions/b8118f5d-51c5-4e39-97c1-6af20d709669/resourceGroups/rg-merihcare-uae/containerApps/app-merihcare-prod-backend/revisions/app-merihcare-prod-backend--0000096/replicas/app-merihcare-prod-backend--0000096-6c5f9d7d5c-fzcp6/containers/backend/logstream",
+          "name": "backend",
+          "ready": true,
+          "restartCount": 0,
+          "runningState": "Running",
+          "runningStateDetails": "Container started at: 9/23/2026 1:24:04 PM.",
+          "started": true
+        }
+      ],
+      "createdTime": "2026-09-23T13:23:40Z",
+      "initContainers": [],
+      "runningState": "Running",
+      "runningStateDetails": ""
+    },
+    "resourceGroup": "rg-merihcare-uae",
+    "type": "Microsoft.App/containerapps/revisions/replicas"
+  }
+]
+=== LOGS (app-merihcare-prod-backend--0000096) ===
+{"TimeStamp": "2026-09-23T13:24:54.96853", "Log": "Connecting to the container 'backend'..."}
+{"TimeStamp": "2026-09-23T13:24:55.00525", "Log": "Successfully Connected to container: 'backend' [Revision: 'app-merihcare-prod-backend--0000096', Replica: 'app-merihcare-prod-backend--0000096-6c5f9d7d5c-fzcp6']"}
+{"TimeStamp": "2026-09-23T13:24:09.2675353+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/medical, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2677285+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/medical/:patientId, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2679129+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/medical/:patientId, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2680702+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/medical/consent/grant, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2682515+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/medical/consent/revoke/:providerId, DELETE} route\u001b[39m\u001b[38;5;3m +1ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2684183+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/medical/policy/accept, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2685871+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/medical/incidents, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2688518+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/medical/:patientId/export, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2691845+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/medical/:patientId/delete-account, DELETE} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2693398+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/medical/admin/backup, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2697622+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/medical/upload/medical-file, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2698422+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mEmergencyController {/api/v1/emergency}:\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2702276+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/emergency, GET} route\u001b[39m\u001b[38;5;3m +1ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2704431+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/emergency/create, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.270865+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/emergency/:id/dispatch, PUT} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2710869+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/emergency/:id/reassign, PUT} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2712674+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/emergency/:id/arrive, PUT} route\u001b[39m\u001b[38;5;3m +1ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2715014+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/emergency/:id/resolve, PUT} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2717444+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/emergency/:id/reject, PUT} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.271994+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/emergency/:id/escalate, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2721577+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mLocationsController {/api/v1/locations}:\u001b[39m\u001b[38;5;3m +1ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2723841+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/locations, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2725764+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/locations/privacy, PUT} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2727477+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/locations/status, PUT} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2729319+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/locations/:id/move, PUT} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2731592+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/locations/route, GET} route\u001b[39m\u001b[38;5;3m +1ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2733187+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/locations/route, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2734818+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/locations/geofence, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2736423+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/locations/emergencies, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.273697+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mComplaintsController {/api/v1/complaints}:\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2739257+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/complaints, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2740977+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/complaints/create, POST} route\u001b[39m\u001b[38;5;3m +1ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2742883+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/complaints/:id/assign, PUT} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2744778+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/complaints/:id/respond, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2746745+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/complaints/:id/escalate, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2748414+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/complaints/:id/resolve, PUT} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2749055+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mReviewsController {/api/v1/reviews}:\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2750788+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/reviews, GET} route\u001b[39m\u001b[38;5;3m +1ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.275253+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/reviews/:id/moderate, PUT} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2753425+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mAdminController {/api/v1}:\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2755536+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/settings, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2756394+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/settings, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2758209+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/settings, PUT} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2758966+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/settings, PUT} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2760585+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/profile, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2762247+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/profile, PUT} route\u001b[39m\u001b[38;5;3m +1ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2763945+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/password, PUT} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2765779+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/mfa/enable, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.276765+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/mfa/verify, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2769629+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/users/pending, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2770661+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/pending-approvals, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2773092+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/users/:id/approve, PUT} route\u001b[39m\u001b[38;5;3m +1ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2774147+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/approvals/:id, PUT} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2775989+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/users/:id/approve, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2776982+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/approvals/:id, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2778553+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/administrators, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2780214+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/administrators, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.2781991+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/administrators/:id, DELETE} route\u001b[39m\u001b[38;5;3m +1ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3488233+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/administrators/:id/reset-password, POST} route\u001b[39m\u001b[38;5;3m +70ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3490323+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/administrators/:id/role, PUT} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3491563+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/users/:id/promote, PUT} route\u001b[39m\u001b[38;5;3m +1ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3493339+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/tasks/reminders/trigger, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3495108+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/tasks/cleanup/trigger, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3496912+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/admin/tasks/retry/trigger, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3497898+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mAuditController {/api/v1/audit-logs}:\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3499893+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/audit-logs, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3500054+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mAuditController {/api/v1/audit}:\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3501983+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/audit, GET} route\u001b[39m\u001b[38;5;3m +1ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3502401+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mReportsController {/api/v1/dashboard}:\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3507026+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/dashboard/stats, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3507152+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/dashboard/overview, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.350743+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/dashboard/export, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3508767+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mReportsController {/api/v1/reports}:\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3510744+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/reports/stats, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3511448+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/reports/overview, GET} route\u001b[39m\u001b[38;5;3m +1ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.351374+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/reports/export, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.351439+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mUploadsController {/api/v1/uploads}:\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3516689+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/uploads/credential, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3519018+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/uploads, POST} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3522817+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/uploads/signed-url, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3525541+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/uploads/view/:fileKey(*), GET} route\u001b[39m\u001b[38;5;3m +1ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3527173+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/uploads/view, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3529585+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/uploads/download/:fileKey(*), GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3531767+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/uploads/download, GET} route\u001b[39m\u001b[38;5;3m +1ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3532469+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mHealthController {/api/v1/health}:\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3534634+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/health, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3536433+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/health/liveness, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3538189+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/health/readiness, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3539972+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/health/app-version, GET} route\u001b[39m\u001b[38;5;3m +0ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.3541803+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:09 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/health/version, GET} route\u001b[39m\u001b[38;5;3m +1ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:09.370421+00:00", "Log": "and ensuring essential initial records (admin, services)..."}
+{"TimeStamp": "2026-09-23T13:24:09.6927909+00:00", "Log": "super administrator bootstrapped: admin@merihcare.live"}
+{"TimeStamp": "2026-09-23T13:24:09.8794124+00:00", "Log": "administrator configured: fanuelgoitom79@gmail.com"}
+{"TimeStamp": "2026-09-23T13:24:10.0814843+00:00", "Log": "super administrator bootstrapped: fani@g.com"}
+{"TimeStamp": "2026-09-23T13:24:10.2862701+00:00", "Log": "seeded successfully (with active provider locations ready)!"}
+{"TimeStamp": "2026-09-23T13:24:10.2973953+00:00", "Log": "1  - \u001b[39m09/23/2026, 1:24:10 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[NestApplication] \u001b[39m\u001b[32mNest application successfully started\u001b[39m\u001b[38;5;3m +943ms\u001b[39m"}
+{"TimeStamp": "2026-09-23T13:24:10.2989839+00:00", "Log": "is running on: http://0.0.0.0:3000/api/v1"}
+{"TimeStamp": "2026-09-23T13:24:42.1322073+00:00", "Log": "ID: c08ea622-c5cd-46a9-93c6-d248b27081ea] Error 403 (FORBIDDEN_ACCESS): \"Insufficient permissions: operation requires [credentials:review], but account has [users:read, users:write, reports:read, complaints:read, complaints:write, audit:read]\" at /api/v1/verification"}
+{"TimeStamp": "2026-09-23T13:24:42.1533742+00:00", "Log": "ID: 96c05177-a0f3-4daf-9dde-d23fcfb0a631] Error 403 (FORBIDDEN_ACCESS): \"Access denied: This operation requires role(s) [super_admin], but your account does not possess these privileges.\" at /api/v1/admin/pending-approvals"}
+{"TimeStamp": "2026-09-23T13:24:50.9302834+00:00", "Log": "ID: corr-1790169890930] Error 404 (RESOURCE_NOT_FOUND): \"Cannot GET /\" at /"}
