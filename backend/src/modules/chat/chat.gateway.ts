@@ -15,9 +15,30 @@ import { DataSource } from "typeorm";
 import { ChatService } from "./chat.service";
 import { UserEntity } from "../../database/entities/user.entity";
 
-const allowedOrigins = process.env.NODE_ENV === "production"
-  ? (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : ["https://admin.merihcare.et", "https://app.merihcare.et", "https://admin.merihcare.live"])
-  : true;
+const isOriginPermitted = (origin: string | undefined): boolean => {
+  if (!origin) return true;
+  if (
+    origin.endsWith(".merihcare.live") ||
+    origin === "https://merihcare.live" ||
+    origin.endsWith(".merihcare.et") ||
+    origin === "https://merihcare.et" ||
+    origin.includes("azurecontainerapps.io") ||
+    origin.includes("localhost") ||
+    origin.includes("127.0.0.1")
+  ) {
+    return true;
+  }
+  const configured = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",").map((s) => s.trim()) : [];
+  return configured.includes(origin);
+};
+
+const allowedOrigins = (origin: any, callback: (err: Error | null, allow?: boolean) => void) => {
+  if (isOriginPermitted(origin)) {
+    callback(null, true);
+  } else {
+    callback(new Error(`CORS blocked origin: ${origin}`), false);
+  }
+};
 
 @WebSocketGateway({
   cors: {

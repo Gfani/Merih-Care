@@ -33,9 +33,30 @@ let adminMetricsInterval: NodeJS.Timeout | null = null;
 const socketEventRateMap = new Map<string, number[]>();
 const MAX_EVENTS_PER_SECOND = 20;
 
-const allowedRealtimeOrigins = process.env.NODE_ENV === "production"
-  ? (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : ["https://admin.merihcare.et", "https://app.merihcare.et", "https://admin.merihcare.live", "https://app.merihcare.live"])
-  : true;
+const isOriginPermitted = (origin: string | undefined): boolean => {
+  if (!origin) return true;
+  if (
+    origin.endsWith(".merihcare.live") ||
+    origin === "https://merihcare.live" ||
+    origin.endsWith(".merihcare.et") ||
+    origin === "https://merihcare.et" ||
+    origin.includes("azurecontainerapps.io") ||
+    origin.includes("localhost") ||
+    origin.includes("127.0.0.1")
+  ) {
+    return true;
+  }
+  const configured = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",").map((s) => s.trim()) : [];
+  return configured.includes(origin);
+};
+
+const allowedRealtimeOrigins = (origin: any, callback: (err: Error | null, allow?: boolean) => void) => {
+  if (isOriginPermitted(origin)) {
+    callback(null, true);
+  } else {
+    callback(new Error(`CORS blocked origin: ${origin}`), false);
+  }
+};
 
 @WebSocketGateway({
   cors: {

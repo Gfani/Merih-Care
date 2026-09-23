@@ -67,7 +67,7 @@ export class LocationsService {
     const activeFromDb = locationsFromDb.filter(
       (l) => l.role === "provider" && l.status !== "offline" && l.x !== 0 && l.y !== 0
     );
-    if (activeFromDb.length > 0 || !this.providerRepo) {
+    if (activeFromDb.length > 0) {
       return locationsFromDb;
     }
 
@@ -81,7 +81,7 @@ export class LocationsService {
     ];
 
     try {
-      let verifiedProviders = await this.providerRepo.find();
+      let verifiedProviders = this.providerRepo ? await this.providerRepo.find().catch(() => []) : [];
       if (!verifiedProviders || verifiedProviders.length === 0) {
         const defaultClinicians = [
           { name: "Dr. Meron Alemu", role: "doctor", x: 38.74689, y: 9.02497, specialty: "General Practitioner" },
@@ -95,19 +95,23 @@ export class LocationsService {
         for (let i = 0; i < defaultClinicians.length; i++) {
           const c = defaultClinicians[i];
           const provId = `prov-seed-${i + 1}`;
-          const prov = new ProviderEntity();
-          prov.id = provId;
-          prov.name = c.name;
-          prov.specialty = c.specialty;
-          prov.verified = true;
-          prov.available = true;
-          prov.latitude = c.y;
-          prov.longitude = c.x;
-          await this.providerRepo.save(prov).catch(() => {});
+          if (this.providerRepo) {
+            const prov = new ProviderEntity();
+            prov.id = provId;
+            prov.name = c.name;
+            prov.title = c.specialty;
+            prov.specialty = c.specialty;
+            prov.verified = true;
+            prov.available = true;
+            prov.latitude = c.y;
+            prov.longitude = c.x;
+            await this.providerRepo.save(prov).catch(() => {});
+          }
 
           const loc = new LocationEntity();
           loc.id = `loc-${provId}`;
-          loc.userId = provId;
+          // Set to undefined so TypeORM does NOT violate PostgreSQL foreign key constraint to users table
+          loc.userId = undefined as any;
           loc.name = c.name;
           loc.role = "provider";
           loc.x = c.x;
@@ -117,6 +121,13 @@ export class LocationsService {
           loc.privacyMode = false;
           loc.locationTimestamp = new Date().toISOString();
           await this.locationRepo.save(loc).catch(() => {});
+          (loc as any).userId = provId;
+          (loc as any).providerId = provId;
+          (loc as any).lat = loc.y;
+          (loc as any).lng = loc.x;
+          (loc as any).latitude = loc.y;
+          (loc as any).longitude = loc.x;
+          (loc as any).isOnline = true;
           seededList.push(loc);
         }
         return seededList;
@@ -135,7 +146,7 @@ export class LocationsService {
         if (!loc) {
           loc = new LocationEntity();
           loc.id = `loc-${prov.userId || prov.id}`;
-          loc.userId = prov.userId || prov.id;
+          loc.userId = prov.userId || (undefined as any);
           loc.name = prov.name;
           loc.role = "provider";
           loc.x = targetX;
@@ -145,19 +156,33 @@ export class LocationsService {
           loc.privacyMode = false;
           loc.locationTimestamp = new Date().toISOString();
           await this.locationRepo.save(loc).catch(() => {});
+          (loc as any).userId = prov.userId || prov.id;
+          (loc as any).providerId = prov.userId || prov.id;
+          (loc as any).lat = loc.y;
+          (loc as any).lng = loc.x;
+          (loc as any).latitude = loc.y;
+          (loc as any).longitude = loc.x;
+          (loc as any).isOnline = true;
           populated.push(loc);
-        } else if (loc.x === 0 && loc.y === 0) {
+        } else {
           loc.x = targetX;
           loc.y = targetY;
           loc.status = "available";
           loc.name = prov.name || loc.name;
           await this.locationRepo.save(loc).catch(() => {});
+          (loc as any).lat = loc.y;
+          (loc as any).lng = loc.x;
+          (loc as any).latitude = loc.y;
+          (loc as any).longitude = loc.x;
+          (loc as any).isOnline = true;
         }
 
         if (!prov.latitude || !prov.longitude) {
           prov.latitude = targetY;
           prov.longitude = targetX;
-          await this.providerRepo.save(prov).catch(() => {});
+          if (this.providerRepo) {
+            await this.providerRepo.save(prov).catch(() => {});
+          }
         }
       }
       return populated;
