@@ -86,7 +86,9 @@ export class RealtimeService {
 
   /** User presence status changed */
   emitUserPresence(userId: string, role: string, status: "online" | "offline") {
-    this.emitToRoom("admin", "user_presence", { userId, role, status, ts: new Date().toISOString() });
+    const payload = { userId, role, status, ts: new Date().toISOString() };
+    this.emitToRoom("admin", "user_presence", payload);
+    this.emitToRoom("admin_room", "user_presence", payload);
   }
 
   /** Provider location update for active appointment */
@@ -100,6 +102,9 @@ export class RealtimeService {
     };
     this.emitToRoom(`appointment:${appointmentId}`, "location_update", payload);
     this.emitToRoom("admin", "location_update", payload);
+    this.emitToRoom("admin_room", "location_update", payload);
+    this.emitToRoom("admin", "provider_location_update", payload);
+    this.emitToRoom("admin_room", "provider_location_update", payload);
   }
 
   /** Provider location has gone stale (no update in 90 s) */

@@ -81,9 +81,7 @@ export class LocationsService {
     ];
 
     try {
-      const verifiedProviders = await this.providerRepo.find({
-        where: [{ available: true, verified: true }, { available: true }],
-      });
+      const verifiedProviders = await this.providerRepo.find();
 
       const populated: LocationEntity[] = [...locationsFromDb];
       for (let i = 0; i < verifiedProviders.length; i++) {
