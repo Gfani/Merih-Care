@@ -81,7 +81,46 @@ export class LocationsService {
     ];
 
     try {
-      const verifiedProviders = await this.providerRepo.find();
+      let verifiedProviders = await this.providerRepo.find();
+      if (!verifiedProviders || verifiedProviders.length === 0) {
+        const defaultClinicians = [
+          { name: "Dr. Meron Alemu", role: "doctor", x: 38.74689, y: 9.02497, specialty: "General Practitioner" },
+          { name: "Dr. Kassahun Tadesse", role: "doctor", x: 38.73500, y: 9.00500, specialty: "Internal Medicine" },
+          { name: "Hiwot Girma, RN", role: "nurse", x: 38.78500, y: 8.99500, specialty: "Clinical Nurse" },
+          { name: "Dr. Matyas Kassa", role: "doctor", x: 38.75200, y: 9.03500, specialty: "Pediatrician" },
+          { name: "Fanuel Goitom", role: "provider", x: 38.76500, y: 9.01800, specialty: "Emergency Clinician" },
+        ];
+
+        const seededList: LocationEntity[] = [];
+        for (let i = 0; i < defaultClinicians.length; i++) {
+          const c = defaultClinicians[i];
+          const provId = `prov-seed-${i + 1}`;
+          const prov = new ProviderEntity();
+          prov.id = provId;
+          prov.name = c.name;
+          prov.specialty = c.specialty;
+          prov.verified = true;
+          prov.available = true;
+          prov.latitude = c.y;
+          prov.longitude = c.x;
+          await this.providerRepo.save(prov).catch(() => {});
+
+          const loc = new LocationEntity();
+          loc.id = `loc-${provId}`;
+          loc.userId = provId;
+          loc.name = c.name;
+          loc.role = "provider";
+          loc.x = c.x;
+          loc.y = c.y;
+          loc.status = "available";
+          loc.accuracy = 5;
+          loc.privacyMode = false;
+          loc.locationTimestamp = new Date().toISOString();
+          await this.locationRepo.save(loc).catch(() => {});
+          seededList.push(loc);
+        }
+        return seededList;
+      }
 
       const populated: LocationEntity[] = [...locationsFromDb];
       for (let i = 0; i < verifiedProviders.length; i++) {
