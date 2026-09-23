@@ -86,47 +86,24 @@ jobs:
           resourceGroup: ${{ env.AZURE_RESOURCE_GROUP }}
           imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-backend:${{ github.sha }}
 
-      - name: Route 100% Traffic to Latest Backend Revision
+      - name: Verify Backend Revision Status
         uses: azure/cli@v2
         with:
           inlineScript: |
             az config set extension.use_dynamic_install=yes_without_prompt
             az extension add --name containerapp --upgrade || true
-            sleep 10
-            echo "=== SHIFTING TRAFFIC TO LATEST REVISION ===" > diag.log
-            az containerapp ingress traffic set \
-              --name ${{ env.CONTAINER_APP_NAME }} \
-              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              --revision-weight latest=100 >> diag.log 2>&1 || true
-            echo "=== BACKEND APP DETAILS ===" >> diag.log
+            echo "=== BACKEND APP DETAILS ==="
             az containerapp show \
               --name ${{ env.CONTAINER_APP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
               --query "{name:name,latestRevision:properties.latestRevisionName,readyRevision:properties.latestReadyRevisionName,traffic:properties.configuration.ingress.traffic,image:properties.template.containers[0].image}" \
-              -o json >> diag.log 2>&1 || true
-            echo "=== REVISION LIST ===" >> diag.log
+              -o json
+            echo "=== REVISION LIST ==="
             az containerapp revision list \
               --name ${{ env.CONTAINER_APP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              -o table >> diag.log 2>&1 || true
-            LATEST_REV=$(az containerapp show --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --query properties.latestRevisionName -o tsv)
-            echo "=== REVISION DETAILS ($LATEST_REV) ===" >> diag.log
-            az containerapp revision show --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --revision $LATEST_REV -o json >> diag.log 2>&1 || true
-            echo "=== REPLICAS ($LATEST_REV) ===" >> diag.log
-            az containerapp replica list --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --revision $LATEST_REV -o json >> diag.log 2>&1 || true
-            echo "=== LOGS ($LATEST_REV) ===" >> diag.log
-            az containerapp logs show --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --revision $LATEST_REV --tail 100 >> diag.log 2>&1 || true
-            cat diag.log
-
-      - name: Save Diagnostics to azure-diag Branch
-        if: always()
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -B azure-diag
-          git add -f diag.log || true
-          git commit -m "chore(azure): dump diag.log" || true
-          git push -f origin azure-diag || true
+              --query "[].{Name:name,Active:properties.active,Health:properties.healthState,State:properties.runningState,Traffic:properties.trafficWeight}" \
+              -o table
 
   deploy-admin-web:
     name: Deploy Admin Web to Azure Container Apps
@@ -202,15 +179,16 @@ jobs:
           resourceGroup: ${{ env.AZURE_RESOURCE_GROUP }}
           imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-admin-web:${{ github.sha }}
 
-      - name: Route 100% Traffic to Latest Admin Web Revision
+      - name: Verify Admin Web Revision Status
         uses: azure/cli@v2
         with:
           inlineScript: |
             az config set extension.use_dynamic_install=yes_without_prompt
             az extension add --name containerapp --upgrade || true
-            sleep 10
-            az containerapp ingress traffic set \
+            echo "=== ADMIN WEB DETAILS ==="
+            az containerapp show \
               --name ${{ env.ADMIN_CONTAINER_APP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              --revision-weight latest=100 || true
+              --query "{name:name,latestRevision:properties.latestRevisionName,readyRevision:properties.latestReadyRevisionName,traffic:properties.configuration.ingress.traffic}" \
+              -o json
 
