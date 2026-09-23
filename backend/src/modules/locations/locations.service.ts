@@ -20,15 +20,89 @@ export function resetLocationsRedisClientForTesting() {
   locationsRedisInitialized = false;
 }
 
+class InMemoryGeoStore {
+  private geoData = new Map<string, Map<string, { lng: number; lat: number }>>();
+
+  async geoadd(key: string, lng: number, lat: number, member: string): Promise<number> {
+    if (!this.geoData.has(key)) {
+      this.geoData.set(key, new Map());
+    }
+    this.geoData.get(key)!.set(String(member), { lng: Number(lng), lat: Number(lat) });
+    return 1;
+  }
+
+  async geopos(key: string, ...members: string[]): Promise<Array<[string, string] | null>> {
+    const map = this.geoData.get(key);
+    return members.map((m) => {
+      const pos = map?.get(String(m));
+      return pos ? [String(pos.lng), String(pos.lat)] : null;
+    });
+  }
+
+  async zrange(key: string, start: number, stop: number): Promise<string[]> {
+    const map = this.geoData.get(key);
+    if (!map) return [];
+    const keys = Array.from(map.keys());
+    if (stop === -1) return keys.slice(start);
+    return keys.slice(start, stop + 1);
+  }
+
+  async zrem(key: string, ...members: string[]): Promise<number> {
+    const map = this.geoData.get(key);
+    if (!map) return 0;
+    let count = 0;
+    for (const m of members) {
+      if (map.delete(String(m))) count++;
+    }
+    return count;
+  }
+
+  async del(key: string): Promise<number> {
+    return this.geoData.delete(key) ? 1 : 0;
+  }
+
+  async geosearch(
+    key: string,
+    _from: string,
+    lng: number,
+    lat: number,
+    _by: string,
+    radiusKm: number,
+    ..._rest: any[]
+  ): Promise<any[]> {
+    const map = this.geoData.get(key);
+    if (!map) return [];
+    const results: any[] = [];
+    for (const [member, pos] of map.entries()) {
+      const dLat = (pos.lat - lat) * (Math.PI / 180);
+      const dLon = (pos.lng - lng) * (Math.PI / 180);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat * (Math.PI / 180)) * Math.cos(pos.lat * (Math.PI / 180)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const dist = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      if (dist <= radiusKm) {
+        results.push([member, dist.toFixed(4), [String(pos.lng), String(pos.lat)]]);
+      }
+    }
+    return results;
+  }
+}
+
+const fallbackGeoStore = new InMemoryGeoStore();
+
 export function getLocationsRedisClient(): any {
-  if (locationsRedisInitialized) return locationsRedisClient;
+  if (locationsRedisInitialized) return locationsRedisClient || fallbackGeoStore;
   locationsRedisInitialized = true;
   const redisUrl =
     process.env.REDIS_URL ||
     (process.env.REDIS_HOST
       ? `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT || 6379}`
       : null);
-  if (!redisUrl) return null;
+  if (!redisUrl) {
+    locationsRedisClient = null;
+    return fallbackGeoStore;
+  }
   try {
     const Redis = require("ioredis");
     locationsRedisClient = new Redis(redisUrl, {
@@ -46,7 +120,7 @@ export function getLocationsRedisClient(): any {
   } catch (_) {
     locationsRedisClient = null;
   }
-  return locationsRedisClient;
+  return locationsRedisClient || fallbackGeoStore;
 }
 
 @Injectable()
