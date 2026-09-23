@@ -109,6 +109,13 @@ jobs:
               --name ${{ env.CONTAINER_APP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
               -o table >> diag.log 2>&1 || true
+            LATEST_REV=$(az containerapp show --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --query properties.latestRevisionName -o tsv)
+            echo "=== REVISION DETAILS ($LATEST_REV) ===" >> diag.log
+            az containerapp revision show --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --revision $LATEST_REV -o json >> diag.log 2>&1 || true
+            echo "=== REPLICAS ($LATEST_REV) ===" >> diag.log
+            az containerapp replica list --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --revision $LATEST_REV -o json >> diag.log 2>&1 || true
+            echo "=== LOGS ($LATEST_REV) ===" >> diag.log
+            az containerapp logs show --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --revision $LATEST_REV --tail 100 >> diag.log 2>&1 || true
             cat diag.log
 
       - name: Save Diagnostics to azure-diag Branch
