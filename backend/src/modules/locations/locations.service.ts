@@ -202,24 +202,28 @@ export class LocationsService {
       loc.id = id.startsWith("loc-") ? id : `loc-${crypto.randomUUID()}`;
       loc.userId = id;
       loc.role = "provider";
+      loc.status = "available";
+      loc.privacyMode = false;
     }
 
     loc.y = latitude; // y is latitude
     loc.x = longitude; // x is longitude
-    loc.accuracy = accuracy;
+    loc.accuracy = accuracy || 0;
     loc.locationTimestamp = new Date().toISOString();
     loc.updatedAt = new Date();
 
     const saved = await this.locationRepo.save(loc);
 
-    // Save location history record
-    const history = new LocationHistoryEntity();
-    history.id = `loch-${crypto.randomUUID()}`;
-    history.providerId = loc.userId || id;
-    history.x = longitude;
-    history.y = latitude;
-    history.timestamp = new Date().toISOString();
-    await this.historyRepo.save(history);
+    // Save location history record safely
+    try {
+      const history = new LocationHistoryEntity();
+      history.id = `loch-${crypto.randomUUID()}`;
+      history.providerId = loc.userId || id;
+      history.x = longitude;
+      history.y = latitude;
+      history.timestamp = new Date().toISOString();
+      await this.historyRepo.save(history);
+    } catch (_) {}
 
     // In-memory Redis Geospatial update
     const redis = getLocationsRedisClient();
