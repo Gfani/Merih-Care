@@ -125,7 +125,7 @@ export const getDatabaseConfig = (configService: any): TypeOrmModuleOptions => {
     password: process.env.DB_PASSWORD || "merihcare_password",
     database: process.env.DB_DATABASE || "merihcare_db",
     entities,
-    synchronize: true,
+    synchronize: process.env.DB_SYNCHRONIZE === "true",
     ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false,
   };
 };

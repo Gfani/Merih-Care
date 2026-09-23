@@ -13,10 +13,6 @@ export class ConversationEntity {
   @Index()
   appointmentId: string; // links chat to appointment context
 
-  @ManyToOne(() => AppointmentEntity, { onDelete: "CASCADE", nullable: true })
-  @JoinColumn({ name: "appointmentId" })
-  appointment?: AppointmentEntity;
-
   @Column({ default: false })
   isProtected: boolean; // medical info protection flag
 
