@@ -280,6 +280,10 @@ export class LocationsService {
       loc.privacyMode = false;
     }
 
+    if (loc.status === "offline") {
+      loc.status = "available";
+    }
+
     loc.y = latitude; // y is latitude
     loc.x = longitude; // x is longitude
     loc.accuracy = accuracy || 0;
