@@ -83,6 +83,23 @@ jobs:
           resourceGroup: ${{ env.AZURE_RESOURCE_GROUP }}
           imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-backend:${{ github.sha }}
 
+      - name: Route 100% Traffic to Latest Backend Revision
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az containerapp update \
+              --name ${{ env.CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --image ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-backend:${{ github.sha }}
+            az containerapp ingress traffic set \
+              --name ${{ env.CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --revision-weight latest=100
+            az containerapp revision list \
+              --name ${{ env.CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              -o table
+
   deploy-admin-web:
     name: Deploy Admin Web to Azure Container Apps
     runs-on: ubuntu-latest
@@ -156,3 +173,21 @@ jobs:
           containerAppName: ${{ env.ADMIN_CONTAINER_APP_NAME }}
           resourceGroup: ${{ env.AZURE_RESOURCE_GROUP }}
           imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-admin-web:${{ github.sha }}
+
+      - name: Route 100% Traffic to Latest Admin Web Revision
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az containerapp update \
+              --name ${{ env.ADMIN_CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --image ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-admin-web:${{ github.sha }}
+            az containerapp ingress traffic set \
+              --name ${{ env.ADMIN_CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --revision-weight latest=100
+            az containerapp revision list \
+              --name ${{ env.ADMIN_CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              -o table
+

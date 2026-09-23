@@ -30,4 +30,13 @@ export class HealthController {
       releaseNotes: "Production release of MerihCare Healthcare Services.",
     };
   }
+
+  @Get("version")
+  async getVersion() {
+    return {
+      version: "1.0.1",
+      commit: process.env.GITHUB_SHA || "prod-active",
+      timestamp: new Date().toISOString(),
+    };
+  }
 }

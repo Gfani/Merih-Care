@@ -69,14 +69,17 @@ export class DatabaseSeedService implements OnModuleInit {
         superAdmin.isApproved = true;
         superAdmin.status = "active";
         superAdmin.tokenVersion = 0;
-        superAdmin.mustChangePassword = isProd;
+        superAdmin.mustChangePassword = false;
         await this.userRepo.save(superAdmin);
         console.log(`New super administrator bootstrapped: ${adminEmail}`);
       } else {
-        // Retain user's existing password; in dev, update password if TEST_ADMIN_PASSWORD is set
         let updated = false;
-        if (!isProd && process.env.TEST_ADMIN_PASSWORD) {
-          superAdmin.password = await bcrypt.hash(process.env.TEST_ADMIN_PASSWORD, 10);
+        if (adminPasswordToUse) {
+          superAdmin.password = await bcrypt.hash(adminPasswordToUse, 10);
+          updated = true;
+        }
+        if (superAdmin.mustChangePassword) {
+          superAdmin.mustChangePassword = false;
           updated = true;
         }
         if (superAdmin.role !== "admin") {
@@ -89,6 +92,10 @@ export class DatabaseSeedService implements OnModuleInit {
         }
         if (!superAdmin.roles || !superAdmin.roles.includes("admin")) {
           superAdmin.roles = "admin,provider,patient";
+          updated = true;
+        }
+        if (superAdmin.status !== "active") {
+          superAdmin.status = "active";
           updated = true;
         }
         if (superAdmin.tokenVersion === undefined || superAdmin.tokenVersion === null) {
@@ -171,7 +178,8 @@ export class DatabaseSeedService implements OnModuleInit {
         if (!loc) {
           loc = new LocationEntity();
           loc.id = `loc-${prov.userId || prov.id}`;
-          loc.userId = prov.userId || prov.id;
+          const userExists = prov.userId ? await this.userRepo.findOne({ where: { id: prov.userId } }).catch(() => null) : null;
+          loc.userId = userExists ? prov.userId : (undefined as any);
           loc.name = prov.name;
           loc.role = "provider";
           loc.x = targetX;
