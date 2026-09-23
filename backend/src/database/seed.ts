@@ -151,26 +151,11 @@ export class DatabaseSeedService implements OnModuleInit {
       await this.serviceRepo.save(se);
     }
 
-    // 3. Ensure Active Locations for Verified Providers in Addis Ababa
-    const defaultCoords = [
-      { x: 38.74689, y: 9.02497 }, // Tikur Anbessa / Lideta
-      { x: 38.78500, y: 8.99500 }, // Bole Medhanialem
-      { x: 38.76500, y: 9.01800 }, // Kazanchis
-      { x: 38.73500, y: 9.00500 }, // Sarbet
-      { x: 38.75200, y: 9.03500 }, // Piassa
-    ];
-
+    // 3. Ensure Provider Location Records default to offline (genuine real-time tracking only)
     try {
-      const activeProviders = await this.providerRepo.find({
-        where: [{ available: true, verified: true }, { available: true }],
-      });
+      const activeProviders = await this.providerRepo.find();
 
-      for (let i = 0; i < activeProviders.length; i++) {
-        const prov = activeProviders[i];
-        const coord = defaultCoords[i % defaultCoords.length];
-        const targetX = prov.longitude ?? coord.x;
-        const targetY = prov.latitude ?? coord.y;
-
+      for (const prov of activeProviders) {
         let loc = await this.locationRepo.findOne({
           where: [{ userId: prov.userId }, { id: prov.id }, { id: `loc-${prov.userId}` }],
         });
@@ -182,31 +167,30 @@ export class DatabaseSeedService implements OnModuleInit {
           loc.userId = userExists ? prov.userId : (undefined as any);
           loc.name = prov.name;
           loc.role = "provider";
-          loc.x = targetX;
-          loc.y = targetY;
-          loc.status = "available";
+          loc.x = 0;
+          loc.y = 0;
+          loc.status = "offline";
           loc.accuracy = 5;
           loc.privacyMode = false;
           loc.locationTimestamp = new Date().toISOString();
           await this.locationRepo.save(loc);
-        } else if (loc.x === 0 && loc.y === 0) {
-          loc.x = targetX;
-          loc.y = targetY;
-          loc.name = prov.name || loc.name;
-          loc.status = "available";
+        } else {
+          loc.status = "offline";
+          loc.x = 0;
+          loc.y = 0;
           await this.locationRepo.save(loc);
         }
+      }
 
-        if (!prov.latitude || !prov.longitude) {
-          prov.latitude = targetY;
-          prov.longitude = targetX;
-          await this.providerRepo.save(prov);
-        }
+      // Purge any lingering demo provider locations in Redis
+      const redis = require("../modules/locations/locations.service").getLocationsRedisClient?.();
+      if (redis) {
+        redis.del("providers:locations:online").catch(() => {});
       }
     } catch (err) {
-      console.warn("Non-fatal: could not seed provider locations:", err);
+      console.warn("Non-fatal: could not reset provider locations:", err);
     }
 
-    console.log("Database seeded successfully (with active provider locations ready)!");
+    console.log("Database seeded successfully (providers initialized offline for genuine live-only tracking)!");
   }
 }

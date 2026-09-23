@@ -65,53 +65,45 @@ export class LocationsService {
 
   async getActiveProviderLocations(): Promise<LocationEntity[]> {
     const redis = (this as any).redis || getLocationsRedisClient();
-    let redisMembers: string[] = [];
-    let redisPositions: Array<[string, string] | null> = [];
+    if (!redis) {
+      return [];
+    }
 
-    if (redis) {
-      try {
-        const members: string[] = await redis.zrange("providers:locations:online", 0, -1);
-        if (Array.isArray(members) && members.length > 0) {
-          redisMembers = members;
-          redisPositions = await redis.geopos("providers:locations:online", ...members);
-        }
-      } catch (err) {
-        // Safe failover
+    try {
+      const members: string[] = await redis.zrange("providers:locations:online", 0, -1);
+      // Strictly genuine real-time providers only: if Redis has 0 members, return []
+      if (!Array.isArray(members) || members.length === 0) {
+        return [];
       }
-    }
 
-    const onlineProviders: LocationEntity[] = [];
-    const seenIds = new Set<string>();
+      const positions: Array<[string, string] | null> = await redis.geopos("providers:locations:online", ...members);
+      const onlineProviders: LocationEntity[] = [];
 
-    // Query genuine locations and providers from DB
-    const locationsFromDb = await this.locationRepo.find();
-    const providersFromDb = this.providerRepo
-      ? await this.providerRepo.find({ where: { available: true } }).catch(() => [])
-      : [];
+      const locationsFromDb = await this.locationRepo.find();
+      const providersFromDb = this.providerRepo
+        ? await this.providerRepo.find().catch(() => [])
+        : [];
 
-    const locMap = new Map<string, LocationEntity>();
-    for (const l of locationsFromDb) {
-      if (l.userId) locMap.set(l.userId, l);
-      locMap.set(l.id, l);
-    }
+      const locMap = new Map<string, LocationEntity>();
+      for (const l of locationsFromDb) {
+        if (l.userId) locMap.set(l.userId, l);
+        locMap.set(l.id, l);
+      }
 
-    const provMap = new Map<string, ProviderEntity>();
-    for (const p of providersFromDb) {
-      if (p.userId) provMap.set(p.userId, p);
-      provMap.set(p.id, p);
-    }
+      const provMap = new Map<string, ProviderEntity>();
+      for (const p of providersFromDb) {
+        if (p.userId) provMap.set(p.userId, p);
+        provMap.set(p.id, p);
+      }
 
-    // A. Add providers actively reporting in Redis GEO
-    if (redisMembers.length > 0) {
-      for (let i = 0; i < redisMembers.length; i++) {
-        const memberId = redisMembers[i];
-        const pos = redisPositions[i];
+      for (let i = 0; i < members.length; i++) {
+        const memberId = members[i];
+        const pos = positions[i];
         if (!pos) continue;
         const lng = parseFloat(pos[0]);
         const lat = parseFloat(pos[1]);
         if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) continue;
 
-        seenIds.add(memberId);
         const existing = locMap.get(memberId);
         const prov = provMap.get(memberId);
         const entry = new LocationEntity();
@@ -133,93 +125,58 @@ export class LocationsService {
         (entry as any).name = prov?.name || existing?.name || `Provider ${memberId.slice(-4)}`;
         onlineProviders.push(entry);
       }
+
+      return onlineProviders;
+    } catch (err) {
+      return [];
     }
-
-    // B. Also include genuine active/available providers from DB
-    for (const l of locationsFromDb) {
-      const id = l.userId || l.id;
-      if (seenIds.has(id) || seenIds.has(l.id)) continue;
-      if (l.role !== "provider") continue;
-
-      const isOffline = l.status === "offline";
-      if (!isOffline && (!l.x || !l.y || (l.x === 0 && l.y === 0) || isNaN(l.x) || isNaN(l.y))) continue;
-
-      seenIds.add(id);
-      const prov = provMap.get(id);
-      const entry = new LocationEntity();
-      entry.id = l.id;
-      entry.userId = l.userId || l.id;
-      (entry as any).providerId = entry.userId;
-      entry.role = "provider";
-      entry.status = l.status || "available";
-      entry.accuracy = l.accuracy || 5;
-      entry.privacyMode = l.privacyMode || false;
-      entry.locationTimestamp = l.locationTimestamp || l.updatedAt?.toISOString() || new Date().toISOString();
-
-      if (isOffline) {
-        entry.x = 0;
-        entry.y = 0;
-        (entry as any).lat = 0;
-        (entry as any).lng = 0;
-        (entry as any).latitude = 0;
-        (entry as any).longitude = 0;
-        (entry as any).isOnline = false;
-      } else {
-        entry.x = entry.privacyMode ? Math.round(l.x * 100) / 100 : l.x;
-        entry.y = entry.privacyMode ? Math.round(l.y * 100) / 100 : l.y;
-        (entry as any).lat = entry.y;
-        (entry as any).lng = entry.x;
-        (entry as any).latitude = entry.y;
-        (entry as any).longitude = entry.x;
-        (entry as any).isOnline = true;
-      }
-
-      (entry as any).name = prov?.name || l.name || `Provider ${entry.userId.slice(-4)}`;
-      onlineProviders.push(entry);
-
-      // Warm Redis GEO key if online
-      if (!isOffline && redis && typeof redis.geoadd === "function") {
-        redis.geoadd("providers:locations:online", l.x, l.y, entry.userId).catch(() => {});
-      }
-    }
-
-    // C. Also check verified providers who have available: true in providerRepo
-    for (const p of providersFromDb) {
-      const id = p.userId || p.id;
-      if (seenIds.has(id) || seenIds.has(p.id)) continue;
-      if (!p.available || p.status === "suspended") continue;
-      if (!p.latitude || !p.longitude || (p.latitude === 0 && p.longitude === 0)) continue;
-
-      seenIds.add(id);
-      const entry = new LocationEntity();
-      entry.id = `loc-${id}`;
-      entry.userId = p.userId || p.id;
-      (entry as any).providerId = entry.userId;
-      entry.role = "provider";
-      entry.status = "available";
-      entry.accuracy = 5;
-      entry.privacyMode = false;
-      entry.locationTimestamp = p.updatedAt?.toISOString() || new Date().toISOString();
-      entry.x = p.longitude;
-      entry.y = p.latitude;
-      (entry as any).lat = entry.y;
-      (entry as any).lng = entry.x;
-      (entry as any).latitude = entry.y;
-      (entry as any).longitude = entry.x;
-      (entry as any).isOnline = true;
-      (entry as any).name = p.name || `Dr. ${entry.userId.slice(-4)}`;
-      onlineProviders.push(entry);
-
-      if (redis && typeof redis.geoadd === "function") {
-        redis.geoadd("providers:locations:online", p.longitude, p.latitude, entry.userId).catch(() => {});
-      }
-    }
-
-    return onlineProviders;
   }
 
   async getAllLocations(): Promise<LocationEntity[]> {
-    return this.getActiveProviderLocations();
+    const locations = await this.locationRepo.find();
+    return locations
+      .map((loc) => {
+        (loc as any).providerId = loc.userId || loc.id;
+        (loc as any).lat = loc.y;
+        (loc as any).lng = loc.x;
+        (loc as any).latitude = loc.y;
+        (loc as any).longitude = loc.x;
+        (loc as any).isOnline = loc.status !== "offline";
+        if (loc.privacyMode) {
+          const px = Math.round(loc.x * 100) / 100;
+          const py = Math.round(loc.y * 100) / 100;
+          return {
+            ...loc,
+            x: px,
+            y: py,
+            lat: py,
+            lng: px,
+            latitude: py,
+            longitude: px,
+            providerId: loc.userId || loc.id,
+            isOnline: loc.status !== "offline",
+          };
+        }
+        if (loc.role === "provider" && loc.status === "offline") {
+          return {
+            ...loc,
+            x: 0,
+            y: 0,
+            lat: 0,
+            lng: 0,
+            latitude: 0,
+            longitude: 0,
+            providerId: loc.userId || loc.id,
+            isOnline: false,
+          };
+        }
+        return loc;
+      })
+      .sort((a, b) => {
+        const aVal = a.status === "critical" ? 1 : 0;
+        const bVal = b.status === "critical" ? 1 : 0;
+        return bVal - aVal;
+      });
   }
 
   async updateLocation(
