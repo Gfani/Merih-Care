@@ -92,25 +92,34 @@ jobs:
           inlineScript: |
             az config set extension.use_dynamic_install=yes_without_prompt
             az extension add --name containerapp --upgrade || true
-            echo "Updating backend container image to ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-backend:${{ github.sha }}..."
-            az containerapp update \
-              --name ${{ env.CONTAINER_APP_NAME }} \
-              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              --image ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-backend:${{ github.sha }}
-            sleep 15
+            sleep 10
+            echo "=== SHIFTING TRAFFIC TO LATEST REVISION ===" > diag.log
             az containerapp ingress traffic set \
               --name ${{ env.CONTAINER_APP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              --revision-weight latest=100 || true
-            mkdir -p azure_diag
-            az containerapp show --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} -o json > azure_diag/backend_app.json
-            az containerapp revision list --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.AZURE_RESOURCE_GROUP }} -o json > azure_diag/backend_revisions.json
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git checkout -B azure-diag
-            git add -f azure_diag
-            git commit -m "chore(azure): live diagnostics"
-            git push -f origin azure-diag || true
+              --revision-weight latest=100 >> diag.log 2>&1 || true
+            echo "=== BACKEND APP DETAILS ===" >> diag.log
+            az containerapp show \
+              --name ${{ env.CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --query "{name:name,latestRevision:properties.latestRevisionName,readyRevision:properties.latestReadyRevisionName,traffic:properties.configuration.ingress.traffic,image:properties.template.containers[0].image}" \
+              -o json >> diag.log 2>&1 || true
+            echo "=== REVISION LIST ===" >> diag.log
+            az containerapp revision list \
+              --name ${{ env.CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              -o table >> diag.log 2>&1 || true
+            cat diag.log
+
+      - name: Save Diagnostics to azure-diag Branch
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B azure-diag
+          git add -f diag.log || true
+          git commit -m "chore(azure): dump diag.log" || true
+          git push -f origin azure-diag || true
 
   deploy-admin-web:
     name: Deploy Admin Web to Azure Container Apps
@@ -192,19 +201,9 @@ jobs:
           inlineScript: |
             az config set extension.use_dynamic_install=yes_without_prompt
             az extension add --name containerapp --upgrade || true
-            echo "Updating admin web container image to ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-admin-web:${{ github.sha }}..."
-            az containerapp update \
-              --name ${{ env.ADMIN_CONTAINER_APP_NAME }} \
-              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              --image ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-admin-web:${{ github.sha }}
-            sleep 15
+            sleep 10
             az containerapp ingress traffic set \
               --name ${{ env.ADMIN_CONTAINER_APP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
               --revision-weight latest=100 || true
-            echo "### Admin Web Revisions" >> $GITHUB_STEP_SUMMARY
-            az containerapp revision list \
-              --name ${{ env.ADMIN_CONTAINER_APP_NAME }} \
-              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              -o table >> $GITHUB_STEP_SUMMARY
 
