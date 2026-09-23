@@ -237,6 +237,11 @@ export class AppointmentsController {
     return this.appointmentsService.getAllAppointments(limit, offset, patientId, req?.user);
   }
 
+  @Get("active-dispatches")
+  async getActiveDispatches() {
+    return this.appointmentsService.getActiveDispatches();
+  }
+
   @Get(":appointmentId")
   @UseGuards(OwnershipGuard)
   async getAppointmentById(@Param("appointmentId") appointmentId: string) {

@@ -883,6 +883,16 @@ export const api = {
     }
   },
 
+  async getActiveDispatches(): Promise<any[]> {
+    try {
+      const res = await axios.get(`${API_URL}/appointments/active-dispatches`, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return [];
+      return [];
+    }
+  },
+
   async getVerificationReviews(): Promise<any[]> {
     return this.getVerificationQueue();
   },

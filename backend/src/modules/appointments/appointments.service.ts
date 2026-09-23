@@ -9,6 +9,8 @@ import { ServiceEntity } from "../../database/entities/service.entity";
 import { RealtimeService } from "../realtime/realtime.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { DispatchCascadeService } from "./dispatch-cascade.service";
+import { LocationEntity } from "../../database/entities/location.entity";
+import { getLocationsRedisClient } from "../locations/locations.service";
 import * as crypto from "crypto";
 
 @Injectable()
@@ -863,5 +865,151 @@ export class AppointmentsService {
       }
     }
     return expiredCount;
+  }
+
+  async getActiveDispatches(): Promise<any[]> {
+    const activeStatuses = ["accepted", "on_the_way", "in_progress"];
+    const apts = await this.appointmentRepo.find({
+      where: { status: In(activeStatuses) },
+      relations: ["patient", "provider", "provider.user", "serviceRelation"],
+      order: { updatedAt: "DESC" as any },
+    });
+
+    const redis = getLocationsRedisClient();
+    const locRepo = this.dataSource && this.dataSource.isInitialized ? this.dataSource.getRepository(LocationEntity) : null;
+
+    const trips: any[] = [];
+    for (const apt of apts) {
+      // 1. Resolve Patient destination coordinates
+      let patientLat = 9.02497;
+      let patientLng = 38.74689;
+
+      if (locRepo && apt.patientId) {
+        try {
+          const pLoc = await locRepo.findOne({ where: [{ userId: apt.patientId }, { id: apt.patientId }] });
+          if (pLoc && typeof pLoc.y === "number" && typeof pLoc.x === "number" && (pLoc.x !== 0 || pLoc.y !== 0)) {
+            patientLat = pLoc.y;
+            patientLng = pLoc.x;
+          }
+        } catch (_) {}
+      }
+
+      // 2. Resolve Provider live coordinates
+      let providerLat = 9.01800;
+      let providerLng = 38.76500;
+      let isOnline = false;
+
+      const provUserId = apt.provider?.userId || apt.providerId;
+
+      if (redis && provUserId) {
+        try {
+          const pos = await redis.geopos("providers:locations:online", provUserId);
+          if (pos && pos[0]) {
+            const lng = parseFloat(pos[0][0]);
+            const lat = parseFloat(pos[0][1]);
+            if (!isNaN(lat) && !isNaN(lng) && (lat !== 0 || lng !== 0)) {
+              providerLat = lat;
+              providerLng = lng;
+              isOnline = true;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (!isOnline && locRepo && provUserId) {
+        try {
+          const lLoc = await locRepo.findOne({ where: [{ userId: provUserId }, { id: provUserId }] });
+          if (lLoc && typeof lLoc.y === "number" && typeof lLoc.x === "number" && (lLoc.x !== 0 || lLoc.y !== 0)) {
+            providerLat = lLoc.y;
+            providerLng = lLoc.x;
+            isOnline = lLoc.status !== "offline";
+          }
+        } catch (_) {}
+      }
+
+      // 3. Compute road route between provider and patient
+      let routePoints: Array<[number, number]> = [
+        [providerLat, providerLng],
+        [patientLat, patientLng],
+      ];
+      let distanceKm = 1.8;
+      let etaMinutes = 5;
+
+      try {
+        const routeData = await this.calculateRoadTrip(providerLat, providerLng, patientLat, patientLng);
+        routePoints = routeData.points;
+        distanceKm = routeData.distanceKm;
+        etaMinutes = routeData.etaMinutes;
+      } catch (_) {}
+
+      trips.push({
+        id: apt.id,
+        appointmentId: apt.id,
+        status: apt.status,
+        service: apt.service,
+        patientId: apt.patientId,
+        patientName: apt.patientName || apt.patient?.name || "Patient",
+        patientPhone: apt.patientPhone || apt.patient?.phone || "",
+        patientLat,
+        patientLng,
+        providerId: apt.providerId,
+        providerUserId: provUserId,
+        providerName: apt.providerName || apt.provider?.name || "Clinician",
+        providerPhone: apt.providerPhone || apt.provider?.phone || "",
+        providerLat,
+        providerLng,
+        isOnline,
+        routePoints,
+        distanceKm,
+        etaMinutes,
+        updatedAt: apt.updatedAt || apt.createdAt,
+      });
+    }
+
+    return trips;
+  }
+
+  private async calculateRoadTrip(
+    originLat: number,
+    originLng: number,
+    destLat: number,
+    destLng: number,
+  ): Promise<{ points: Array<[number, number]>; distanceKm: number; etaMinutes: number }> {
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${originLng},${originLat};${destLng},${destLat}?overview=full&geometries=geojson`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2000);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+
+      if (res.ok) {
+        const data: any = await res.json();
+        if (data?.routes?.[0]) {
+          const route = data.routes[0];
+          const distanceKm = Number((route.distance / 1000).toFixed(2));
+          const etaMinutes = Math.max(1, Math.round(route.duration / 60));
+          const coords = route.geometry?.coordinates || [];
+          const points: Array<[number, number]> = coords.map((c: any) => [Number(c[1]), Number(c[0])]);
+          if (points.length >= 2) {
+            return { points, distanceKm, etaMinutes };
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Resilient urban simulation curve
+    const straightKm = Math.sqrt(Math.pow((destLat - originLat) * 111, 2) + Math.pow((destLng - originLng) * 111, 2));
+    const distanceKm = Number((straightKm * 1.3).toFixed(2));
+    const etaMinutes = Math.max(2, Math.round((distanceKm / 22) * 60));
+
+    const steps = 8;
+    const points: Array<[number, number]> = [];
+    for (let i = 0; i <= steps; i++) {
+      const frac = i / steps;
+      const lat = originLat + (destLat - originLat) * frac;
+      const lng = originLng + (destLng - originLng) * frac;
+      points.push([lat, lng]);
+    }
+    return { points, distanceKm, etaMinutes };
   }
 }

@@ -19,6 +19,28 @@ export interface LocationPin {
   locationTimestamp?: string;
 }
 
+export interface ActiveTrip {
+  id: string;
+  appointmentId: string;
+  status: string; // accepted, on_the_way, in_progress, completed, cancelled
+  service?: string;
+  patientId: string;
+  patientName: string;
+  patientPhone?: string;
+  patientLat: number;
+  patientLng: number;
+  providerId: string;
+  providerUserId?: string;
+  providerName: string;
+  providerPhone?: string;
+  providerLat: number;
+  providerLng: number;
+  isOnline?: boolean;
+  routePoints?: Array<[number, number]>;
+  distanceKm?: number;
+  etaMinutes?: number;
+}
+
 export const STATUS_META: Record<string, { label: string; color: string }> = {
   available:   { label: "Available", color: "#16a34a" },
   busy:        { label: "Busy", color: "#d97706" },
@@ -28,6 +50,7 @@ export const STATUS_META: Record<string, { label: string; color: string }> = {
 
 export function AdminMapView({ compact = false }: { compact?: boolean }) {
   const [locations, setLocations] = useState<LocationPin[]>([]);
+  const [activeTrips, setActiveTrips] = useState<ActiveTrip[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "providers" | "patients">("all");
@@ -50,6 +73,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersGroupRef = useRef<L.LayerGroup | null>(null);
+  const routesGroupRef = useRef<L.LayerGroup | null>(null);
   const routeLineRef = useRef<L.Polyline | null>(null);
   const prevCountRef = useRef<number>(0);
 
@@ -85,14 +109,38 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
     }
   };
 
+  const fetchActiveTrips = async () => {
+    try {
+      const data = await api.getActiveDispatches();
+      if (Array.isArray(data)) {
+        setActiveTrips(data);
+        const first = data.find((t: any) => t.status === "on_the_way" || t.status === "accepted");
+        if (first) {
+          setActiveDispatch({
+            appointmentId: first.appointmentId,
+            status: first.status,
+            providerName: first.providerName,
+            providerLat: first.providerLat,
+            providerLng: first.providerLng,
+            routePoints: first.routePoints,
+            distanceKm: first.distanceKm,
+            etaMinutes: first.etaMinutes,
+          });
+        }
+      }
+    } catch (_) {}
+  };
+
   useEffect(() => {
     fetchLocations();
+    fetchActiveTrips();
   }, []);
 
-  // Re-sync locations whenever live connection is established
+  // Re-sync locations and active trips whenever live connection is established
   useEffect(() => {
     if (isLive) {
       fetchLocations();
+      fetchActiveTrips();
     }
   }, [isLive]);
 
@@ -101,6 +149,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
     if (isLive) return;
     const interval = setInterval(() => {
       fetchLocations();
+      fetchActiveTrips();
     }, 20000);
     return () => clearInterval(interval);
   }, [isLive]);
@@ -117,6 +166,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       if (updated.status === "offline" || updated.isOnline === false) {
         setLocations(prev => prev.filter(l => l.userId !== targetId && l.id !== targetId));
         setSelectedPin(prev => (prev?.userId === targetId || prev?.id === targetId ? null : prev));
+        setActiveTrips(prev => prev.map(t => (t.providerId === targetId || t.providerUserId === targetId ? { ...t, isOnline: false } : t)));
         return;
       }
 
@@ -156,6 +206,27 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
           ];
         }
       });
+
+      // Update provider coordinates on any active navigation trips in real-time
+      setActiveTrips(prev => {
+        let changed = false;
+        const next = prev.map(trip => {
+          if (trip.providerId === targetId || trip.providerUserId === targetId) {
+            changed = true;
+            const updatedPts: Array<[number, number]> = trip.routePoints && trip.routePoints.length >= 2
+              ? [[lat, lng], ...trip.routePoints.slice(1)]
+              : [[lat, lng], [trip.patientLat, trip.patientLng]];
+            return {
+              ...trip,
+              providerLat: lat,
+              providerLng: lng,
+              routePoints: updatedPts,
+            };
+          }
+          return trip;
+        });
+        return changed ? next : prev;
+      });
     };
 
     const handleProviderOffline = (payload: any) => {
@@ -165,12 +236,23 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
 
       setLocations(prev => prev.filter(l => l.userId !== targetId && l.id !== targetId));
       setSelectedPin(prev => (prev?.userId === targetId || prev?.id === targetId ? null : prev));
+      setActiveTrips(prev => prev.map(t => (t.providerId === targetId || t.providerUserId === targetId ? { ...t, isOnline: false } : t)));
     };
 
     const handleDispatchUpdate = (payload: any) => {
       const data = payload?.data || payload;
       if (!data) return;
-      if (data.status === "searching" || data.status === "accepted" || data.status === "on_the_way") {
+      const aptId = String(data.appointmentId || data.id || "");
+      if (!aptId) return;
+
+      // When an appointment updates to "completed" or "cancelled", clear the trip immediately
+      if (data.status === "completed" || data.status === "cancelled" || data.status === "rejected") {
+        setActiveTrips(prev => prev.filter(t => t.appointmentId !== aptId && t.id !== aptId));
+        setActiveDispatch(prev => (prev?.appointmentId === aptId ? null : prev));
+        return;
+      }
+
+      if (data.status === "searching" || data.status === "accepted" || data.status === "on_the_way" || data.status === "in_progress") {
         let pts: Array<[number, number]> = [];
         if (Array.isArray(data.routePoints) && data.routePoints.length > 0) {
           pts = data.routePoints.map((pt: any) => [
@@ -180,12 +262,43 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
         } else if (data.providerLat && data.providerLng) {
           pts = [
             [Number(data.providerLat), Number(data.providerLng)],
-            [9.02497, 38.74689],
+            [Number(data.patientLat || 9.02497), Number(data.patientLng || 38.74689)],
           ];
         }
 
+        const newTrip: ActiveTrip = {
+          id: aptId,
+          appointmentId: aptId,
+          status: String(data.status),
+          service: data.service,
+          patientId: String(data.patientId || ""),
+          patientName: data.patientName || "Patient",
+          patientPhone: data.patientPhone,
+          patientLat: Number(data.patientLat || 9.02497),
+          patientLng: Number(data.patientLng || 38.74689),
+          providerId: String(data.providerId || ""),
+          providerUserId: String(data.providerUserId || data.providerId || ""),
+          providerName: data.providerName || "Matched Clinician",
+          providerPhone: data.providerPhone,
+          providerLat: Number(data.providerLat || 9.018),
+          providerLng: Number(data.providerLng || 38.765),
+          routePoints: pts,
+          distanceKm: data.distanceKm ? Number(data.distanceKm) : undefined,
+          etaMinutes: data.etaMinutes ? Number(data.etaMinutes) : undefined,
+        };
+
+        setActiveTrips(prev => {
+          const idx = prev.findIndex(t => t.appointmentId === aptId || t.id === aptId);
+          if (idx !== -1) {
+            const next = [...prev];
+            next[idx] = { ...next[idx], ...newTrip };
+            return next;
+          }
+          return [...prev, newTrip];
+        });
+
         setActiveDispatch({
-          appointmentId: String(data.appointmentId || "apt-dispatch"),
+          appointmentId: aptId,
           status: String(data.status),
           providerName: data.providerName || "Matched Clinician",
           providerLat: data.providerLat ? Number(data.providerLat) : undefined,
@@ -194,8 +307,18 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
           distanceKm: data.distanceKm ? Number(data.distanceKm) : undefined,
           etaMinutes: data.etaMinutes ? Number(data.etaMinutes) : undefined,
         });
-      } else if (data.status === "completed" || data.status === "cancelled") {
-        setActiveDispatch(null);
+      }
+    };
+
+    const handleAppointmentStatusUpdate = (payload: any) => {
+      const data = payload?.data || payload;
+      if (!data) return;
+      const aptId = String(data.appointmentId || data.id || "");
+      if (data.status === "completed" || data.status === "cancelled") {
+        setActiveTrips(prev => prev.filter(t => t.appointmentId !== aptId && t.id !== aptId));
+        setActiveDispatch(prev => (prev?.appointmentId === aptId ? null : prev));
+      } else if (data.status === "on_the_way" || data.status === "accepted" || data.status === "in_progress") {
+        handleDispatchUpdate(payload);
       }
     };
 
@@ -204,6 +327,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
     on("provider_offline", handleProviderOffline);
     on("dispatch_update", handleDispatchUpdate);
     on("dispatch_offer_sent", handleDispatchUpdate);
+    on("appointment_status_update", handleAppointmentStatusUpdate);
 
     return () => {
       off("location_update", handleLocationUpdate);
@@ -211,6 +335,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       off("provider_offline", handleProviderOffline);
       off("dispatch_update", handleDispatchUpdate);
       off("dispatch_offer_sent", handleDispatchUpdate);
+      off("appointment_status_update", handleAppointmentStatusUpdate);
     };
   }, [on, off]);
 
@@ -240,6 +365,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       }).addTo(map);
 
       markersGroupRef.current = L.layerGroup().addTo(map);
+      routesGroupRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
     }
 
@@ -393,43 +519,136 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       }
     });
 
-    // 3. Render Route Polyline for On-Demand Dispatch OR Emergency
-    if (activeDispatch && activeDispatch.routePoints && activeDispatch.routePoints.length > 1) {
-      const isAccepted = activeDispatch.status === "accepted" || activeDispatch.status === "on_the_way";
-      const routeLine = L.polyline(activeDispatch.routePoints, {
-        color: isAccepted ? "#0d7c6a" : "#0284c7",
-        weight: 4.5,
-        dashArray: isAccepted ? undefined : "6, 8",
-        opacity: 0.9,
-      }).addTo(map);
+    // Clear previous routes
+    if (routesGroupRef.current) {
+      routesGroupRef.current.clearLayers();
+    }
 
-      routeLineRef.current = routeLine;
-      setRouteInfo(null);
-    } else {
-      const activeEmergency = filtered.find(p => p.role === "patient" && p.status === "critical");
-      const closestProvider = filtered.find(p => p.role === "provider" && p.status === "available");
+    // 3. Render Active Navigation Trips ("God's Eye" Fleet View)
+    const onTheWayTrips = activeTrips.filter((t) => t.status === "on_the_way");
+    onTheWayTrips.forEach((trip) => {
+      // a) Plot patient's destination pin in blue
+      if (!isNaN(trip.patientLat) && !isNaN(trip.patientLng) && !(trip.patientLat === 0 && trip.patientLng === 0)) {
+        const patientIcon = L.divIcon({
+          html: `
+            <div style="
+              background: #1b6fba;
+              border: 2px solid white;
+              border-radius: 50%;
+              width: 32px;
+              height: 32px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              box-shadow: 0 4px 8px rgba(27, 111, 186, 0.45);
+            ">
+              <span style="color: white; font-size: 14px;">📍</span>
+            </div>
+          `,
+          className: "custom-patient-dest-icon",
+          iconSize: [32, 32],
+          iconAnchor: [16, 16],
+        });
+        const patMarker = L.marker([trip.patientLat, trip.patientLng], { icon: patientIcon }).addTo(group);
+        patMarker.bindTooltip(`
+          <div style="font-family: Inter, sans-serif; font-size: 11px; padding: 2px;">
+            <b style="color: #1b6fba;">📍 Patient Destination</b><br/>
+            <b>${trip.patientName}</b><br/>
+            Service: ${trip.service || "Home Care Visit"}<br/>
+            Status: Awaiting Clinician
+          </div>
+        `);
+      }
 
-      if (activeEmergency && closestProvider) {
-        const eCoords: [number, number] = [activeEmergency.y, activeEmergency.x];
-        const pCoords: [number, number] = [closestProvider.y, closestProvider.x];
+      // b) Plot provider's vehicle/marker in green
+      if (!isNaN(trip.providerLat) && !isNaN(trip.providerLng) && !(trip.providerLat === 0 && trip.providerLng === 0)) {
+        const vehicleIcon = L.divIcon({
+          html: `
+            <div class="animate-pulse" style="
+              background: #16a34a;
+              border: 2.5px solid white;
+              border-radius: 50%;
+              width: 36px;
+              height: 36px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              box-shadow: 0 4px 10px rgba(22, 163, 74, 0.5);
+            ">
+              <span style="color: white; font-size: 15px;">🚗</span>
+            </div>
+          `,
+          className: "custom-provider-vehicle-icon",
+          iconSize: [36, 36],
+          iconAnchor: [18, 18],
+        });
+        const provMarker = L.marker([trip.providerLat, trip.providerLng], { icon: vehicleIcon }).addTo(group);
+        provMarker.bindTooltip(`
+          <div style="font-family: Inter, sans-serif; font-size: 11px; padding: 2px;">
+            <b style="color: #16a34a;">🩺 Clinician En Route</b><br/>
+            <b>${trip.providerName}</b><br/>
+            Destination: ${trip.patientName}<br/>
+            ETA: ~${trip.etaMinutes ?? 5} min (${trip.distanceKm ?? 1.8} km)
+          </div>
+        `);
+      }
 
-        const routeLine = L.polyline([pCoords, eCoords], {
-          color: "#dc2626",
-          weight: 4,
-          dashArray: "6, 10",
-          opacity: 0.8,
+      // c) Draw polyline connecting provider to patient
+      const pts: Array<[number, number]> =
+        trip.routePoints && trip.routePoints.length >= 2
+          ? trip.routePoints
+          : [
+              [trip.providerLat, trip.providerLng],
+              [trip.patientLat, trip.patientLng],
+            ];
+
+      if (routesGroupRef.current) {
+        L.polyline(pts, {
+          color: "#16a34a",
+          weight: 4.5,
+          opacity: 0.9,
+        }).addTo(routesGroupRef.current);
+      }
+    });
+
+    // 4. Render Route Polyline for On-Demand Dispatch OR Emergency (fallback)
+    if (onTheWayTrips.length === 0) {
+      if (activeDispatch && activeDispatch.routePoints && activeDispatch.routePoints.length > 1) {
+        const isAccepted = activeDispatch.status === "accepted" || activeDispatch.status === "on_the_way";
+        const routeLine = L.polyline(activeDispatch.routePoints, {
+          color: isAccepted ? "#0d7c6a" : "#0284c7",
+          weight: 4.5,
+          dashArray: isAccepted ? undefined : "6, 8",
+          opacity: 0.9,
         }).addTo(map);
 
         routeLineRef.current = routeLine;
-
-        // Draw Haversine / OSRM routing ETA
-        const distInfo = api.getRoute(pCoords[0], pCoords[1], eCoords[0], eCoords[1]);
-        Promise.resolve(distInfo).then(res => setRouteInfo(res));
-      } else {
         setRouteInfo(null);
+      } else {
+        const activeEmergency = filtered.find(p => p.role === "patient" && p.status === "critical");
+        const closestProvider = filtered.find(p => p.role === "provider" && p.status === "available");
+
+        if (activeEmergency && closestProvider) {
+          const eCoords: [number, number] = [activeEmergency.y, activeEmergency.x];
+          const pCoords: [number, number] = [closestProvider.y, closestProvider.x];
+
+          const routeLine = L.polyline([pCoords, eCoords], {
+            color: "#dc2626",
+            weight: 4,
+            dashArray: "6, 10",
+            opacity: 0.8,
+          }).addTo(map);
+
+          routeLineRef.current = routeLine;
+
+          const distInfo = api.getRoute(pCoords[0], pCoords[1], eCoords[0], eCoords[1]);
+          Promise.resolve(distInfo).then(res => setRouteInfo(res));
+        } else {
+          setRouteInfo(null);
+        }
       }
     }
-  }, [locations, filter, activeDispatch]);
+  }, [locations, filter, activeDispatch, activeTrips]);
 
   const filteredPins = locations.filter(loc => {
     if (loc.status === "offline" || loc.isOnline === false) return false;
@@ -455,8 +674,40 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
           Addis Ababa, Ethiopia
         </div>
 
-        {/* On-Demand Dispatch Status Badge */}
-        {activeDispatch && (
+        {/* On-The-Way Live Trip Monitoring ("God's Eye" Floating Status Card) */}
+        {activeTrips.filter(t => t.status === "on_the_way").length > 0 ? (
+          <div className="absolute top-12 left-2.5 z-[400] space-y-2 max-w-xs md:max-w-sm pointer-events-auto">
+            {activeTrips.filter(t => t.status === "on_the_way").map((trip) => (
+              <div
+                key={trip.id || trip.appointmentId}
+                className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-[12px] shadow-xl p-3 border border-[#16a34a]/40 ring-1 ring-[#16a34a]/20"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-[10px] font-bold text-[#16a34a] uppercase tracking-wider">
+                    <span className="w-2 h-2 rounded-full bg-[#16a34a] animate-ping" />
+                    Live Fleet Navigation
+                  </span>
+                  <span className="text-[9px] px-2 py-0.5 rounded-full font-bold bg-green-100 dark:bg-green-950/80 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800">
+                    ON THE WAY
+                  </span>
+                </div>
+                <div className="mt-2 flex items-start gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-green-500/10 dark:bg-green-500/20 text-[#16a34a] flex items-center justify-center text-base shrink-0 border border-green-500/20">
+                    🚗
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-[#18232e] dark:text-white leading-snug">
+                      {trip.providerName} en route to {trip.patientName} • ETA {trip.etaMinutes ?? 5} min
+                    </p>
+                    <p className="text-[11px] text-[#5a7a96] dark:text-slate-400 mt-0.5">
+                      Distance: {trip.distanceKm ?? 1.8} km • Service: {trip.service || "Home Care"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : activeDispatch && (
           <div className="absolute top-10 left-2 z-[400] bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm rounded-[10px] shadow-lg p-2.5 border border-[#0d7c6a]/30 max-w-xs">
             <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5 text-[10px] font-bold text-[#0d7c6a]">

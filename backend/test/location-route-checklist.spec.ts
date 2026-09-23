@@ -88,4 +88,34 @@ describe("Map, Location & Route Checklist Tests", () => {
       expect(overlays[0].severity).toBe("critical");
     });
   });
+
+  describe("Strict Provider Presence", () => {
+    it("should return empty array when Redis has 0 online provider members", async () => {
+      const mockRedis = {
+        zrange: jest.fn().mockResolvedValue([]),
+        geopos: jest.fn().mockResolvedValue([]),
+      };
+      (service as any).redis = mockRedis;
+
+      const result = await service.getActiveProviderLocations();
+      expect(result).toEqual([]);
+      expect(mockRedis.zrange).toHaveBeenCalledWith("providers:locations:online", 0, -1);
+    });
+
+    it("should return only genuine providers actively reporting GPS in Redis", async () => {
+      const mockRedis = {
+        zrange: jest.fn().mockResolvedValue(["prov-123"]),
+        geopos: jest.fn().mockResolvedValue([["38.7578", "9.0192"]]),
+      };
+      (service as any).redis = mockRedis;
+
+      const result = await service.getActiveProviderLocations();
+      expect(result).toHaveLength(1);
+      expect(result[0].userId).toBe("prov-123");
+      expect(result[0].x).toBe(38.7578);
+      expect(result[0].y).toBe(9.0192);
+      expect((result[0] as any).isOnline).toBe(true);
+    });
+  });
 });
+

@@ -303,16 +303,39 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       this.presence.unregisterSession(socket.id);
       if (!this.presence.isOnline(info.userId)) {
         this.realtimeService.emitUserPresence(info.userId, info.role, "offline");
-        if (info.role === "provider") {
+        const isProvider =
+          info.role === "provider" ||
+          (info as any).hasProviderAccount ||
+          (info as any).roles?.includes("provider");
+
+        if (isProvider) {
           const redis = getLocationsRedisClient();
           if (redis) {
             redis.zrem("providers:locations:online", info.userId).catch(() => {});
           }
-          this.realtimeService.emitToRoom("admin", "provider_offline", {
+          this.locationRepo
+            .findOne({ where: { userId: info.userId } })
+            .then((loc) => {
+              if (loc) {
+                loc.status = "offline";
+                this.locationRepo.save(loc).catch(() => {});
+              }
+            })
+            .catch(() => {});
+
+          const offlinePayload = {
             providerId: info.userId,
+            userId: info.userId,
             status: "offline",
             ts: new Date().toISOString(),
-          });
+          };
+
+          if (this.server) {
+            this.server.to("admin_room").emit("provider_offline", offlinePayload);
+            this.server.to("admin").emit("provider_offline", offlinePayload);
+          }
+          this.realtimeService.emitToRoom("admin", "provider_offline", offlinePayload);
+          this.realtimeService.emitToRoom("admin_room", "provider_offline", offlinePayload);
         }
       }
     }
@@ -733,6 +756,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       }
       const offlinePayload = {
         providerId: userId,
+        userId,
         status: "offline",
         ts: new Date().toISOString(),
       };
