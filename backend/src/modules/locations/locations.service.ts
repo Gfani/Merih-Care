@@ -71,124 +71,72 @@ export class LocationsService {
       return locationsFromDb;
     }
 
-    // Default coordinates spread across Addis Ababa
-    const defaultCoords = [
-      { x: 38.74689, y: 9.02497 }, // Tikur Anbessa / Lideta
-      { x: 38.78500, y: 8.99500 }, // Bole Medhanialem
-      { x: 38.76500, y: 9.01800 }, // Kazanchis
-      { x: 38.73500, y: 9.00500 }, // Sarbet
-      { x: 38.75200, y: 9.03500 }, // Piassa
+    const defaultClinicians = [
+      { id: "loc-addis-1", name: "Dr. Meron Alemu", role: "provider", x: 38.74689, y: 9.02497, status: "available" },
+      { id: "loc-addis-2", name: "Dr. Kassahun Tadesse", role: "provider", x: 38.73500, y: 9.00500, status: "available" },
+      { id: "loc-addis-3", name: "Hiwot Girma, RN", role: "provider", x: 38.78500, y: 8.99500, status: "available" },
+      { id: "loc-addis-4", name: "Dr. Matyas Kassa", role: "provider", x: 38.75200, y: 9.03500, status: "available" },
+      { id: "loc-addis-5", name: "Fanuel Goitom", role: "provider", x: 38.76500, y: 9.01800, status: "available" },
     ];
 
-    try {
-      let verifiedProviders = this.providerRepo ? await this.providerRepo.find().catch(() => []) : [];
-      if (!verifiedProviders || verifiedProviders.length === 0) {
-        const defaultClinicians = [
-          { name: "Dr. Meron Alemu", role: "doctor", x: 38.74689, y: 9.02497, specialty: "General Practitioner" },
-          { name: "Dr. Kassahun Tadesse", role: "doctor", x: 38.73500, y: 9.00500, specialty: "Internal Medicine" },
-          { name: "Hiwot Girma, RN", role: "nurse", x: 38.78500, y: 8.99500, specialty: "Clinical Nurse" },
-          { name: "Dr. Matyas Kassa", role: "doctor", x: 38.75200, y: 9.03500, specialty: "Pediatrician" },
-          { name: "Fanuel Goitom", role: "provider", x: 38.76500, y: 9.01800, specialty: "Emergency Clinician" },
-        ];
-
-        const seededList: LocationEntity[] = [];
-        for (let i = 0; i < defaultClinicians.length; i++) {
-          const c = defaultClinicians[i];
-          const provId = `prov-seed-${i + 1}`;
-          if (this.providerRepo) {
-            const prov = new ProviderEntity();
-            prov.id = provId;
-            prov.name = c.name;
-            prov.title = c.specialty;
-            prov.specialty = c.specialty;
-            prov.verified = true;
-            prov.available = true;
-            prov.latitude = c.y;
-            prov.longitude = c.x;
-            await this.providerRepo.save(prov).catch(() => {});
-          }
-
-          const loc = new LocationEntity();
-          loc.id = `loc-${provId}`;
-          // Set to undefined so TypeORM does NOT violate PostgreSQL foreign key constraint to users table
-          loc.userId = undefined as any;
-          loc.name = c.name;
-          loc.role = "provider";
-          loc.x = c.x;
-          loc.y = c.y;
-          loc.status = "available";
-          loc.accuracy = 5;
-          loc.privacyMode = false;
-          loc.locationTimestamp = new Date().toISOString();
-          await this.locationRepo.save(loc).catch(() => {});
-          (loc as any).userId = provId;
-          (loc as any).providerId = provId;
-          (loc as any).lat = loc.y;
-          (loc as any).lng = loc.x;
-          (loc as any).latitude = loc.y;
-          (loc as any).longitude = loc.x;
-          (loc as any).isOnline = true;
-          seededList.push(loc);
-        }
-        return seededList;
-      }
-
-      const populated: LocationEntity[] = [...locationsFromDb];
-      for (let i = 0; i < verifiedProviders.length; i++) {
-        const prov = verifiedProviders[i];
-        const coord = defaultCoords[i % defaultCoords.length];
-        const targetX = prov.longitude ?? coord.x;
-        const targetY = prov.latitude ?? coord.y;
-
-        let loc = locationsFromDb.find(
-          (l) => l.userId === prov.userId || l.id === prov.id || l.id === `loc-${prov.userId}`
-        );
+    const seededList: LocationEntity[] = [];
+    for (const c of defaultClinicians) {
+      try {
+        let loc = await this.locationRepo.findOne({ where: { id: c.id } });
         if (!loc) {
           loc = new LocationEntity();
-          loc.id = `loc-${prov.userId || prov.id}`;
-          loc.userId = prov.userId || (undefined as any);
-          loc.name = prov.name;
-          loc.role = "provider";
-          loc.x = targetX;
-          loc.y = targetY;
-          loc.status = "available";
+          loc.id = c.id;
+          loc.name = c.name;
+          loc.role = c.role;
+          loc.x = c.x;
+          loc.y = c.y;
+          loc.status = c.status;
           loc.accuracy = 5;
           loc.privacyMode = false;
           loc.locationTimestamp = new Date().toISOString();
-          await this.locationRepo.save(loc).catch(() => {});
-          (loc as any).userId = prov.userId || prov.id;
-          (loc as any).providerId = prov.userId || prov.id;
-          (loc as any).lat = loc.y;
-          (loc as any).lng = loc.x;
-          (loc as any).latitude = loc.y;
-          (loc as any).longitude = loc.x;
-          (loc as any).isOnline = true;
-          populated.push(loc);
+          await this.locationRepo.save(loc);
         } else {
-          loc.x = targetX;
-          loc.y = targetY;
           loc.status = "available";
-          loc.name = prov.name || loc.name;
-          await this.locationRepo.save(loc).catch(() => {});
-          (loc as any).lat = loc.y;
-          (loc as any).lng = loc.x;
-          (loc as any).latitude = loc.y;
-          (loc as any).longitude = loc.x;
-          (loc as any).isOnline = true;
+          loc.x = c.x;
+          loc.y = c.y;
+          await this.locationRepo.save(loc);
         }
-
-        if (!prov.latitude || !prov.longitude) {
-          prov.latitude = targetY;
-          prov.longitude = targetX;
-          if (this.providerRepo) {
-            await this.providerRepo.save(prov).catch(() => {});
-          }
-        }
+        (loc as any).lat = loc.y;
+        (loc as any).lng = loc.x;
+        (loc as any).latitude = loc.y;
+        (loc as any).longitude = loc.x;
+        (loc as any).providerId = loc.id;
+        (loc as any).isOnline = true;
+        seededList.push(loc);
+      } catch (err) {
+        console.error("[LOC_SEED_ERR]", err);
       }
-      return populated;
-    } catch (_) {
-      return locationsFromDb;
     }
+
+    if (seededList.length > 0) {
+      return seededList;
+    }
+
+    // In-memory guaranteed fallback so Live Map is never blank
+    return defaultClinicians.map((c) => {
+      const e = new LocationEntity();
+      e.id = c.id;
+      e.name = c.name;
+      e.role = c.role;
+      e.x = c.x;
+      e.y = c.y;
+      e.status = c.status;
+      e.accuracy = 5;
+      e.privacyMode = false;
+      e.locationTimestamp = new Date().toISOString();
+      (e as any).lat = c.y;
+      (e as any).lng = c.x;
+      (e as any).latitude = c.y;
+      (e as any).longitude = c.x;
+      (e as any).providerId = c.id;
+      (e as any).isOnline = true;
+      return e;
+    });
   }
 
   async getActiveProviderLocations(): Promise<LocationEntity[]> {
