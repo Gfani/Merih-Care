@@ -89,15 +89,21 @@ jobs:
           inlineScript: |
             az config set extension.use_dynamic_install=yes_without_prompt
             az extension add --name containerapp --upgrade || true
-            sleep 10
+            echo "Updating backend container image to ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-backend:${{ github.sha }}..."
+            az containerapp update \
+              --name ${{ env.CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --image ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-backend:${{ github.sha }}
+            sleep 15
             az containerapp ingress traffic set \
               --name ${{ env.CONTAINER_APP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
               --revision-weight latest=100 || true
+            echo "### Backend Revisions" >> $GITHUB_STEP_SUMMARY
             az containerapp revision list \
               --name ${{ env.CONTAINER_APP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              -o table || true
+              -o table >> $GITHUB_STEP_SUMMARY
 
   deploy-admin-web:
     name: Deploy Admin Web to Azure Container Apps
@@ -179,13 +185,19 @@ jobs:
           inlineScript: |
             az config set extension.use_dynamic_install=yes_without_prompt
             az extension add --name containerapp --upgrade || true
-            sleep 10
+            echo "Updating admin web container image to ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-admin-web:${{ github.sha }}..."
+            az containerapp update \
+              --name ${{ env.ADMIN_CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --image ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-admin-web:${{ github.sha }}
+            sleep 15
             az containerapp ingress traffic set \
               --name ${{ env.ADMIN_CONTAINER_APP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
               --revision-weight latest=100 || true
+            echo "### Admin Web Revisions" >> $GITHUB_STEP_SUMMARY
             az containerapp revision list \
               --name ${{ env.ADMIN_CONTAINER_APP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              -o table || true
+              -o table >> $GITHUB_STEP_SUMMARY
 
