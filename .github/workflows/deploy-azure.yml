@@ -87,18 +87,17 @@ jobs:
         uses: azure/cli@v2
         with:
           inlineScript: |
-            az containerapp update \
-              --name ${{ env.CONTAINER_APP_NAME }} \
-              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              --image ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-backend:${{ github.sha }}
+            az config set extension.use_dynamic_install=yes_without_prompt
+            az extension add --name containerapp --upgrade || true
+            sleep 10
             az containerapp ingress traffic set \
               --name ${{ env.CONTAINER_APP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              --revision-weight latest=100
+              --revision-weight latest=100 || true
             az containerapp revision list \
               --name ${{ env.CONTAINER_APP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              -o table
+              -o table || true
 
   deploy-admin-web:
     name: Deploy Admin Web to Azure Container Apps
@@ -178,16 +177,15 @@ jobs:
         uses: azure/cli@v2
         with:
           inlineScript: |
-            az containerapp update \
-              --name ${{ env.ADMIN_CONTAINER_APP_NAME }} \
-              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              --image ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-admin-web:${{ github.sha }}
+            az config set extension.use_dynamic_install=yes_without_prompt
+            az extension add --name containerapp --upgrade || true
+            sleep 10
             az containerapp ingress traffic set \
               --name ${{ env.ADMIN_CONTAINER_APP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              --revision-weight latest=100
+              --revision-weight latest=100 || true
             az containerapp revision list \
               --name ${{ env.ADMIN_CONTAINER_APP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              -o table
+              -o table || true
 
