@@ -68,6 +68,22 @@ jobs:
         run: |
           az acr login --name ${{ secrets.ACR_NAME }}
 
+      - name: Configure ACR Access on Backend Container App
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az config set extension.use_dynamic_install=yes_without_prompt
+            az extension add --name containerapp --upgrade || true
+            az acr update --name ${{ secrets.ACR_NAME }} --admin-enabled true || true
+            ACR_PASS=$(az acr credential show --name ${{ secrets.ACR_NAME }} --query "passwords[0].value" -o tsv)
+            echo "ACR_PASS=$ACR_PASS" >> $GITHUB_ENV
+            az containerapp registry set \
+              --name ${{ env.CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --server ${{ secrets.ACR_LOGIN_SERVER }} \
+              --username ${{ secrets.ACR_NAME }} \
+              --password "$ACR_PASS" || true
+
       - name: Build and Push Backend Image
         uses: docker/build-push-action@v5
         with:
@@ -82,6 +98,8 @@ jobs:
         uses: azure/container-apps-deploy-action@v1
         with:
           acrName: ${{ secrets.ACR_NAME }}
+          acrUsername: ${{ secrets.ACR_NAME }}
+          acrPassword: ${{ env.ACR_PASS }}
           containerAppName: ${{ env.CONTAINER_APP_NAME }}
           resourceGroup: ${{ env.AZURE_RESOURCE_GROUP }}
           imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-backend:${{ github.sha }}
@@ -159,6 +177,22 @@ jobs:
         run: |
           az acr login --name ${{ secrets.ACR_NAME }}
 
+      - name: Configure ACR Access on Admin Container App
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az config set extension.use_dynamic_install=yes_without_prompt
+            az extension add --name containerapp --upgrade || true
+            az acr update --name ${{ secrets.ACR_NAME }} --admin-enabled true || true
+            ACR_PASS=$(az acr credential show --name ${{ secrets.ACR_NAME }} --query "passwords[0].value" -o tsv)
+            echo "ACR_PASS=$ACR_PASS" >> $GITHUB_ENV
+            az containerapp registry set \
+              --name ${{ env.ADMIN_CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --server ${{ secrets.ACR_LOGIN_SERVER }} \
+              --username ${{ secrets.ACR_NAME }} \
+              --password "$ACR_PASS" || true
+
       - name: Build and Push Admin Web Image
         uses: docker/build-push-action@v5
         with:
@@ -175,6 +209,8 @@ jobs:
         uses: azure/container-apps-deploy-action@v1
         with:
           acrName: ${{ secrets.ACR_NAME }}
+          acrUsername: ${{ secrets.ACR_NAME }}
+          acrPassword: ${{ env.ACR_PASS }}
           containerAppName: ${{ env.ADMIN_CONTAINER_APP_NAME }}
           resourceGroup: ${{ env.AZURE_RESOURCE_GROUP }}
           imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-admin-web:${{ github.sha }}
@@ -191,4 +227,9 @@ jobs:
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
               --query "{name:name,latestRevision:properties.latestRevisionName,readyRevision:properties.latestReadyRevisionName,traffic:properties.configuration.ingress.traffic}" \
               -o json
-
+            echo "=== REVISION LIST ==="
+            az containerapp revision list \
+              --name ${{ env.ADMIN_CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --query "[].{Name:name,Active:properties.active,Health:properties.healthState,State:properties.runningState,Traffic:properties.trafficWeight}" \
+              -o table
