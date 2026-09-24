@@ -105,10 +105,14 @@ class MobileRealtimeService {
     _realtimeSocket!.onConnect((_) {
       _updateState(RealtimeConnectionState.connected);
       _restoreSession();
+      _realtimeSocket?.emit('join_provider');
+      _realtimeSocket?.emit('join_providers');
     });
 
     _realtimeSocket!.on('connection_established', (data) {
       _updateState(RealtimeConnectionState.connected);
+      _realtimeSocket?.emit('join_provider');
+      _realtimeSocket?.emit('join_providers');
     });
 
     _realtimeSocket!.onDisconnect((_) {

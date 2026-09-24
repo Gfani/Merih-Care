@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/network/network_providers.dart';
+import '../../core/network/realtime_service.dart';
 import '../auth/auth_provider.dart';
 import '../../core/location/location_service.dart';
 import '../../core/location/location_tracking_service.dart';
@@ -32,13 +33,15 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
   StreamSubscription? _serviceReqSub;
   StreamSubscription? _appointmentSub;
   StreamSubscription? _serviceOfferSub;
+  StreamSubscription? _connSub;
   String? _currentOfferAptId;
 
   @override
   void initState() {
     super.initState();
     _isOnline = ref.read(providerOnlineStatusProvider);
-    ref.read(realtimeServiceProvider).joinProviders();
+    final realtime = ref.read(realtimeServiceProvider);
+    realtime.joinProviders();
     _loadDashboardData();
 
     final authUser = ref.read(authProvider).user;
@@ -48,10 +51,27 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
         authUser?['id']?.toString() ??
         '';
 
+    // Listen to connection state so tracking re-triggers instantly the moment WebSocket connects
+    _connSub = realtime.connectionStateStream.listen((state) {
+      if (state == RealtimeConnectionState.connected && mounted && _isOnline) {
+        realtime.joinProviders();
+        final client = ref.read(apiClientProvider);
+        final tracker = ref.read(locationTrackingProvider);
+        final s = realtime.socket;
+        if (s != null) {
+          tracker.startTracking(
+            initialProvId,
+            s,
+            client: client,
+            realtimeService: realtime,
+          );
+        }
+      }
+    });
+
     // Stream live GPS coordinates every 10 seconds when Online
     if (_isOnline) {
       final client = ref.read(apiClientProvider);
-      final realtime = ref.read(realtimeServiceProvider);
       final tracker = ref.read(locationTrackingProvider);
       final socket = realtime.socket;
       if (socket != null) {
@@ -160,6 +180,7 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
 
   @override
   void dispose() {
+    _connSub?.cancel();
     _serviceReqSub?.cancel();
     _appointmentSub?.cancel();
     _serviceOfferSub?.cancel();

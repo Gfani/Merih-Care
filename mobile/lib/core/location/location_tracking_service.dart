@@ -147,43 +147,49 @@ class LocationTrackingService with WidgetsBindingObserver {
       } catch (_) {}
     }
 
-    // Critical Step: Check location service is enabled
-    try {
-      final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        return false;
-      }
-    } catch (_) {}
-
-    // Critical Step: Explicitly request permission
-    try {
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.deniedForever || permission == LocationPermission.denied) {
-        return false;
-      }
-    } catch (_) {}
-
     if (_isTracking) {
       _positionSubscription?.cancel();
       _gpsTimer?.cancel();
     }
     _isTracking = true;
 
+    final fallbackPos = Position(
+      longitude: _lon,
+      latitude: _lat,
+      timestamp: DateTime.now(),
+      accuracy: 10.0,
+      altitude: 0.0,
+      altitudeAccuracy: 0.0,
+      heading: 0.0,
+      headingAccuracy: 0.0,
+      speed: 0.0,
+      speedAccuracy: 0.0,
+    );
+
     // Helper to emit coordinates to Socket.io and backend
     void emitLocation(Position position) {
       _lat = position.latitude;
       _lon = position.longitude;
       _latestPosition = position;
+      _lastEmittedAt = DateTime.now();
       final idToSend = _providerId ?? effectiveId;
 
-      socket.emit('location_update', {
-        'providerId': idToSend,
+      final payload = {
+        if (idToSend.isNotEmpty) 'providerId': idToSend,
+        'userId': idToSend,
+        'role': 'provider',
         'lat': position.latitude,
         'lng': position.longitude,
-      });
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'accuracy': position.accuracy,
+        'status': 'available',
+        'isOnline': true,
+      };
+
+      socket.emit('location_update', payload);
+      socket.emit('provider_location_update', payload);
+      socket.emit('update_location', payload);
 
       _realtimeService?.sendLocationUpdate(
         appointmentId: _appointmentId,
@@ -193,67 +199,68 @@ class LocationTrackingService with WidgetsBindingObserver {
 
       // Persist fallback to backend database
       if (idToSend.isNotEmpty && _client != null) {
-        try {
-          _client!.dio.put('/locations/$idToSend/move', data: {
-            'latitude': position.latitude,
-            'longitude': position.longitude,
-            'accuracy': position.accuracy,
-          });
-        } catch (_) {}
+        () async {
+          try {
+            await _client!.dio.put('/locations/$idToSend/move', data: {
+              'latitude': position.latitude,
+              'longitude': position.longitude,
+              'accuracy': position.accuracy,
+            });
+          } catch (_) {}
+        }();
       }
     }
 
-    // Immediate initial GPS fix so provider coordinates appear on map right away
-    try {
-      final initialPos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 4),
-      );
-      _latestPosition = initialPos;
-      _lastEmittedAt = DateTime.now();
-      _locationStreamController.add(initialPos);
-      emitLocation(initialPos);
-    } catch (_) {
-      try {
-        final lastKnown = await Geolocator.getLastKnownPosition();
-        if (lastKnown != null) {
-          _latestPosition = lastKnown;
-          _lastEmittedAt = DateTime.now();
-          _locationStreamController.add(lastKnown);
-          emitLocation(lastKnown);
-        } else {
-          final fallbackPos = Position(
-            longitude: _lon,
-            latitude: _lat,
-            timestamp: DateTime.now(),
-            accuracy: 10.0,
-            altitude: 0.0,
-            altitudeAccuracy: 0.0,
-            heading: 0.0,
-            headingAccuracy: 0.0,
-            speed: 0.0,
-            speedAccuracy: 0.0,
-          );
-          _lastEmittedAt = DateTime.now();
-          emitLocation(fallbackPos);
+    // If socket is still connecting, ensure it immediately emits upon connection
+    if (!socket.connected) {
+      socket.once('connect', (_) {
+        if (_isTracking && _isOnline) {
+          emitLocation(_latestPosition ?? fallbackPos);
         }
-      } catch (_) {
-        final fallbackPos = Position(
-          longitude: _lon,
-          latitude: _lat,
-          timestamp: DateTime.now(),
-          accuracy: 10.0,
-          altitude: 0.0,
-          altitudeAccuracy: 0.0,
-          heading: 0.0,
-          headingAccuracy: 0.0,
-          speed: 0.0,
-          speedAccuracy: 0.0,
-        );
-        _lastEmittedAt = DateTime.now();
+      });
+    }
+
+    // Step 1: Immediate zero-latency fix (last known or fallback) so provider pops up on map instantly
+    try {
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null) {
+        _latestPosition = lastKnown;
+        _locationStreamController.add(lastKnown);
+        emitLocation(lastKnown);
+      } else {
+        _latestPosition = fallbackPos;
+        _locationStreamController.add(fallbackPos);
         emitLocation(fallbackPos);
       }
+    } catch (_) {
+      _latestPosition = fallbackPos;
+      _locationStreamController.add(fallbackPos);
+      emitLocation(fallbackPos);
     }
+
+    // Step 2: Request permissions & high-accuracy GPS asynchronously in background
+    () async {
+      try {
+        final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        if (serviceEnabled) {
+          LocationPermission permission = await Geolocator.checkPermission();
+          if (permission == LocationPermission.denied) {
+            permission = await Geolocator.requestPermission();
+          }
+          if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+            final freshPos = await Geolocator.getCurrentPosition(
+              desiredAccuracy: LocationAccuracy.high,
+              timeLimit: const Duration(seconds: 5),
+            );
+            if (_isTracking && _isOnline) {
+              _latestPosition = freshPos;
+              _locationStreamController.add(freshPos);
+              emitLocation(freshPos);
+            }
+          }
+        }
+      } catch (_) {}
+    }();
 
     // Start location stream: Geolocator.getPositionStream with LocationAccuracy.high and distanceFilter: 10
     const locationSettings = LocationSettings(

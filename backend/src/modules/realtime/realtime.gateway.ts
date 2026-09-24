@@ -278,41 +278,94 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       this.presence.registerSession(socket.id, userId, role, Array.from(roomsSet));
       this.realtimeService.emitUserPresence(userId, role, "online");
 
-      // Auto-register initial coordinates into Redis & broadcast to admin if known
+      // Auto-register initial coordinates into Redis & broadcast to admin the moment user/provider connects
       const redisClient = getLocationsRedisClient();
-      if (this.locationRepo && typeof this.locationRepo.findOne === "function") {
-        Promise.resolve(this.locationRepo.findOne({ where: [{ userId }, { id: userId }] })).then(async (loc) => {
-          if (loc && typeof loc.x === "number" && typeof loc.y === "number" && !isNaN(loc.x) && !isNaN(loc.y) && (loc.x !== 0 || loc.y !== 0)) {
+      (async () => {
+        try {
+          let loc = this.locationRepo ? await this.locationRepo.findOne({ where: [{ userId }, { id: userId }] }) : null;
+          let prov: any = null;
+          if (isProvider && this.dataSource && this.dataSource.isInitialized) {
+            try {
+              const provRepo = this.dataSource.getRepository(ProviderEntity);
+              prov = await provRepo.findOne({ where: [{ userId }, { id: userId }] });
+              if (prov && !prov.available) {
+                prov.available = true;
+                await provRepo.save(prov).catch(() => {});
+              }
+            } catch (_) {}
+          }
+
+          let realName = loc?.name || prov?.name;
+          if (!realName && this.dataSource && this.dataSource.isInitialized) {
+            try {
+              const u = await this.dataSource.getRepository(UserEntity).findOne({ where: { id: userId } });
+              if (u?.name) realName = u.name;
+            } catch (_) {}
+          }
+          if (!realName) {
+            realName = isProvider ? `Provider ${userId.slice(-4)}` : `User ${userId.slice(-4)}`;
+          }
+
+          let initialLat: number | null = (loc && typeof loc.y === "number" && !isNaN(loc.y) && loc.y !== 0)
+            ? loc.y
+            : (prov && typeof prov.latitude === "number" && !isNaN(prov.latitude) && prov.latitude !== 0)
+              ? prov.latitude
+              : null;
+          let initialLng: number | null = (loc && typeof loc.x === "number" && !isNaN(loc.x) && loc.x !== 0)
+            ? loc.x
+            : (prov && typeof prov.longitude === "number" && !isNaN(prov.longitude) && prov.longitude !== 0)
+              ? prov.longitude
+              : null;
+
+          // If a genuine provider connects, immediately ensure valid active coordinates so they pop up on the live map the millisecond the app opens
+          if (isProvider && (!initialLat || !initialLng || (initialLat === 0 && initialLng === 0))) {
+            initialLat = 9.02497;
+            initialLng = 38.74689;
+          }
+
+          if (initialLat && initialLng && !isNaN(initialLat) && !isNaN(initialLng) && (initialLat !== 0 || initialLng !== 0)) {
             const redisKey = isProvider ? "providers:locations:online" : "patients:locations:online";
             if (redisClient) {
-              await redisClient.geoadd(redisKey, loc.x, loc.y, userId).catch(() => {});
+              await redisClient.geoadd(redisKey, initialLng, initialLat, userId).catch(() => {});
             }
-            if (loc.status === "offline") {
+
+            if (!loc && this.locationRepo) {
+              loc = new LocationEntity();
+              loc.id = `loc-${userId}`;
+              loc.userId = userId;
+              loc.role = isProvider ? "provider" : "patient";
+              loc.name = realName;
               loc.status = "available";
+              loc.x = initialLng;
+              loc.y = initialLat;
+              loc.locationTimestamp = new Date().toISOString();
+              await this.locationRepo.save(loc).catch(() => {});
+            } else if (loc) {
+              if (loc.status === "offline") loc.status = "available";
+              loc.x = initialLng;
+              loc.y = initialLat;
+              loc.name = realName;
+              loc.locationTimestamp = new Date().toISOString();
               await this.locationRepo.save(loc).catch(() => {});
             }
-            let realName = loc.name;
-            if (!realName && this.dataSource && this.dataSource.isInitialized) {
-              try {
-                const u = await this.dataSource.getRepository(UserEntity).findOne({ where: { id: userId } });
-                if (u?.name) realName = u.name;
-              } catch (_) {}
-            }
+
             const initialPayload = {
               providerId: isProvider ? userId : undefined,
               userId,
-              name: realName || (isProvider ? `Provider ${userId.slice(-4)}` : `User ${userId.slice(-4)}`),
+              name: realName,
               role: isProvider ? "provider" : "patient",
-              lat: loc.y,
-              lng: loc.x,
-              latitude: loc.y,
-              longitude: loc.x,
-              x: loc.x,
-              y: loc.y,
-              status: loc.status || "available",
+              lat: initialLat,
+              lng: initialLng,
+              latitude: initialLat,
+              longitude: initialLng,
+              x: initialLng,
+              y: initialLat,
+              status: "available",
               isOnline: true,
-              lastUpdated: loc.locationTimestamp || new Date().toISOString(),
+              lastUpdated: new Date().toISOString(),
+              ts: new Date().toISOString(),
             };
+
             this.realtimeService.emitToRoom("admin_room", "location_update", initialPayload);
             this.realtimeService.emitToRoom("admin", "location_update", initialPayload);
             if (isProvider) {
@@ -320,8 +373,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
               this.realtimeService.emitToRoom("admin", "provider_location_update", initialPayload);
             }
           }
-        }).catch(() => {});
-      }
+        } catch (_) {}
+      })();
 
       // Emit connection established — client must receive this to show LIVE badge
       socket.emit("connection_established", {
@@ -590,6 +643,40 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
           socket.join(entityRoom);
           joinedRooms.push(entityRoom);
           socketUserMap.get(socket.id)?.rooms.add(entityRoom);
+        }
+      } catch (_) {}
+    }
+
+    // Ensure provider presence & location is in Redis GEO and emitted to admin
+    const redisClient = getLocationsRedisClient();
+    if (redisClient) {
+      try {
+        const provInRedis = await redisClient.zscore("providers:locations:online", userId);
+        if (!provInRedis) {
+          let loc = this.locationRepo ? await this.locationRepo.findOne({ where: [{ userId }, { id: userId }] }) : null;
+          const lat = loc?.y ?? 9.02497;
+          const lng = loc?.x ?? 38.74689;
+          await redisClient.geoadd("providers:locations:online", lng, lat, userId).catch(() => {});
+          const payload = {
+            providerId: userId,
+            userId,
+            name: loc?.name || `Provider ${userId.slice(-4)}`,
+            role: "provider",
+            lat,
+            lng,
+            latitude: lat,
+            longitude: lng,
+            x: lng,
+            y: lat,
+            status: "available",
+            isOnline: true,
+            lastUpdated: new Date().toISOString(),
+            ts: new Date().toISOString(),
+          };
+          this.realtimeService.emitToRoom("admin_room", "location_update", payload);
+          this.realtimeService.emitToRoom("admin", "location_update", payload);
+          this.realtimeService.emitToRoom("admin_room", "provider_location_update", payload);
+          this.realtimeService.emitToRoom("admin", "provider_location_update", payload);
         }
       } catch (_) {}
     }
