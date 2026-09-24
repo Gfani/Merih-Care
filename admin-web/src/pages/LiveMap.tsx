@@ -178,10 +178,16 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       if (!updated) return;
       const targetId = String(updated.providerId || updated.userId || updated.id || "");
       if (!targetId) return;
+      const provId = updated.providerId ? String(updated.providerId) : "";
+      const uId = updated.userId ? String(updated.userId) : "";
 
       // Drop immediately if marked offline
       if (updated.status === "offline" || updated.isOnline === false) {
-        setLocations(prev => prev.filter(l => l.userId !== targetId && l.id !== targetId && l.id !== `loc-${targetId}`));
+        setLocations(prev => prev.filter(l =>
+          l.userId !== targetId && l.id !== targetId && l.id !== `loc-${targetId}` &&
+          (!provId || (l.userId !== provId && (l as any).providerId !== provId && l.id !== provId && l.id !== `loc-${provId}`)) &&
+          (!uId || (l.userId !== uId && (l as any).providerId !== uId && l.id !== uId && l.id !== `loc-${uId}`))
+        ));
         setSelectedPin(prev => (prev?.userId === targetId || prev?.id === targetId || prev?.id === `loc-${targetId}` ? null : prev));
         setActiveTrips(prev => prev.map(t => (t.providerId === targetId || t.providerUserId === targetId || t.patientId === targetId ? { ...t, isOnline: false } : t)));
         return;
@@ -196,7 +202,11 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       const name = updated.name || (isPatient ? `Patient ${targetId.slice(-4)}` : `Provider ${targetId.slice(-4)}`);
 
       setLocations(prev => {
-        const idx = prev.findIndex(l => l.userId === targetId || l.id === targetId || l.id === `loc-${targetId}`);
+        const idx = prev.findIndex(l =>
+          (targetId && (l.userId === targetId || l.id === targetId || l.id === `loc-${targetId}`)) ||
+          (provId && (l.userId === provId || (l as any).providerId === provId || l.id === provId || l.id === `loc-${provId}`)) ||
+          (uId && (l.userId === uId || (l as any).providerId === uId || l.id === uId || l.id === `loc-${uId}`))
+        );
         if (idx !== -1) {
           const updatedList = [...prev];
           updatedList[idx] = {

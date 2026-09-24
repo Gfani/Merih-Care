@@ -10,6 +10,7 @@ import '../../core/location/location_tracking_service.dart';
 import '../../core/location/location_service.dart';
 import '../../core/network/network_providers.dart';
 import '../../shared/widgets/offline_banner.dart';
+import '../auth/auth_provider.dart';
 
 class ProviderMapNavigationScreen extends ConsumerStatefulWidget {
   final String appointmentId;
@@ -72,9 +73,15 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
         final realtime = ref.read(realtimeServiceProvider);
         final socket = realtime.socket ?? await service.ensureSocket();
 
+        final authUser = ref.read(authProvider).user;
+        final provId = authUser?['provider']?['id']?.toString() ??
+            authUser?['providerId']?.toString() ??
+            authUser?['id']?.toString() ??
+            '';
+
         if (socket != null) {
           service.startTracking(
-            'provider-active',
+            provId,
             socket,
             client: client,
             realtimeService: realtime,
@@ -136,17 +143,39 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
         return;
       }
 
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-      if (!mounted) return;
-      setState(() {
-        _providerLat = position.latitude;
-        _providerLon = position.longitude;
-        _calculateDistanceAndEta();
-      });
-      _mapController.move(LatLng(position.latitude, position.longitude), 15.0);
-      if (mounted) {
+      Position? position;
+      try {
+        position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 6),
+        );
+      } catch (_) {
+        try {
+          position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.medium,
+            timeLimit: const Duration(seconds: 4),
+          );
+        } catch (_) {
+          position = await Geolocator.getLastKnownPosition();
+        }
+      }
+
+      final pos = position;
+      if (pos != null && mounted) {
+        setState(() {
+          _providerLat = pos.latitude;
+          _providerLon = pos.longitude;
+          _calculateDistanceAndEta();
+        });
+        _mapController.move(LatLng(pos.latitude, pos.longitude), 15.0);
+
+        final tracker = ref.read(locationTrackingProvider);
+        await tracker.emitDirectCoordinates(
+          pos.latitude,
+          pos.longitude,
+          accuracy: pos.accuracy,
+        );
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('📍 Map centered on your current location'),

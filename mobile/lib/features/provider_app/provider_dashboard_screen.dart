@@ -44,6 +44,21 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
     realtime.joinProviders();
     _loadDashboardData();
 
+    // Auto-detect genuine hardware GPS location immediately upon opening dashboard and broadcast
+    Future.microtask(() async {
+      try {
+        final detected = await ref.read(locationProvider.notifier).autoDetectCurrentLocation();
+        if (detected != null && mounted) {
+          final tracker = ref.read(locationTrackingProvider);
+          await tracker.emitDirectCoordinates(
+            detected.latitude,
+            detected.longitude,
+            accuracy: detected.accuracy,
+          );
+        }
+      } catch (_) {}
+    });
+
     final authUser = ref.read(authProvider).user;
     final initialProvId = _myProviderId ??
         authUser?['provider']?['id']?.toString() ??
@@ -220,14 +235,16 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
         if (_isOnline) {
           final realtime = ref.read(realtimeServiceProvider);
           final tracker = ref.read(locationTrackingProvider);
-          final socket = realtime.socket ?? await tracker.ensureSocket();
-          if (socket != null) {
-            tracker.startTracking(
-              _myProviderId ?? '',
-              socket,
-              client: client,
-              realtimeService: realtime,
-            );
+          if (!tracker.isTracking) {
+            final socket = realtime.socket ?? await tracker.ensureSocket();
+            if (socket != null) {
+              tracker.startTracking(
+                _myProviderId ?? '',
+                socket,
+                client: client,
+                realtimeService: realtime,
+              );
+            }
           }
         }
       } catch (_) {
@@ -559,7 +576,26 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
                             ),
                           ),
                           InkWell(
-                            onTap: () => ref.read(locationProvider.notifier).autoDetectCurrentLocation(),
+                            onTap: () async {
+                              final detected = await ref.read(locationProvider.notifier).autoDetectCurrentLocation(forceRefresh: true);
+                              if (detected != null) {
+                                final tracker = ref.read(locationTrackingProvider);
+                                await tracker.emitDirectCoordinates(
+                                  detected.latitude,
+                                  detected.longitude,
+                                  accuracy: detected.accuracy,
+                                );
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('📍 Location updated: ${detected.spotName} (${detected.fullAddress})'),
+                                      backgroundColor: AppTheme.primaryColor,
+                                      duration: const Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
                             child: Text(
                               locationState.isDetecting ? 'Locating...' : 'Update GPS',
                               style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primaryColor),

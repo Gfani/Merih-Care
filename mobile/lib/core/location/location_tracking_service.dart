@@ -8,6 +8,7 @@ import '../network/io_client_base.dart';
 import '../network/realtime_service.dart';
 import '../storage/secure_storage.dart';
 import '../../features/auth/auth_provider.dart';
+import 'location_service.dart';
 
 /// Riverpod provider to observe and manage the provider's online/offline availability toggle
 final providerOnlineStatusProvider = StateProvider<bool>((ref) => true);
@@ -133,6 +134,7 @@ class LocationTrackingService with WidgetsBindingObserver {
             '';
       } catch (_) {}
     }
+    final previousId = _providerId;
     _providerId = effectiveId.isNotEmpty ? effectiveId : _providerId;
     _socket = socket;
     if (client != null) _client = client;
@@ -147,24 +149,16 @@ class LocationTrackingService with WidgetsBindingObserver {
       } catch (_) {}
     }
 
+    // If already actively tracking with the same provider ID and active stream, avoid tearing down subscriptions
+    if (_isTracking && _positionSubscription != null && previousId == _providerId) {
+      return true;
+    }
+
     if (_isTracking) {
       _positionSubscription?.cancel();
       _gpsTimer?.cancel();
     }
     _isTracking = true;
-
-    final fallbackPos = Position(
-      longitude: _lon,
-      latitude: _lat,
-      timestamp: DateTime.now(),
-      accuracy: 10.0,
-      altitude: 0.0,
-      altitudeAccuracy: 0.0,
-      heading: 0.0,
-      headingAccuracy: 0.0,
-      speed: 0.0,
-      speedAccuracy: 0.0,
-    );
 
     // Helper to emit coordinates to Socket.io and backend
     void emitLocation(Position position) {
@@ -197,7 +191,7 @@ class LocationTrackingService with WidgetsBindingObserver {
         longitude: position.longitude,
       );
 
-      // Persist fallback to backend database
+      // Persist to backend database via REST
       if (idToSend.isNotEmpty && _client != null) {
         () async {
           try {
@@ -214,31 +208,47 @@ class LocationTrackingService with WidgetsBindingObserver {
     // If socket is still connecting, ensure it immediately emits upon connection
     if (!socket.connected) {
       socket.once('connect', (_) {
-        if (_isTracking && _isOnline) {
-          emitLocation(_latestPosition ?? fallbackPos);
+        if (_isTracking && _isOnline && _latestPosition != null) {
+          emitLocation(_latestPosition!);
         }
       });
     }
 
-    // Step 1: Immediate zero-latency fix (last known or fallback) so provider pops up on map instantly
+    // Step 1: Immediate zero-latency fix from OS cache or known locationProvider state
     try {
       final lastKnown = await Geolocator.getLastKnownPosition();
       if (lastKnown != null) {
         _latestPosition = lastKnown;
+        _lat = lastKnown.latitude;
+        _lon = lastKnown.longitude;
         _locationStreamController.add(lastKnown);
         emitLocation(lastKnown);
       } else {
-        _latestPosition = fallbackPos;
-        _locationStreamController.add(fallbackPos);
-        emitLocation(fallbackPos);
+        // Check if locationProvider already detected a genuine location
+        final knownLocation = _ref?.read(locationProvider).location;
+        if (knownLocation != null) {
+          final knownPos = Position(
+            latitude: knownLocation.latitude,
+            longitude: knownLocation.longitude,
+            timestamp: DateTime.now(),
+            accuracy: knownLocation.accuracy,
+            altitude: 0.0,
+            altitudeAccuracy: 0.0,
+            heading: 0.0,
+            headingAccuracy: 0.0,
+            speed: 0.0,
+            speedAccuracy: 0.0,
+          );
+          _latestPosition = knownPos;
+          _lat = knownLocation.latitude;
+          _lon = knownLocation.longitude;
+          _locationStreamController.add(knownPos);
+          emitLocation(knownPos);
+        }
       }
-    } catch (_) {
-      _latestPosition = fallbackPos;
-      _locationStreamController.add(fallbackPos);
-      emitLocation(fallbackPos);
-    }
+    } catch (_) {}
 
-    // Step 2: Request permissions & high-accuracy GPS asynchronously in background
+    // Step 2: Acquire fresh hardware GPS asynchronously and establish stream
     () async {
       try {
         final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -248,65 +258,154 @@ class LocationTrackingService with WidgetsBindingObserver {
             permission = await Geolocator.requestPermission();
           }
           if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-            final freshPos = await Geolocator.getCurrentPosition(
-              desiredAccuracy: LocationAccuracy.high,
-              timeLimit: const Duration(seconds: 5),
-            );
-            if (_isTracking && _isOnline) {
+            Position? freshPos;
+            try {
+              // 1. Try high accuracy satellite GPS (up to 6s)
+              freshPos = await Geolocator.getCurrentPosition(
+                desiredAccuracy: LocationAccuracy.high,
+                timeLimit: const Duration(seconds: 6),
+              );
+            } catch (_) {
+              try {
+                // 2. Fall back to medium accuracy (Wi-Fi / Cell tower fused location in 3s)
+                freshPos = await Geolocator.getCurrentPosition(
+                  desiredAccuracy: LocationAccuracy.medium,
+                  timeLimit: const Duration(seconds: 4),
+                );
+              } catch (_) {
+                freshPos = await Geolocator.getLastKnownPosition();
+              }
+            }
+
+            if (freshPos != null && _isTracking && _isOnline) {
               _latestPosition = freshPos;
+              _lat = freshPos.latitude;
+              _lon = freshPos.longitude;
               _locationStreamController.add(freshPos);
               emitLocation(freshPos);
             }
+
+            // Continuous stream emits whenever provider moves >= 2 meters
+            const locationSettings = LocationSettings(
+              accuracy: LocationAccuracy.high,
+              distanceFilter: 2,
+            );
+
+            _positionSubscription?.cancel();
+            _positionSubscription = Geolocator.getPositionStream(
+              locationSettings: locationSettings,
+            ).listen((Position position) {
+              if (!_isTracking || !_isOnline) return;
+              _latestPosition = position;
+              _lat = position.latitude;
+              _lon = position.longitude;
+              _locationStreamController.add(position);
+              emitLocation(position);
+            }, onError: (_) {});
           }
         }
       } catch (_) {}
     }();
 
-    // Start location stream: Geolocator.getPositionStream with LocationAccuracy.high and distanceFilter: 10
-    const locationSettings = LocationSettings(
-      accuracy: LocationAccuracy.high,
-      distanceFilter: 10, // Only emit when the provider moves 10 meters
-    );
-
-    try {
-      _positionSubscription?.cancel();
-      _positionSubscription = Geolocator.getPositionStream(
-        locationSettings: locationSettings,
-      ).listen((Position position) {
-        if (!_isTracking || !_isOnline) return;
-        _latestPosition = position;
-        _locationStreamController.add(position);
-
-        // Broadcast real coordinates to backend
-        emitLocation(position);
-      }, onError: (_) {});
-    } catch (_) {}
-
-    // Companion periodic timer ensures stationary providers continue emitting live GPS telemetry
+    // Step 3: Periodic timer actively polls hardware GPS so stationary providers continue emitting real GPS
     _gpsTimer?.cancel();
     _gpsTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
       if (!_isTracking || !_isOnline) return;
 
-      Position? pos = _latestPosition;
-      if (pos == null) {
+      Position? fresh;
+      try {
+        fresh = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 4),
+        );
+      } catch (_) {
         try {
-          pos = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.high,
-            timeLimit: const Duration(seconds: 4),
+          fresh = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.medium,
+            timeLimit: const Duration(seconds: 3),
           );
-          _latestPosition = pos;
         } catch (_) {
-          pos = await Geolocator.getLastKnownPosition();
+          fresh = await Geolocator.getLastKnownPosition();
         }
       }
-      if (pos != null) {
+
+      if (fresh != null) {
+        _latestPosition = fresh;
+        _lat = fresh.latitude;
+        _lon = fresh.longitude;
+        _locationStreamController.add(fresh);
+        emitLocation(fresh);
+      } else if (_latestPosition != null) {
+        // Re-emit latest confirmed coordinates to prevent admin map timeout
         _lastEmittedAt = DateTime.now();
-        _locationStreamController.add(pos);
-        emitLocation(pos);
+        emitLocation(_latestPosition!);
       }
     });
 
     return true;
+  }
+
+  /// Manually emit direct coordinates (e.g. from "Update GPS" button or explicit address picker)
+  Future<void> emitDirectCoordinates(
+    double latitude,
+    double longitude, {
+    double accuracy = 5.0,
+    String? status,
+  }) async {
+    _lat = latitude;
+    _lon = longitude;
+    final pos = Position(
+      latitude: latitude,
+      longitude: longitude,
+      timestamp: DateTime.now(),
+      accuracy: accuracy,
+      altitude: 0.0,
+      altitudeAccuracy: 0.0,
+      heading: 0.0,
+      headingAccuracy: 0.0,
+      speed: 0.0,
+      speedAccuracy: 0.0,
+    );
+    _latestPosition = pos;
+    _lastEmittedAt = DateTime.now();
+    _locationStreamController.add(pos);
+
+    final socketToUse = _socket ?? _realtimeService?.socket ?? await ensureSocket();
+    final idToSend = _providerId ?? '';
+    final payload = {
+      if (idToSend.isNotEmpty) 'providerId': idToSend,
+      'userId': idToSend,
+      'role': 'provider',
+      'lat': latitude,
+      'lng': longitude,
+      'latitude': latitude,
+      'longitude': longitude,
+      'accuracy': accuracy,
+      'status': status ?? 'available',
+      'isOnline': _isOnline,
+    };
+
+    if (socketToUse != null) {
+      socketToUse.emit('location_update', payload);
+      socketToUse.emit('provider_location_update', payload);
+      socketToUse.emit('update_location', payload);
+    }
+
+    _realtimeService?.sendLocationUpdate(
+      appointmentId: _appointmentId,
+      latitude: latitude,
+      longitude: longitude,
+    );
+
+    if (idToSend.isNotEmpty && _client != null) {
+      try {
+        await _client!.dio.put('/locations/$idToSend/move', data: {
+          'latitude': latitude,
+          'longitude': longitude,
+          'accuracy': accuracy,
+        });
+      } catch (_) {}
+    }
   }
 
   /// Convenience method when tapping "Go Online"
@@ -359,28 +458,66 @@ class LocationTrackingService with WidgetsBindingObserver {
 
   Future<void> _refreshLocationNow() async {
     try {
-      final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 4),
-      );
-      _latestPosition = pos;
-      _lastEmittedAt = DateTime.now();
-      _locationStreamController.add(pos);
-
-      final socketToUse = _socket ?? _realtimeService?.socket;
-      if (socketToUse != null) {
-        socketToUse.emit('location_update', {
-          if (_providerId != null && _providerId!.isNotEmpty) 'providerId': _providerId,
-          'lat': pos.latitude,
-          'lng': pos.longitude,
-        });
+      Position? pos;
+      try {
+        pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 5),
+        );
+      } catch (_) {
+        try {
+          pos = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.medium,
+            timeLimit: const Duration(seconds: 3),
+          );
+        } catch (_) {
+          pos = await Geolocator.getLastKnownPosition();
+        }
       }
 
-      _realtimeService?.sendLocationUpdate(
-        appointmentId: _appointmentId,
-        latitude: pos.latitude,
-        longitude: pos.longitude,
-      );
+      if (pos != null) {
+        _latestPosition = pos;
+        _lat = pos.latitude;
+        _lon = pos.longitude;
+        _lastEmittedAt = DateTime.now();
+        _locationStreamController.add(pos);
+
+        final socketToUse = _socket ?? _realtimeService?.socket;
+        final idToSend = _providerId ?? '';
+        if (socketToUse != null) {
+          final payload = {
+            if (idToSend.isNotEmpty) 'providerId': idToSend,
+            'userId': idToSend,
+            'role': 'provider',
+            'lat': pos.latitude,
+            'lng': pos.longitude,
+            'latitude': pos.latitude,
+            'longitude': pos.longitude,
+            'accuracy': pos.accuracy,
+            'status': 'available',
+            'isOnline': _isOnline,
+          };
+          socketToUse.emit('location_update', payload);
+          socketToUse.emit('provider_location_update', payload);
+          socketToUse.emit('update_location', payload);
+        }
+
+        _realtimeService?.sendLocationUpdate(
+          appointmentId: _appointmentId,
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+        );
+
+        if (idToSend.isNotEmpty && _client != null) {
+          try {
+            await _client!.dio.put('/locations/$idToSend/move', data: {
+              'latitude': pos.latitude,
+              'longitude': pos.longitude,
+              'accuracy': pos.accuracy,
+            });
+          } catch (_) {}
+        }
+      }
     } catch (_) {}
   }
 

@@ -390,6 +390,19 @@ export class LocationsService {
       await this.historyRepo.save(history);
     } catch (_) {}
 
+    // Also update ProviderEntity coordinates if available
+    if (this.providerRepo && (loc.role === "provider" || resolvedRole === "provider")) {
+      try {
+        const prov = await this.providerRepo.findOne({ where: [{ id }, { userId: id }] });
+        if (prov) {
+          prov.latitude = latitude;
+          prov.longitude = longitude;
+          prov.available = true;
+          await this.providerRepo.save(prov);
+        }
+      } catch (_) {}
+    }
+
     // Redis Geospatial update
     const redis = getLocationsRedisClient();
     const redisKey = loc.role === "patient" ? "patients:locations:online" : "providers:locations:online";
@@ -399,8 +412,14 @@ export class LocationsService {
         if (loc.status !== "offline") {
           // Redis GEOADD: key longitude latitude member (longitude MUST precede latitude in Redis)
           await redis.geoadd(redisKey, longitude, latitude, memberId);
+          if (loc.userId && loc.userId !== id) {
+            await redis.geoadd(redisKey, longitude, latitude, loc.userId);
+          }
         } else {
           await redis.zrem(redisKey, memberId);
+          if (loc.userId && loc.userId !== id) {
+            await redis.zrem(redisKey, loc.userId);
+          }
         }
       } catch (err) {
         // Safe failover if Redis command encounters an error

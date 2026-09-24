@@ -445,15 +445,21 @@ class LocationNotifier extends StateNotifier<LocationState> {
               'Bole';
           final String road = addressObj['road'] ?? '';
 
+          final String cityName = addressObj['city'] ??
+              addressObj['town'] ??
+              addressObj['village'] ??
+              addressObj['county'] ??
+              'Addis Ababa';
+
           String formattedAddress = '';
           if (spot.isNotEmpty && road.isNotEmpty && spot != road) {
-            formattedAddress = '$spot, $road, $subCity, Addis Ababa';
+            formattedAddress = '$spot, $road, $subCity, $cityName';
           } else if (spot.isNotEmpty) {
-            formattedAddress = '$spot, $subCity, Addis Ababa';
+            formattedAddress = '$spot, $subCity, $cityName';
           } else if (road.isNotEmpty) {
-            formattedAddress = '$road, $subCity, Addis Ababa';
+            formattedAddress = '$road, $subCity, $cityName';
           } else {
-            formattedAddress = '$subCity, Addis Ababa';
+            formattedAddress = '$subCity, $cityName';
           }
 
           return {
@@ -468,13 +474,20 @@ class LocationNotifier extends StateNotifier<LocationState> {
     }
 
     // 4. Guaranteed clean regional fallback (never raw numbers)
-    final String fallbackName = closest != null ? (closest['name'] as String) : 'Bole Medhanialem';
-    final String fallbackSubCity = closest != null ? (closest['subCity'] as String) : 'Bole';
+    if (closest != null && minDistance <= 25000) {
+      final String fallbackName = closest['name'] as String;
+      final String fallbackSubCity = closest['subCity'] as String;
+      return {
+        'spotName': fallbackName,
+        'subCity': fallbackSubCity,
+        'address': 'Near $fallbackName, $fallbackSubCity, Addis Ababa',
+      };
+    }
 
     return {
-      'spotName': fallbackName,
-      'subCity': fallbackSubCity,
-      'address': 'Near $fallbackName, $fallbackSubCity, Addis Ababa',
+      'spotName': 'Current Location',
+      'subCity': 'Addis Ababa',
+      'address': 'Current Location, Addis Ababa',
     };
   }
 
@@ -540,47 +553,78 @@ class LocationNotifier extends StateNotifier<LocationState> {
       if (serviceEnabled &&
           (permission == LocationPermission.whileInUse ||
               permission == LocationPermission.always)) {
-        final Position position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
-          timeLimit: const Duration(seconds: 4),
-        );
+        Position? position;
 
-        // Identify the spot name (Bole Medhanialem, Edna Mall, Sarbet, etc.)
-        final spotInfo = await resolveSpotInfo(position.latitude, position.longitude);
+        // Try fast cached position first if not forcing a hard refresh
+        if (!forceRefresh) {
+          try {
+            position = await Geolocator.getLastKnownPosition();
+          } catch (_) {}
+        }
 
-        final detected = LocationDataModel(
-          latitude: position.latitude,
-          longitude: position.longitude,
-          address: spotInfo['address'] ?? 'Bole, Addis Ababa',
-          spotName: spotInfo['spotName'] ?? 'Bole',
-          subCity: spotInfo['subCity'] ?? 'Bole',
-          city: 'Addis Ababa',
-          accuracy: position.accuracy,
-          timestamp: position.timestamp,
-        );
+        if (position == null) {
+          // 1. Try high accuracy GPS (satellite) with 6s timeout
+          try {
+            position = await Geolocator.getCurrentPosition(
+              desiredAccuracy: LocationAccuracy.high,
+              timeLimit: const Duration(seconds: 6),
+            );
+          } catch (_) {
+            // 2. Fall back to balanced/medium (Wi-Fi & cell tower) with 4s timeout
+            try {
+              position = await Geolocator.getCurrentPosition(
+                desiredAccuracy: LocationAccuracy.medium,
+                timeLimit: const Duration(seconds: 4),
+              );
+            } catch (_) {
+              // 3. Fall back to OS cached last known position
+              position = await Geolocator.getLastKnownPosition();
+            }
+          }
+        }
 
-        state = state.copyWith(
-          isDetecting: false,
-          permissionGranted: true,
-          location: detected,
-          error: null,
-        );
+        if (position != null) {
+          // Identify the spot name (Bole Medhanialem, Edna Mall, Sarbet, etc.)
+          final spotInfo = await resolveSpotInfo(position.latitude, position.longitude);
 
-        return detected;
+          final detected = LocationDataModel(
+            latitude: position.latitude,
+            longitude: position.longitude,
+            address: spotInfo['address'] ?? 'Addis Ababa',
+            spotName: spotInfo['spotName'] ?? 'Addis Ababa',
+            subCity: spotInfo['subCity'] ?? 'Bole',
+            city: 'Addis Ababa',
+            accuracy: position.accuracy,
+            timestamp: position.timestamp,
+          );
+
+          state = state.copyWith(
+            isDetecting: false,
+            permissionGranted: true,
+            location: detected,
+            error: null,
+          );
+
+          return detected;
+        }
       }
     } catch (_) {
-      // Hardware GPS unavailable or timed out; proceed to regional spot fallback
+      // Hardware GPS error
     }
 
-    // Regional spot fallback when physical GPS fix is unavailable (e.g. desktop/emulator)
-    final random = Random();
-    final pick = kEthiopianLandmarks[random.nextInt(kEthiopianLandmarks.length)];
+    // Preserve previously known location if already detected
+    if (state.location != null) {
+      state = state.copyWith(isDetecting: false);
+      return state.location;
+    }
+
+    // Fixed default fallback to Bole Medhanialem (Addis Ababa center) - NEVER random!
     final detected = LocationDataModel(
-      latitude: pick['lat'] as double,
-      longitude: pick['lon'] as double,
-      address: pick['address'] as String,
-      spotName: pick['name'] as String,
-      subCity: pick['subCity'] as String,
+      latitude: 9.0004,
+      longitude: 38.7885,
+      address: 'Bole Medhanialem, Bole, Addis Ababa',
+      spotName: 'Bole Medhanialem',
+      subCity: 'Bole',
       city: 'Addis Ababa',
       accuracy: 10.0,
       timestamp: DateTime.now(),

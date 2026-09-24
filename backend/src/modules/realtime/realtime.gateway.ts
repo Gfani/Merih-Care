@@ -906,9 +906,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     const trackingKey = data?.appointmentId || "general_telemetry";
     const lastUpdate = info?.lastLocationAt.get(trackingKey) || 0;
 
-    // Rate-limit: minimum 2 seconds between GPS telemetry updates
-    if (now - lastUpdate < 2000) {
-      return { ok: false, error: "RATE_LIMITED", message: "Location updates throttled to once every 2s" };
+    // Rate-limit: minimum 500ms between GPS telemetry updates
+    if (now - lastUpdate < 500) {
+      return { ok: false, error: "RATE_LIMITED", message: "Location updates throttled to once every 500ms" };
     }
 
     if (info) info.lastLocationAt.set(trackingKey, now);
@@ -972,6 +972,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     const redis = getLocationsRedisClient();
     if (redis) {
       redis.geoadd(redisKey, lng, lat, userId).catch(() => {});
+      if (isProvider && data?.providerId && data.providerId !== userId) {
+        redis.geoadd(redisKey, lng, lat, data.providerId).catch(() => {});
+      }
     }
 
     const ts = new Date().toISOString();
