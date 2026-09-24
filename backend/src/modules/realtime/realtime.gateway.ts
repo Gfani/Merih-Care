@@ -278,6 +278,40 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       this.presence.registerSession(socket.id, userId, role, Array.from(roomsSet));
       this.realtimeService.emitUserPresence(userId, role, "online");
 
+      // Auto-register initial coordinates into Redis & broadcast to admin if known
+      const redisClient = getLocationsRedisClient();
+      if (this.locationRepo && typeof this.locationRepo.findOne === "function") {
+        Promise.resolve(this.locationRepo.findOne({ where: [{ userId }, { id: userId }] })).then(async (loc) => {
+          if (loc && typeof loc.x === "number" && typeof loc.y === "number" && !isNaN(loc.x) && !isNaN(loc.y) && (loc.x !== 0 || loc.y !== 0)) {
+            const redisKey = isProvider ? "providers:locations:online" : "patients:locations:online";
+            if (redisClient) {
+              await redisClient.geoadd(redisKey, loc.x, loc.y, userId).catch(() => {});
+            }
+            if (loc.status === "offline") {
+              loc.status = "available";
+              await this.locationRepo.save(loc).catch(() => {});
+            }
+            const initialPayload = {
+              providerId: isProvider ? userId : undefined,
+              userId,
+              name: loc.name || (isProvider ? `Provider ${userId.slice(-4)}` : `User ${userId.slice(-4)}`),
+              role: isProvider ? "provider" : "patient",
+              lat: loc.y,
+              lng: loc.x,
+              latitude: loc.y,
+              longitude: loc.x,
+              x: loc.x,
+              y: loc.y,
+              status: loc.status || "available",
+              isOnline: true,
+              lastUpdated: loc.locationTimestamp || new Date().toISOString(),
+            };
+            this.realtimeService.emitToRoom("admin_room", "location_update", initialPayload);
+            this.realtimeService.emitToRoom("admin", "location_update", initialPayload);
+          }
+        }).catch(() => {});
+      }
+
       // Emit connection established — client must receive this to show LIVE badge
       socket.emit("connection_established", {
         v: 1,
@@ -308,35 +342,43 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
           (info as any).hasProviderAccount ||
           (info as any).roles?.includes("provider");
 
-        if (isProvider) {
-          const redis = getLocationsRedisClient();
-          if (redis) {
-            redis.zrem("providers:locations:online", info.userId).catch(() => {});
-          }
-          this.locationRepo
-            .findOne({ where: { userId: info.userId } })
-            .then((loc) => {
-              if (loc) {
-                loc.status = "offline";
-                this.locationRepo.save(loc).catch(() => {});
-              }
-            })
-            .catch(() => {});
-
-          const offlinePayload = {
-            providerId: info.userId,
-            userId: info.userId,
-            status: "offline",
-            ts: new Date().toISOString(),
-          };
-
-          if (this.server) {
-            this.server.to("admin_room").emit("provider_offline", offlinePayload);
-            this.server.to("admin").emit("provider_offline", offlinePayload);
-          }
-          this.realtimeService.emitToRoom("admin", "provider_offline", offlinePayload);
-          this.realtimeService.emitToRoom("admin_room", "provider_offline", offlinePayload);
+        const redis = getLocationsRedisClient();
+        const redisKey = isProvider ? "providers:locations:online" : "patients:locations:online";
+        if (redis) {
+          redis.zrem(redisKey, info.userId).catch(() => {});
         }
+        this.locationRepo
+          .findOne({ where: [{ userId: info.userId }, { id: info.userId }] })
+          .then((loc) => {
+            if (loc) {
+              loc.status = "offline";
+              this.locationRepo.save(loc).catch(() => {});
+            }
+          })
+          .catch(() => {});
+
+        const offlinePayload = {
+          providerId: isProvider ? info.userId : undefined,
+          userId: info.userId,
+          role: isProvider ? "provider" : "patient",
+          status: "offline",
+          isOnline: false,
+          ts: new Date().toISOString(),
+        };
+
+        const offlineEvt = isProvider ? "provider_offline" : "patient_offline";
+        if (this.server) {
+          this.server.to("admin_room").emit(offlineEvt, offlinePayload);
+          this.server.to("admin").emit(offlineEvt, offlinePayload);
+          this.server.to("admin_room").emit("user_offline", offlinePayload);
+          this.server.to("admin").emit("user_offline", offlinePayload);
+          this.server.to("admin_room").emit("location_update", offlinePayload);
+          this.server.to("admin").emit("location_update", offlinePayload);
+        }
+        this.realtimeService.emitToRoom("admin", offlineEvt, offlinePayload);
+        this.realtimeService.emitToRoom("admin_room", offlineEvt, offlinePayload);
+        this.realtimeService.emitToRoom("admin", "location_update", offlinePayload);
+        this.realtimeService.emitToRoom("admin_room", "location_update", offlinePayload);
       }
     }
     socketUserMap.delete(socket.id);
@@ -591,6 +633,47 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     // Always emit to admin room
     this.realtimeService.emitToRoom("admin", "new_service_request", eventPayload);
 
+    // Save patient's search coordinates to LocationEntity & Redis
+    if (typeof patientLat === "number" && typeof patientLng === "number" && !isNaN(patientLat) && !isNaN(patientLng) && (patientLat !== 0 || patientLng !== 0)) {
+      this.locationRepo.findOne({ where: [{ userId }, { id: userId }] }).then(async (loc) => {
+        let pLoc = loc;
+        if (!pLoc) {
+          pLoc = new LocationEntity();
+          pLoc.id = `loc-${userId}`;
+          pLoc.userId = userId;
+          pLoc.role = "patient";
+        }
+        pLoc.x = patientLng;
+        pLoc.y = patientLat;
+        pLoc.status = "available";
+        pLoc.locationTimestamp = new Date().toISOString();
+        pLoc.updatedAt = new Date();
+        await this.locationRepo.save(pLoc).catch(() => {});
+
+        const redis = getLocationsRedisClient();
+        if (redis) {
+          redis.geoadd("patients:locations:online", patientLng, patientLat, userId).catch(() => {});
+        }
+
+        const patientBroadcast = {
+          userId,
+          name: pLoc.name || `User ${userId.slice(-4)}`,
+          role: "patient",
+          lat: patientLat,
+          lng: patientLng,
+          latitude: patientLat,
+          longitude: patientLng,
+          x: patientLng,
+          y: patientLat,
+          status: "available",
+          isOnline: true,
+          lastUpdated: new Date().toISOString(),
+        };
+        this.realtimeService.emitToRoom("admin_room", "location_update", patientBroadcast);
+        this.realtimeService.emitToRoom("admin", "location_update", patientBroadcast);
+      }).catch(() => {});
+    }
+
     return { ok: true, nearbyCount: nearbyProviderRooms.size, appointmentId: data?.appointmentId, ts: new Date().toISOString() };
   }
 
@@ -613,7 +696,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       roles.includes("provider") ||
       (socket as any).hasProviderAccount;
 
-    if (!isProvider) return { ok: false, error: "Only providers may send location" };
+    if (data?.appointmentId && !isProvider) {
+      return { ok: false, error: "Only providers may send location updates during appointments" };
+    }
 
     const lat = Number(data?.lat ?? data?.latitude ?? data?.y);
     const lng = Number(data?.lng ?? data?.longitude ?? data?.x);
@@ -634,66 +719,78 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
     if (info) info.lastLocationAt.set(trackingKey, now);
 
+    const targetRole = isProvider ? "provider" : "patient";
+    const redisKey = isProvider ? "providers:locations:online" : "patients:locations:online";
+
     // 1. Persist to LocationEntity
-    let loc = await this.locationRepo.findOne({ where: { userId } });
+    let loc = await this.locationRepo.findOne({ where: [{ userId }, { id: userId }] });
     if (!loc) {
       loc = new LocationEntity();
       loc.id = `loc-${userId}`;
       loc.userId = userId;
-      loc.role = "provider";
+      loc.role = targetRole;
+    } else if (!loc.role || (loc.role === "provider" && !isProvider)) {
+      loc.role = targetRole;
     }
     loc.x = lng;
     loc.y = lat;
-    loc.status = "available";
+    loc.status = data?.status || loc.status || "available";
+    if (loc.status === "offline") loc.status = "available";
     loc.locationTimestamp = new Date().toISOString();
     loc.updatedAt = new Date();
     await this.locationRepo.save(loc);
 
-    let providerName = loc.name;
-    // 2. Persist to ProviderEntity
+    let displayName = loc.name;
+    // 2. Persist to ProviderEntity or look up UserEntity
     if (this.dataSource && this.dataSource.isInitialized) {
       try {
-        const provRepo = this.dataSource.getRepository(ProviderEntity);
-        const prov = await provRepo.findOne({ where: [{ userId }, { id: userId }] });
-        if (prov) {
-          prov.latitude = lat;
-          prov.longitude = lng;
-          prov.available = true;
-          if (prov.name) providerName = prov.name;
-          await provRepo.save(prov);
+        if (isProvider) {
+          const provRepo = this.dataSource.getRepository(ProviderEntity);
+          const prov = await provRepo.findOne({ where: [{ userId }, { id: userId }] });
+          if (prov) {
+            prov.latitude = lat;
+            prov.longitude = lng;
+            prov.available = true;
+            if (prov.name) displayName = prov.name;
+            await provRepo.save(prov);
+          }
+        } else {
+          const userRepo = this.dataSource.getRepository(UserEntity);
+          const user = await userRepo.findOne({ where: { id: userId } });
+          if (user?.name) displayName = user.name;
         }
       } catch (_) {}
     }
 
-    if (!providerName && (socket as any).name) {
-      providerName = (socket as any).name;
+    if (!displayName && (socket as any).name) {
+      displayName = (socket as any).name;
     }
-    if (providerName && !loc.name) {
-      loc.name = providerName;
+    if (displayName && !loc.name) {
+      loc.name = displayName;
       await this.locationRepo.save(loc).catch(() => {});
     }
 
     // In-memory Redis Geospatial update
     const redis = getLocationsRedisClient();
     if (redis) {
-      redis.geoadd("providers:locations:online", lng, lat, userId).catch(() => {});
+      redis.geoadd(redisKey, lng, lat, userId).catch(() => {});
     }
 
     const ts = new Date().toISOString();
 
     // 3. Immediately broadcast the update to the admin dashboard
     const broadcastData = {
-      providerId: userId,
+      providerId: isProvider ? userId : undefined,
       userId,
-      name: providerName || loc.name || `Provider ${userId.slice(-4)}`,
-      role: "provider",
+      name: displayName || loc.name || (isProvider ? `Provider ${userId.slice(-4)}` : `User ${userId.slice(-4)}`),
+      role: targetRole,
       lat,
       lng,
       latitude: lat,
       longitude: lng,
       x: lng,
       y: lat,
-      status: "available",
+      status: loc.status || "available",
       isOnline: true,
       lastUpdated: ts,
       ts,
@@ -711,8 +808,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       this.realtimeService.emitToRoom("admin", "location_update", { data: broadcastData });
       this.realtimeService.emitToRoom("admin_room", "location_update", broadcastData);
       this.realtimeService.emitToRoom("admin", "location_update", broadcastData);
-      this.realtimeService.emitToRoom("admin_room", "provider_location_update", broadcastData);
-      this.realtimeService.emitToRoom("admin", "provider_location_update", broadcastData);
+      if (isProvider) {
+        this.realtimeService.emitToRoom("admin_room", "provider_location_update", broadcastData);
+        this.realtimeService.emitToRoom("admin", "provider_location_update", broadcastData);
+      }
     }
 
     // 4. If tied to an active appointment, relay to appointment room

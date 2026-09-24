@@ -162,4 +162,54 @@ describe("Admin Web - LiveMap Strict Online GPS Tracking Tests", () => {
       expect(screen.queryByText("Dr. Meron Alemu")).not.toBeInTheDocument();
     });
   });
+
+  it("should dynamically drop active patient when receiving patient_offline WebSocket event", async () => {
+    render(<AdminMapView />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Abebe Patient")).toBeInTheDocument();
+    });
+
+    // Simulate patient disconnecting via WebSocket broadcast
+    act(() => {
+      if (socketHandlers["patient_offline"]) {
+        socketHandlers["patient_offline"]({ patientId: "u-pat1" });
+      }
+    });
+
+    // Abebe Patient should immediately be removed from DOM
+    await waitFor(() => {
+      expect(screen.queryByText("Abebe Patient")).not.toBeInTheDocument();
+    });
+  });
+
+  it("should dynamically display new active patient upon location_update event", async () => {
+    render(<AdminMapView />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Abebe Patient")).toBeInTheDocument();
+    });
+
+    // New active patient broadcasts location
+    act(() => {
+      if (socketHandlers["location_update"]) {
+        socketHandlers["location_update"]({
+          data: {
+            userId: "u-pat2",
+            name: "Bethlehem Patient",
+            role: "patient",
+            targetRole: "patient",
+            status: "available",
+            isOnline: true,
+            lat: 9.035,
+            lng: 38.755,
+          },
+        });
+      }
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Bethlehem Patient")).toBeInTheDocument();
+    });
+  });
 });

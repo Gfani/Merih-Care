@@ -55,6 +55,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     _refreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       if (mounted) _loadDashboardData();
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _broadcastPatientLocation();
+    });
+  }
+
+  void _broadcastPatientLocation() {
+    try {
+      final loc = ref.read(locationProvider).location;
+      if (loc != null) {
+        ref.read(realtimeServiceProvider).emitLocationUpdate(
+          lat: loc.latitude,
+          lng: loc.longitude,
+          accuracy: loc.accuracy,
+        );
+      }
+    } catch (_) {}
   }
 
   @override
@@ -137,6 +153,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<LocationState>(locationProvider, (previous, next) {
+      final loc = next.location;
+      if (loc != null &&
+          (previous?.location?.latitude != loc.latitude ||
+           previous?.location?.longitude != loc.longitude)) {
+        try {
+          ref.read(realtimeServiceProvider).emitLocationUpdate(
+            lat: loc.latitude,
+            lng: loc.longitude,
+            accuracy: loc.accuracy,
+          );
+        } catch (_) {}
+      }
+    });
+
     final auth = ref.watch(authProvider);
     final locationState = ref.watch(locationProvider);
     final user = auth.user;

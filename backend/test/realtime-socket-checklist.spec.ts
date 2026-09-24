@@ -136,6 +136,26 @@ describe("Realtime & Socket Checklist Tests", () => {
       expect(secondResult.ok).toBe(false);
       expect(secondResult.error).toBe("RATE_LIMITED");
     });
+
+    it("should process initial location update for active patient / user", async () => {
+      const mockSocket: any = {
+        id: "sock-loc-pat-1",
+        userId: "pat-99",
+        role: "patient",
+        join: jest.fn(),
+        emit: jest.fn(),
+      };
+
+      gateway.handleConnection(mockSocket);
+
+      const result = await gateway.handleLocationUpdate(mockSocket, {
+        lat: 9.035,
+        lng: 38.755,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.ts).toBeDefined();
+    });
   });
 
   describe("Session Reconnect Restoration", () => {

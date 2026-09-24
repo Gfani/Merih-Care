@@ -664,7 +664,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // Best-effort network session revocation
     } finally {
       try {
-        _ref.read(realtimeServiceProvider).disconnect();
+        final rt = _ref.read(realtimeServiceProvider);
+        final role = state.user?['role']?.toString();
+        if (role == 'provider') {
+          rt.emitProviderOffline();
+        } else {
+          rt.emitUserOffline();
+        }
+        rt.disconnect();
       } catch (_) {}
       try {
         await _googleSignIn.signOut();

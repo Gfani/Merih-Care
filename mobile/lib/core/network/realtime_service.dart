@@ -304,15 +304,28 @@ class MobileRealtimeService {
     setStatus('offline');
   }
 
+  /// Explicitly emit offline event before socket disconnect for patient/user
+  void emitUserOffline() {
+    _realtimeSocket?.emit('user_offline', <String, dynamic>{});
+    _realtimeSocket?.emit('patient_offline', <String, dynamic>{});
+    setStatus('offline');
+  }
+
   /// Directly emit location update matching backend requirement
   void emitLocationUpdate({
     required double lat,
     required double lng,
     String? appointmentId,
+    double? accuracy,
+    String status = 'available',
   }) {
     final payload = <String, dynamic>{
       'lat': lat,
       'lng': lng,
+      'latitude': lat,
+      'longitude': lng,
+      'accuracy': accuracy ?? 5.0,
+      'status': status,
     };
     if (appointmentId != null && appointmentId.isNotEmpty) {
       payload['appointmentId'] = appointmentId;

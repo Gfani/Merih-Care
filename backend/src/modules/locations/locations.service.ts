@@ -4,7 +4,9 @@ import { Repository } from "typeorm";
 import { LocationEntity } from "../../database/entities/location.entity";
 import { LocationHistoryEntity } from "../../database/entities/emergency-relation.entity";
 import { ProviderEntity } from "../../database/entities/provider.entity";
+import { UserEntity } from "../../database/entities/user.entity";
 import { RealtimeService } from "../realtime/realtime.service";
+import { PresenceService } from "../realtime/presence.service";
 import * as crypto from "crypto";
 
 let locationsRedisClient: any = null;
@@ -133,8 +135,13 @@ export class LocationsService {
     @InjectRepository(ProviderEntity)
     @Optional()
     private readonly providerRepo?: Repository<ProviderEntity>,
+    @InjectRepository(UserEntity)
+    @Optional()
+    private readonly userRepo?: Repository<UserEntity>,
     @Optional()
     private readonly realtimeService?: RealtimeService,
+    @Optional()
+    private readonly presenceService?: PresenceService,
   ) {}
 
   async getActiveProviderLocations(): Promise<LocationEntity[]> {
@@ -206,6 +213,131 @@ export class LocationsService {
     }
   }
 
+  async getActivePatientLocations(): Promise<LocationEntity[]> {
+    const redis = (this as any).redis || getLocationsRedisClient();
+    const onlinePatients: LocationEntity[] = [];
+    const seenUserIds = new Set<string>();
+
+    if (redis && typeof redis.zrange === "function") {
+      try {
+        const members: string[] = await redis.zrange("patients:locations:online", 0, -1);
+        if (Array.isArray(members) && members.length > 0) {
+          const positions: Array<[string, string] | null> = await redis.geopos("patients:locations:online", ...members);
+          const locationsFromDb = await this.locationRepo.find({ where: { role: "patient" } });
+          const usersFromDb = this.userRepo ? await this.userRepo.find().catch(() => []) : [];
+
+          const locMap = new Map<string, LocationEntity>();
+          for (const l of locationsFromDb) {
+            if (l.userId) locMap.set(l.userId, l);
+            locMap.set(l.id, l);
+          }
+
+          const userMap = new Map<string, any>();
+          for (const u of usersFromDb) {
+            userMap.set(u.id, u);
+          }
+
+          for (let i = 0; i < members.length; i++) {
+            const memberId = members[i];
+            const pos = positions[i];
+            if (!pos) continue;
+            const lng = parseFloat(pos[0]);
+            const lat = parseFloat(pos[1]);
+            if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) continue;
+
+            seenUserIds.add(memberId);
+            const existing = locMap.get(memberId);
+            const user = userMap.get(memberId);
+            const entry = new LocationEntity();
+            entry.id = existing?.id || `loc-pat-${memberId}`;
+            entry.userId = memberId;
+            entry.role = "patient";
+            entry.status = existing?.status && existing.status !== "offline" ? existing.status : "available";
+            entry.accuracy = existing?.accuracy || 10;
+            entry.privacyMode = existing?.privacyMode || false;
+            entry.locationTimestamp = existing?.locationTimestamp || new Date().toISOString();
+            entry.x = entry.privacyMode ? Math.round(lng * 100) / 100 : lng;
+            entry.y = entry.privacyMode ? Math.round(lat * 100) / 100 : lat;
+            (entry as any).lat = entry.y;
+            (entry as any).lng = entry.x;
+            (entry as any).latitude = entry.y;
+            (entry as any).longitude = entry.x;
+            (entry as any).isOnline = true;
+            (entry as any).name = user?.name || existing?.name || `Patient ${memberId.slice(-4)}`;
+            onlinePatients.push(entry);
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Also include any active online patients from presence service who have valid coordinates in DB
+    if (this.presenceService && typeof (this.presenceService as any).getOnlineUserIdsByRole === "function") {
+      try {
+        const activePatientIds = (this.presenceService as any).getOnlineUserIdsByRole("patient");
+        for (const patId of activePatientIds) {
+          if (seenUserIds.has(patId)) continue;
+          const loc = await this.locationRepo.findOne({ where: [{ userId: patId }, { id: patId }] });
+          if (
+            loc &&
+            loc.status !== "offline" &&
+            typeof loc.x === "number" &&
+            typeof loc.y === "number" &&
+            !isNaN(loc.x) &&
+            !isNaN(loc.y) &&
+            !(loc.x === 0 && loc.y === 0)
+          ) {
+            seenUserIds.add(patId);
+            const user = this.userRepo ? await this.userRepo.findOne({ where: { id: patId } }).catch(() => null) : null;
+            const entry = new LocationEntity();
+            entry.id = loc.id;
+            entry.userId = patId;
+            entry.role = "patient";
+            entry.status = loc.status || "available";
+            entry.accuracy = loc.accuracy || 10;
+            entry.privacyMode = loc.privacyMode || false;
+            entry.locationTimestamp = loc.locationTimestamp || new Date().toISOString();
+            entry.x = loc.x;
+            entry.y = loc.y;
+            (entry as any).lat = loc.y;
+            (entry as any).lng = loc.x;
+            (entry as any).latitude = loc.y;
+            (entry as any).longitude = loc.x;
+            (entry as any).isOnline = true;
+            (entry as any).name = user?.name || loc.name || `Patient ${patId.slice(-4)}`;
+            onlinePatients.push(entry);
+
+            // Sync to Redis
+            if (redis && typeof redis.geoadd === "function") {
+              redis.geoadd("patients:locations:online", loc.x, loc.y, patId).catch(() => {});
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    return onlinePatients;
+  }
+
+  async getLiveMapLocations(role?: string): Promise<LocationEntity[]> {
+    if (role === "provider") {
+      return this.getActiveProviderLocations();
+    }
+    if (role === "patient") {
+      return this.getActivePatientLocations();
+    }
+
+    const [providers, patients] = await Promise.all([
+      this.getActiveProviderLocations(),
+      this.getActivePatientLocations(),
+    ]);
+
+    return [...providers, ...patients].sort((a, b) => {
+      const aVal = a.status === "critical" ? 1 : 0;
+      const bVal = b.status === "critical" ? 1 : 0;
+      return bVal - aVal;
+    });
+  }
+
   async getAllLocations(): Promise<LocationEntity[]> {
     const locations = await this.locationRepo.find();
     return locations
@@ -258,6 +390,7 @@ export class LocationsService {
     latitude: number,
     longitude: number,
     accuracy = 0,
+    roleOverride?: string,
   ): Promise<LocationEntity> {
     if (typeof latitude !== "number" || typeof longitude !== "number" || isNaN(latitude) || isNaN(longitude)) {
       throw new BadRequestException("Invalid coordinates: latitude and longitude must be numbers");
@@ -271,13 +404,24 @@ export class LocationsService {
 
     // Try to find by location ID or user ID
     let loc = await this.locationRepo.findOne({ where: [{ id }, { userId: id }] });
+    let resolvedRole = roleOverride || loc?.role;
+    if (!resolvedRole) {
+      if (this.userRepo) {
+        const user = await this.userRepo.findOne({ where: [{ id }, { email: id }] }).catch(() => null);
+        if (user?.role) resolvedRole = user.role;
+      }
+    }
+    if (!resolvedRole) resolvedRole = "provider";
+
     if (!loc) {
       loc = new LocationEntity();
       loc.id = id.startsWith("loc-") ? id : `loc-${crypto.randomUUID()}`;
       loc.userId = id;
-      loc.role = "provider";
+      loc.role = resolvedRole;
       loc.status = "available";
       loc.privacyMode = false;
+    } else if (!loc.role || roleOverride) {
+      loc.role = resolvedRole;
     }
 
     if (loc.status === "offline") {
@@ -303,16 +447,17 @@ export class LocationsService {
       await this.historyRepo.save(history);
     } catch (_) {}
 
-    // In-memory Redis Geospatial update
+    // Redis Geospatial update
     const redis = getLocationsRedisClient();
+    const redisKey = loc.role === "patient" ? "patients:locations:online" : "providers:locations:online";
     if (redis) {
       try {
-        const providerMemberId = loc.userId || id;
+        const memberId = loc.userId || id;
         if (loc.status !== "offline") {
           // Redis GEOADD: key longitude latitude member (longitude MUST precede latitude in Redis)
-          await redis.geoadd("providers:locations:online", longitude, latitude, providerMemberId);
+          await redis.geoadd(redisKey, longitude, latitude, memberId);
         } else {
-          await redis.zrem("providers:locations:online", providerMemberId);
+          await redis.zrem(redisKey, memberId);
         }
       } catch (err) {
         // Safe failover if Redis command encounters an error
@@ -320,9 +465,12 @@ export class LocationsService {
     }
 
     if (this.realtimeService) {
+      const isProv = loc.role === "provider";
       const updatePayload = {
-        providerId: loc.userId || id,
+        providerId: isProv ? (loc.userId || id) : undefined,
         userId: loc.userId || id,
+        name: loc.name,
+        role: loc.role || "provider",
         lat: latitude,
         lng: longitude,
         x: longitude,
@@ -335,6 +483,10 @@ export class LocationsService {
       };
       this.realtimeService.emitToRoom("admin", "location_update", updatePayload);
       this.realtimeService.emitToRoom("admin_room", "location_update", updatePayload);
+      if (isProv) {
+        this.realtimeService.emitToRoom("admin", "provider_location_update", updatePayload);
+        this.realtimeService.emitToRoom("admin_room", "provider_location_update", updatePayload);
+      }
     }
 
     return saved;
@@ -355,7 +507,7 @@ export class LocationsService {
   }
 
   async setStatus(userId: string, status: string): Promise<LocationEntity> {
-    let loc = await this.locationRepo.findOne({ where: { userId } });
+    let loc = await this.locationRepo.findOne({ where: [{ userId }, { id: userId }] });
     if (!loc) {
       loc = new LocationEntity();
       loc.id = `loc-${crypto.randomUUID()}`;
@@ -369,12 +521,13 @@ export class LocationsService {
 
     // Synchronize Redis Geospatial index
     const redis = getLocationsRedisClient();
+    const redisKey = loc.role === "patient" ? "patients:locations:online" : "providers:locations:online";
     if (redis) {
       try {
         if (status === "offline") {
-          await redis.zrem("providers:locations:online", userId);
+          await redis.zrem(redisKey, userId);
         } else if (typeof loc.x === "number" && typeof loc.y === "number" && (loc.x !== 0 || loc.y !== 0)) {
-          await redis.geoadd("providers:locations:online", loc.x, loc.y, userId);
+          await redis.geoadd(redisKey, loc.x, loc.y, userId);
         }
       } catch (err) {
         // Safe failover
@@ -382,19 +535,27 @@ export class LocationsService {
     }
 
     if (this.realtimeService) {
+      const isProv = loc.role === "provider";
       if (status === "offline") {
         const offlinePayload = {
-          providerId: userId,
+          providerId: isProv ? userId : undefined,
           userId,
+          role: loc.role || "provider",
           status: "offline",
+          isOnline: false,
           ts: new Date().toISOString(),
         };
-        this.realtimeService.emitToRoom("admin", "provider_offline", offlinePayload);
-        this.realtimeService.emitToRoom("admin_room", "provider_offline", offlinePayload);
+        const evt = isProv ? "provider_offline" : "patient_offline";
+        this.realtimeService.emitToRoom("admin", evt, offlinePayload);
+        this.realtimeService.emitToRoom("admin_room", evt, offlinePayload);
+        this.realtimeService.emitToRoom("admin", "location_update", offlinePayload);
+        this.realtimeService.emitToRoom("admin_room", "location_update", offlinePayload);
       } else {
         const updatePayload = {
-          providerId: userId,
+          providerId: isProv ? userId : undefined,
           userId,
+          name: loc.name,
+          role: loc.role || "provider",
           lat: loc.y,
           lng: loc.x,
           x: loc.x,
@@ -407,6 +568,10 @@ export class LocationsService {
         };
         this.realtimeService.emitToRoom("admin", "location_update", updatePayload);
         this.realtimeService.emitToRoom("admin_room", "location_update", updatePayload);
+        if (isProv) {
+          this.realtimeService.emitToRoom("admin", "provider_location_update", updatePayload);
+          this.realtimeService.emitToRoom("admin_room", "provider_location_update", updatePayload);
+        }
       }
     }
 

@@ -191,6 +191,30 @@ export class PresenceService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /** Get all currently online user IDs by role */
+  getOnlineUserIdsByRole(role?: string): string[] {
+    const ids = new Set<string>();
+    for (const session of this.inMemorySessions.values()) {
+      if (!role || session.role === role) {
+        ids.add(session.userId);
+      }
+    }
+    return Array.from(ids);
+  }
+
+  /** Get all currently online user IDs with their roles */
+  getOnlineUsers(): Array<{ userId: string; role: string }> {
+    const seen = new Set<string>();
+    const users: Array<{ userId: string; role: string }> = [];
+    for (const session of this.inMemorySessions.values()) {
+      if (!seen.has(session.userId)) {
+        seen.add(session.userId);
+        users.push({ userId: session.userId, role: session.role });
+      }
+    }
+    return users;
+  }
+
   /** Sweep stale sessions that haven't sent a heartbeat within staleThresholdMs */
   sweepStaleSessions(staleThresholdMs = 45000): string[] {
     const now = Date.now();

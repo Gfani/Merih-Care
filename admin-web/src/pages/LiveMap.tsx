@@ -164,9 +164,9 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
 
       // Drop immediately if marked offline
       if (updated.status === "offline" || updated.isOnline === false) {
-        setLocations(prev => prev.filter(l => l.userId !== targetId && l.id !== targetId));
-        setSelectedPin(prev => (prev?.userId === targetId || prev?.id === targetId ? null : prev));
-        setActiveTrips(prev => prev.map(t => (t.providerId === targetId || t.providerUserId === targetId ? { ...t, isOnline: false } : t)));
+        setLocations(prev => prev.filter(l => l.userId !== targetId && l.id !== targetId && l.id !== `loc-${targetId}`));
+        setSelectedPin(prev => (prev?.userId === targetId || prev?.id === targetId || prev?.id === `loc-${targetId}` ? null : prev));
+        setActiveTrips(prev => prev.map(t => (t.providerId === targetId || t.providerUserId === targetId || t.patientId === targetId ? { ...t, isOnline: false } : t)));
         return;
       }
 
@@ -174,12 +174,18 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       const lng = Number(updated.lng ?? updated.longitude ?? updated.x);
       if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) return;
 
+      const role = updated.role || updated.targetRole || (updated.patientId ? "patient" : "provider");
+      const isPatient = role === "patient";
+      const name = updated.name || (isPatient ? `Patient ${targetId.slice(-4)}` : `Provider ${targetId.slice(-4)}`);
+
       setLocations(prev => {
-        const idx = prev.findIndex(l => l.userId === targetId || l.id === targetId);
+        const idx = prev.findIndex(l => l.userId === targetId || l.id === targetId || l.id === `loc-${targetId}`);
         if (idx !== -1) {
           const updatedList = [...prev];
           updatedList[idx] = {
             ...updatedList[idx],
+            role: role || updatedList[idx].role,
+            name: updated.name || updatedList[idx].name,
             x: lng,
             y: lat,
             status: updated.status || updatedList[idx].status || "available",
@@ -188,14 +194,14 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
           };
           return updatedList;
         } else {
-          // New online provider entry
+          // New online provider or active patient entry
           return [
             ...prev,
             {
               id: `loc-${targetId}`,
               userId: targetId,
-              role: updated.role || "provider",
-              name: updated.name || `Provider ${targetId.slice(-4)}`,
+              role: role,
+              name: name,
               status: updated.status || "available",
               isOnline: true,
               x: lng,
@@ -229,14 +235,14 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       });
     };
 
-    const handleProviderOffline = (payload: any) => {
+    const handleOffline = (payload: any) => {
       const data = payload?.data || payload;
-      const targetId = String(data?.providerId || data?.userId || data?.id || "");
+      const targetId = String(data?.providerId || data?.patientId || data?.userId || data?.id || "");
       if (!targetId) return;
 
-      setLocations(prev => prev.filter(l => l.userId !== targetId && l.id !== targetId));
-      setSelectedPin(prev => (prev?.userId === targetId || prev?.id === targetId ? null : prev));
-      setActiveTrips(prev => prev.map(t => (t.providerId === targetId || t.providerUserId === targetId ? { ...t, isOnline: false } : t)));
+      setLocations(prev => prev.filter(l => l.userId !== targetId && l.id !== targetId && l.id !== `loc-${targetId}`));
+      setSelectedPin(prev => (prev?.userId === targetId || prev?.id === targetId || prev?.id === `loc-${targetId}` ? null : prev));
+      setActiveTrips(prev => prev.map(t => (t.providerId === targetId || t.providerUserId === targetId || t.patientId === targetId ? { ...t, isOnline: false } : t)));
     };
 
     const handleDispatchUpdate = (payload: any) => {
@@ -324,7 +330,10 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
 
     on("location_update", handleLocationUpdate);
     on("provider_location_update", handleLocationUpdate);
-    on("provider_offline", handleProviderOffline);
+    on("patient_location_update", handleLocationUpdate);
+    on("provider_offline", handleOffline);
+    on("patient_offline", handleOffline);
+    on("user_offline", handleOffline);
     on("dispatch_update", handleDispatchUpdate);
     on("dispatch_offer_sent", handleDispatchUpdate);
     on("appointment_status_update", handleAppointmentStatusUpdate);
@@ -332,7 +341,10 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
     return () => {
       off("location_update", handleLocationUpdate);
       off("provider_location_update", handleLocationUpdate);
-      off("provider_offline", handleProviderOffline);
+      off("patient_location_update", handleLocationUpdate);
+      off("provider_offline", handleOffline);
+      off("patient_offline", handleOffline);
+      off("user_offline", handleOffline);
       off("dispatch_update", handleDispatchUpdate);
       off("dispatch_offer_sent", handleDispatchUpdate);
       off("appointment_status_update", handleAppointmentStatusUpdate);

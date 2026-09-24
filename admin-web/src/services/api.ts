@@ -847,6 +847,8 @@ export const api = {
         return [
           { id: "loc-1", userId: "p1", name: "Dr. Meron Alemu", role: "provider", latitude: 9.0192, longitude: 38.7578, status: "available" },
           { id: "loc-2", userId: "p2", name: "Hiwot Girma", role: "provider", latitude: 9.0250, longitude: 38.7620, status: "on_the_way" },
+          { id: "loc-3", userId: "pat-1", name: "Abebe Kebede", role: "patient", latitude: 9.0310, longitude: 38.7510, status: "available" },
+          { id: "loc-4", userId: "pat-2", name: "Sara Tesfaye", role: "patient", latitude: 9.0220, longitude: 38.7680, status: "available" },
         ];
       }
       throw error;

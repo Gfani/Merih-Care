@@ -40,8 +40,14 @@ export class LocationsController {
   constructor(private readonly locationsService: LocationsService) {}
 
   @Get()
-  async getLocations() {
-    return this.locationsService.getActiveProviderLocations();
+  async getLocations(@Query("role") role?: string) {
+    if (role === "provider") {
+      return this.locationsService.getActiveProviderLocations();
+    }
+    if (role === "patient") {
+      return this.locationsService.getActivePatientLocations();
+    }
+    return this.locationsService.getLiveMapLocations();
   }
 
   @Put("privacy")

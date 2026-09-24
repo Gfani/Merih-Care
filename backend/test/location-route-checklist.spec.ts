@@ -117,5 +117,50 @@ describe("Map, Location & Route Checklist Tests", () => {
       expect((result[0] as any).isOnline).toBe(true);
     });
   });
+
+  describe("Active Users & Live Map Visibility", () => {
+    it("should return genuine active patients reporting GPS in Redis", async () => {
+      const mockRedis = {
+        zrange: jest.fn().mockImplementation((key) => {
+          if (key === "patients:locations:online") return Promise.resolve(["pat-456"]);
+          return Promise.resolve([]);
+        }),
+        geopos: jest.fn().mockImplementation((key) => {
+          if (key === "patients:locations:online") return Promise.resolve([["38.7610", "9.0280"]]);
+          return Promise.resolve([]);
+        }),
+      };
+      (service as any).redis = mockRedis;
+
+      const result = await service.getActivePatientLocations();
+      expect(result).toHaveLength(1);
+      expect(result[0].userId).toBe("pat-456");
+      expect(result[0].role).toBe("patient");
+      expect(result[0].x).toBe(38.761);
+      expect(result[0].y).toBe(9.028);
+      expect((result[0] as any).isOnline).toBe(true);
+    });
+
+    it("should return both online providers and active users for live map view", async () => {
+      const mockRedis = {
+        zrange: jest.fn().mockImplementation((key) => {
+          if (key === "providers:locations:online") return Promise.resolve(["prov-1"]);
+          if (key === "patients:locations:online") return Promise.resolve(["pat-1"]);
+          return Promise.resolve([]);
+        }),
+        geopos: jest.fn().mockImplementation((key) => {
+          if (key === "providers:locations:online") return Promise.resolve([["38.7500", "9.0200"]]);
+          if (key === "patients:locations:online") return Promise.resolve([["38.7600", "9.0300"]]);
+          return Promise.resolve([]);
+        }),
+      };
+      (service as any).redis = mockRedis;
+
+      const allPins = await service.getLiveMapLocations();
+      expect(allPins).toHaveLength(2);
+      expect(allPins.some((p) => p.role === "provider" && p.userId === "prov-1")).toBe(true);
+      expect(allPins.some((p) => p.role === "patient" && p.userId === "pat-1")).toBe(true);
+    });
+  });
 });
 
