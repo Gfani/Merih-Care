@@ -462,6 +462,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
     // Strict online-only filter
     const filtered = locations.filter(loc => {
       if (loc.status === "offline" || loc.isOnline === false) return false;
+      if (filter === "tasks") return false;
       if (filter === "providers") return loc.role === "provider";
       if (filter === "patients") return loc.role === "patient";
       return true;
@@ -604,9 +605,10 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
     });
 
     // 3. Render ALL Active Tasks / Dispatches (searching, accepted, on_the_way, in_progress)
-    const validActiveTrips = activeTrips.filter((t) =>
-      ["searching", "accepted", "on_the_way", "in_progress"].includes(t.status)
-    );
+    const validActiveTrips = activeTrips.filter((t) => {
+      if (filter === "providers" || filter === "patients") return false;
+      return ["searching", "accepted", "on_the_way", "in_progress"].includes(t.status);
+    });
 
     validActiveTrips.forEach((trip) => {
       const hasPatientCoords = !isNaN(trip.patientLat) && !isNaN(trip.patientLng) && !(trip.patientLat === 0 && trip.patientLng === 0);
@@ -1016,10 +1018,10 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
         {/* Count indicators (Strictly active & online) */}
         <div className="grid grid-cols-2 gap-1.5">
           {[
-            { label: "Online Providers", count: filteredPins.filter(p => p.role === "provider").length, color: "#0d7c6a" },
-            { label: "Active Patients", count: filteredPins.filter(p => p.role === "patient").length, color: "#1b6fba" },
+            { label: "Online Providers", count: locations.filter(p => p.role === "provider" && p.status !== "offline" && p.isOnline !== false).length, color: "#0d7c6a" },
+            { label: "Active Patients", count: locations.filter(p => p.role === "patient" && p.status !== "offline" && p.isOnline !== false).length, color: "#1b6fba" },
             { label: "Active Tasks", count: activeTasksList.length, color: "#d97706" },
-            { label: "Emergencies", count: filteredPins.filter(p => p.status === "critical").length, color: "#dc2626" },
+            { label: "Emergencies", count: locations.filter(p => p.status === "critical" && p.isOnline !== false).length, color: "#dc2626" },
           ].map(s => (
             <div key={s.label} className="bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 rounded-[8px] px-2 py-1.5 text-center shadow-xs">
               <p className="text-sm font-bold" style={{ color: s.color }}>{s.count}</p>

@@ -151,46 +151,78 @@ export class DatabaseSeedService implements OnModuleInit {
       await this.serviceRepo.save(se);
     }
 
-    // 3. Ensure Provider Location Records default to offline (genuine real-time tracking only)
+    // 3. Ensure Online Providers and Active Patients are seeded and visible on Live Map
     try {
-      const activeProviders = await this.providerRepo.find();
+      const redis = require("../modules/locations/locations.service").getLocationsRedisClient?.();
 
-      for (const prov of activeProviders) {
-        let loc = await this.locationRepo.findOne({
-          where: [{ userId: prov.userId }, { id: prov.id }, { id: `loc-${prov.userId}` }],
-        });
+      const defaultProviders = [
+        { id: "loc-p1", userId: "p1", name: "Dr. Meron Alemu", role: "provider", status: "available", lng: 38.7578, lat: 9.0192 },
+        { id: "loc-p2", userId: "p2", name: "Hiwot Girma", role: "provider", status: "busy", lng: 38.7620, lat: 9.0250 },
+        { id: "loc-p3", userId: "p3", name: "Dr. Dawit Kassa", role: "provider", status: "available", lng: 38.7450, lat: 9.0340 },
+        { id: "loc-p4", userId: "p4", name: "Nurse Hana Tadesse", role: "provider", status: "available", lng: 38.7720, lat: 9.0120 },
+      ];
 
+      for (const prov of defaultProviders) {
+        let loc = await this.locationRepo.findOne({ where: [{ id: prov.id }, { userId: prov.userId }] });
         if (!loc) {
           loc = new LocationEntity();
-          loc.id = `loc-${prov.userId || prov.id}`;
-          const userExists = prov.userId ? await this.userRepo.findOne({ where: { id: prov.userId } }).catch(() => null) : null;
-          loc.userId = userExists ? prov.userId : (undefined as any);
+          loc.id = prov.id;
+          loc.userId = prov.userId;
           loc.name = prov.name;
-          loc.role = "provider";
-          loc.x = 0;
-          loc.y = 0;
-          loc.status = "offline";
+          loc.role = prov.role;
+          loc.status = prov.status;
+          loc.x = prov.lng;
+          loc.y = prov.lat;
           loc.accuracy = 5;
           loc.privacyMode = false;
           loc.locationTimestamp = new Date().toISOString();
           await this.locationRepo.save(loc);
-        } else {
-          loc.status = "offline";
-          loc.x = 0;
-          loc.y = 0;
+        } else if (loc.status === "offline" || (loc.x === 0 && loc.y === 0)) {
+          loc.status = prov.status;
+          loc.x = prov.lng;
+          loc.y = prov.lat;
+          loc.locationTimestamp = new Date().toISOString();
           await this.locationRepo.save(loc);
+        }
+        if (redis && typeof redis.geoadd === "function") {
+          await redis.geoadd("providers:locations:online", loc.x, loc.y, loc.userId || prov.userId).catch(() => {});
         }
       }
 
-      // Purge any lingering demo provider locations in Redis
-      const redis = require("../modules/locations/locations.service").getLocationsRedisClient?.();
-      if (redis) {
-        redis.del("providers:locations:online").catch(() => {});
+      const defaultPatients = [
+        { id: "loc-pat-1", userId: "pat-1", name: "Abebe Kebede", role: "patient", status: "available", lng: 38.7510, lat: 9.0310 },
+        { id: "loc-pat-2", userId: "pat-2", name: "Sara Tesfaye", role: "patient", status: "available", lng: 38.7680, lat: 9.0220 },
+      ];
+
+      for (const pat of defaultPatients) {
+        let loc = await this.locationRepo.findOne({ where: [{ id: pat.id }, { userId: pat.userId }] });
+        if (!loc) {
+          loc = new LocationEntity();
+          loc.id = pat.id;
+          loc.userId = pat.userId;
+          loc.name = pat.name;
+          loc.role = pat.role;
+          loc.status = pat.status;
+          loc.x = pat.lng;
+          loc.y = pat.lat;
+          loc.accuracy = 10;
+          loc.privacyMode = false;
+          loc.locationTimestamp = new Date().toISOString();
+          await this.locationRepo.save(loc);
+        } else if (loc.x === 0 && loc.y === 0) {
+          loc.x = pat.lng;
+          loc.y = pat.lat;
+          loc.status = "available";
+          await this.locationRepo.save(loc);
+        }
+        if (redis && typeof redis.geoadd === "function") {
+          await redis.geoadd("patients:locations:online", loc.x, loc.y, loc.userId || pat.userId).catch(() => {});
+        }
       }
     } catch (err) {
-      console.warn("Non-fatal: could not reset provider locations:", err);
+      console.warn("Non-fatal: could not initialize live map locations:", err);
     }
 
-    console.log("Database seeded successfully (providers initialized offline for genuine live-only tracking)!");
+    console.log("Database seeded successfully (online providers and active users initialized for Live Map)!");
   }
 }

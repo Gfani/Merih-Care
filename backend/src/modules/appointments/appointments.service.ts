@@ -868,7 +868,7 @@ export class AppointmentsService {
   }
 
   async getActiveDispatches(): Promise<any[]> {
-    const activeStatuses = ["accepted", "on_the_way", "in_progress"];
+    const activeStatuses = ["searching", "accepted", "on_the_way", "in_progress"];
     const apts = await this.appointmentRepo.find({
       where: { status: In(activeStatuses) },
       relations: ["patient", "provider", "provider.user", "serviceRelation"],
