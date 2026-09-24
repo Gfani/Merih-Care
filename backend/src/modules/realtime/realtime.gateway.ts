@@ -335,51 +335,73 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         }
       }
       this.presence.unregisterSession(socket.id);
-      if (!this.presence.isOnline(info.userId)) {
-        this.realtimeService.emitUserPresence(info.userId, info.role, "offline");
-        const isProvider =
-          info.role === "provider" ||
-          (info as any).hasProviderAccount ||
-          (info as any).roles?.includes("provider");
 
-        const redis = getLocationsRedisClient();
-        const redisKey = isProvider ? "providers:locations:online" : "patients:locations:online";
-        if (redis) {
-          redis.zrem(redisKey, info.userId).catch(() => {});
-        }
-        this.locationRepo
-          .findOne({ where: [{ userId: info.userId }, { id: info.userId }] })
-          .then((loc) => {
-            if (loc) {
-              loc.status = "offline";
-              this.locationRepo.save(loc).catch(() => {});
-            }
-          })
-          .catch(() => {});
+      const isProvider =
+        info.role === "provider" ||
+        (info as any).hasProviderAccount ||
+        (info as any).roles?.includes("provider");
 
-        const offlinePayload = {
-          providerId: isProvider ? info.userId : undefined,
-          userId: info.userId,
-          role: isProvider ? "provider" : "patient",
-          status: "offline",
-          isOnline: false,
-          ts: new Date().toISOString(),
-        };
-
-        const offlineEvt = isProvider ? "provider_offline" : "patient_offline";
-        if (this.server) {
-          this.server.to("admin_room").emit(offlineEvt, offlinePayload);
-          this.server.to("admin").emit(offlineEvt, offlinePayload);
-          this.server.to("admin_room").emit("user_offline", offlinePayload);
-          this.server.to("admin").emit("user_offline", offlinePayload);
-          this.server.to("admin_room").emit("location_update", offlinePayload);
-          this.server.to("admin").emit("location_update", offlinePayload);
-        }
-        this.realtimeService.emitToRoom("admin", offlineEvt, offlinePayload);
-        this.realtimeService.emitToRoom("admin_room", offlineEvt, offlinePayload);
-        this.realtimeService.emitToRoom("admin", "location_update", offlinePayload);
-        this.realtimeService.emitToRoom("admin_room", "location_update", offlinePayload);
+      // Strictly enforce Redis cleanup on disconnect: delete coordinates immediately
+      const redis = getLocationsRedisClient();
+      if (redis) {
+        redis.zrem("providers:locations:online", info.userId).catch(() => {});
+        redis.zrem("patients:locations:online", info.userId).catch(() => {});
       }
+
+      this.locationRepo
+        .findOne({ where: [{ userId: info.userId }, { id: info.userId }] })
+        .then((loc) => {
+          if (loc) {
+            loc.status = "offline";
+            this.locationRepo.save(loc).catch(() => {});
+          }
+        })
+        .catch(() => {});
+
+      if (isProvider && this.dataSource && this.dataSource.isInitialized) {
+        try {
+          const provRepo = this.dataSource.getRepository(ProviderEntity);
+          provRepo
+            .findOne({ where: [{ userId: info.userId }, { id: info.userId }] })
+            .then((prov) => {
+              if (prov) {
+                prov.available = false;
+                provRepo.save(prov).catch(() => {});
+              }
+            })
+            .catch(() => {});
+        } catch (_) {}
+      }
+
+      const offlinePayload = {
+        providerId: info.userId,
+        userId: info.userId,
+        role: isProvider ? "provider" : "patient",
+        status: "offline",
+        isOnline: false,
+        ts: new Date().toISOString(),
+      };
+
+      const offlineEvt = isProvider ? "provider_offline" : "patient_offline";
+      if (this.server) {
+        this.server.to("admin_room").emit("provider_offline", offlinePayload);
+        this.server.to("admin").emit("provider_offline", offlinePayload);
+        this.server.to("admin_room").emit(offlineEvt, offlinePayload);
+        this.server.to("admin").emit(offlineEvt, offlinePayload);
+        this.server.to("admin_room").emit("user_offline", offlinePayload);
+        this.server.to("admin").emit("user_offline", offlinePayload);
+        this.server.to("admin_room").emit("location_update", { data: offlinePayload });
+        this.server.to("admin").emit("location_update", { data: offlinePayload });
+        this.server.to("admin_room").emit("location_update", offlinePayload);
+        this.server.to("admin").emit("location_update", offlinePayload);
+      }
+      this.realtimeService.emitToRoom("admin", "provider_offline", offlinePayload);
+      this.realtimeService.emitToRoom("admin_room", "provider_offline", offlinePayload);
+      this.realtimeService.emitToRoom("admin", offlineEvt, offlinePayload);
+      this.realtimeService.emitToRoom("admin_room", offlineEvt, offlinePayload);
+      this.realtimeService.emitToRoom("admin", "location_update", offlinePayload);
+      this.realtimeService.emitToRoom("admin_room", "location_update", offlinePayload);
+      this.realtimeService.emitUserPresence(info.userId, info.role, "offline");
     }
     socketUserMap.delete(socket.id);
     socketEventRateMap.delete(socket.id);
@@ -713,6 +735,62 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       role === "specialist" ||
       roles.includes("provider") ||
       (socket as any).hasProviderAccount;
+
+    // Explicitly handle when status is set to 'offline' or isOnline is false
+    if (data?.status === "offline" || data?.isOnline === false) {
+      const redis = getLocationsRedisClient();
+      if (redis) {
+        await Promise.all([
+          redis.zrem("providers:locations:online", userId).catch(() => {}),
+          redis.zrem("patients:locations:online", userId).catch(() => {}),
+          ...(data?.providerId ? [redis.zrem("providers:locations:online", data.providerId).catch(() => {})] : []),
+        ]);
+      }
+
+      try {
+        const loc = await this.locationRepo.findOne({ where: [{ userId }, { id: userId }] });
+        if (loc) {
+          loc.status = "offline";
+          await this.locationRepo.save(loc);
+        }
+        if (isProvider && this.dataSource?.isInitialized) {
+          const provRepo = this.dataSource.getRepository(ProviderEntity);
+          const provWhere: any[] = [{ userId }, { id: userId }];
+          if (data?.providerId) provWhere.push({ id: data.providerId });
+          const prov = await provRepo.findOne({ where: provWhere });
+          if (prov) {
+            prov.available = false;
+            await provRepo.save(prov);
+          }
+        }
+      } catch (_) {}
+
+      const offlinePayload = {
+        providerId: data?.providerId || userId,
+        userId,
+        role: isProvider ? "provider" : "patient",
+        status: "offline",
+        isOnline: false,
+        ts: new Date().toISOString(),
+      };
+
+      if (this.server) {
+        this.server.to("admin_room").emit("provider_offline", offlinePayload);
+        this.server.to("admin").emit("provider_offline", offlinePayload);
+        this.server.to("admin_room").emit("location_update", { data: offlinePayload });
+        this.server.to("admin").emit("location_update", { data: offlinePayload });
+        this.server.to("admin_room").emit("location_update", offlinePayload);
+        this.server.to("admin").emit("location_update", offlinePayload);
+      }
+      if (this.realtimeService) {
+        this.realtimeService.emitToRoom("admin_room", "provider_offline", offlinePayload);
+        this.realtimeService.emitToRoom("admin", "provider_offline", offlinePayload);
+        this.realtimeService.emitToRoom("admin_room", "location_update", offlinePayload);
+        this.realtimeService.emitToRoom("admin", "location_update", offlinePayload);
+      }
+
+      return { ok: true, status: "offline", userId };
+    }
 
     if (data?.appointmentId && !isProvider) {
       return { ok: false, error: "Only providers may send location updates during appointments" };

@@ -146,13 +146,13 @@ export class LocationsService {
 
   async getActiveProviderLocations(): Promise<LocationEntity[]> {
     const redis = (this as any).redis || getLocationsRedisClient();
-    if (!redis) {
+    if (!redis || typeof redis.zrange !== "function") {
       return [];
     }
 
     try {
       const members: string[] = await redis.zrange("providers:locations:online", 0, -1);
-      // Strictly genuine real-time providers only: if Redis has 0 members, return []
+      // Strictly genuine real-time providers only: if Redis has 0 members, immediately return []
       if (!Array.isArray(members) || members.length === 0) {
         return [];
       }
@@ -160,16 +160,10 @@ export class LocationsService {
       const positions: Array<[string, string] | null> = await redis.geopos("providers:locations:online", ...members);
       const onlineProviders: LocationEntity[] = [];
 
-      const locationsFromDb = await this.locationRepo.find();
+      // Query database ONLY to attach the provider's name/metadata to the Redis coordinates
       const providersFromDb = this.providerRepo
         ? await this.providerRepo.find().catch(() => [])
         : [];
-
-      const locMap = new Map<string, LocationEntity>();
-      for (const l of locationsFromDb) {
-        if (l.userId) locMap.set(l.userId, l);
-        locMap.set(l.id, l);
-      }
 
       const provMap = new Map<string, ProviderEntity>();
       for (const p of providersFromDb) {
@@ -185,25 +179,24 @@ export class LocationsService {
         const lat = parseFloat(pos[1]);
         if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) continue;
 
-        const existing = locMap.get(memberId);
         const prov = provMap.get(memberId);
         const entry = new LocationEntity();
-        entry.id = existing?.id || `loc-${memberId}`;
+        entry.id = `loc-${memberId}`;
         entry.userId = memberId;
         (entry as any).providerId = memberId;
         entry.role = "provider";
-        entry.status = existing?.status && existing.status !== "offline" ? existing.status : "available";
-        entry.accuracy = existing?.accuracy || 5;
-        entry.privacyMode = existing?.privacyMode || false;
-        entry.locationTimestamp = existing?.locationTimestamp || new Date().toISOString();
-        entry.x = entry.privacyMode ? Math.round(lng * 100) / 100 : lng;
-        entry.y = entry.privacyMode ? Math.round(lat * 100) / 100 : lat;
-        (entry as any).lat = entry.y;
-        (entry as any).lng = entry.x;
-        (entry as any).latitude = entry.y;
-        (entry as any).longitude = entry.x;
+        entry.status = "available";
+        entry.accuracy = 5;
+        entry.privacyMode = false;
+        entry.locationTimestamp = new Date().toISOString();
+        entry.x = lng;
+        entry.y = lat;
+        (entry as any).lat = lat;
+        (entry as any).lng = lng;
+        (entry as any).latitude = lat;
+        (entry as any).longitude = lng;
         (entry as any).isOnline = true;
-        (entry as any).name = prov?.name || existing?.name || `Provider ${memberId.slice(-4)}`;
+        (entry as any).name = prov?.name || `Provider ${memberId.slice(-4)}`;
         onlineProviders.push(entry);
       }
 
@@ -215,105 +208,52 @@ export class LocationsService {
 
   async getActivePatientLocations(): Promise<LocationEntity[]> {
     const redis = (this as any).redis || getLocationsRedisClient();
+    if (!redis || typeof redis.zrange !== "function") {
+      return [];
+    }
     const onlinePatients: LocationEntity[] = [];
-    const seenUserIds = new Set<string>();
 
-    if (redis && typeof redis.zrange === "function") {
-      try {
-        const members: string[] = await redis.zrange("patients:locations:online", 0, -1);
-        if (Array.isArray(members) && members.length > 0) {
-          const positions: Array<[string, string] | null> = await redis.geopos("patients:locations:online", ...members);
-          const locationsFromDb = await this.locationRepo.find({ where: { role: "patient" } });
-          const usersFromDb = this.userRepo ? await this.userRepo.find().catch(() => []) : [];
+    try {
+      const members: string[] = await redis.zrange("patients:locations:online", 0, -1);
+      if (!Array.isArray(members) || members.length === 0) {
+        return [];
+      }
 
-          const locMap = new Map<string, LocationEntity>();
-          for (const l of locationsFromDb) {
-            if (l.userId) locMap.set(l.userId, l);
-            locMap.set(l.id, l);
-          }
+      const positions: Array<[string, string] | null> = await redis.geopos("patients:locations:online", ...members);
+      const usersFromDb = this.userRepo ? await this.userRepo.find().catch(() => []) : [];
+      const userMap = new Map<string, any>();
+      for (const u of usersFromDb) {
+        userMap.set(u.id, u);
+      }
 
-          const userMap = new Map<string, any>();
-          for (const u of usersFromDb) {
-            userMap.set(u.id, u);
-          }
+      for (let i = 0; i < members.length; i++) {
+        const memberId = members[i];
+        const pos = positions[i];
+        if (!pos) continue;
+        const lng = parseFloat(pos[0]);
+        const lat = parseFloat(pos[1]);
+        if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) continue;
 
-          for (let i = 0; i < members.length; i++) {
-            const memberId = members[i];
-            const pos = positions[i];
-            if (!pos) continue;
-            const lng = parseFloat(pos[0]);
-            const lat = parseFloat(pos[1]);
-            if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) continue;
-
-            seenUserIds.add(memberId);
-            const existing = locMap.get(memberId);
-            const user = userMap.get(memberId);
-            const entry = new LocationEntity();
-            entry.id = existing?.id || `loc-pat-${memberId}`;
-            entry.userId = memberId;
-            entry.role = "patient";
-            entry.status = existing?.status && existing.status !== "offline" ? existing.status : "available";
-            entry.accuracy = existing?.accuracy || 10;
-            entry.privacyMode = existing?.privacyMode || false;
-            entry.locationTimestamp = existing?.locationTimestamp || new Date().toISOString();
-            entry.x = entry.privacyMode ? Math.round(lng * 100) / 100 : lng;
-            entry.y = entry.privacyMode ? Math.round(lat * 100) / 100 : lat;
-            (entry as any).lat = entry.y;
-            (entry as any).lng = entry.x;
-            (entry as any).latitude = entry.y;
-            (entry as any).longitude = entry.x;
-            (entry as any).isOnline = true;
-            (entry as any).name = user?.name || existing?.name || `Patient ${memberId.slice(-4)}`;
-            onlinePatients.push(entry);
-          }
-        }
-      } catch (_) {}
-    }
-
-    // Also include any active online patients from presence service who have valid coordinates in DB
-    if (this.presenceService && typeof (this.presenceService as any).getOnlineUserIdsByRole === "function") {
-      try {
-        const activePatientIds = (this.presenceService as any).getOnlineUserIdsByRole("patient");
-        for (const patId of activePatientIds) {
-          if (seenUserIds.has(patId)) continue;
-          const loc = await this.locationRepo.findOne({ where: [{ userId: patId }, { id: patId }] });
-          if (
-            loc &&
-            loc.status !== "offline" &&
-            typeof loc.x === "number" &&
-            typeof loc.y === "number" &&
-            !isNaN(loc.x) &&
-            !isNaN(loc.y) &&
-            !(loc.x === 0 && loc.y === 0)
-          ) {
-            seenUserIds.add(patId);
-            const user = this.userRepo ? await this.userRepo.findOne({ where: { id: patId } }).catch(() => null) : null;
-            const entry = new LocationEntity();
-            entry.id = loc.id;
-            entry.userId = patId;
-            entry.role = "patient";
-            entry.status = loc.status || "available";
-            entry.accuracy = loc.accuracy || 10;
-            entry.privacyMode = loc.privacyMode || false;
-            entry.locationTimestamp = loc.locationTimestamp || new Date().toISOString();
-            entry.x = loc.x;
-            entry.y = loc.y;
-            (entry as any).lat = loc.y;
-            (entry as any).lng = loc.x;
-            (entry as any).latitude = loc.y;
-            (entry as any).longitude = loc.x;
-            (entry as any).isOnline = true;
-            (entry as any).name = user?.name || loc.name || `Patient ${patId.slice(-4)}`;
-            onlinePatients.push(entry);
-
-            // Sync to Redis
-            if (redis && typeof redis.geoadd === "function") {
-              redis.geoadd("patients:locations:online", loc.x, loc.y, patId).catch(() => {});
-            }
-          }
-        }
-      } catch (_) {}
-    }
+        const user = userMap.get(memberId);
+        const entry = new LocationEntity();
+        entry.id = `loc-pat-${memberId}`;
+        entry.userId = memberId;
+        entry.role = "patient";
+        entry.status = "available";
+        entry.accuracy = 10;
+        entry.privacyMode = false;
+        entry.locationTimestamp = new Date().toISOString();
+        entry.x = lng;
+        entry.y = lat;
+        (entry as any).lat = lat;
+        (entry as any).lng = lng;
+        (entry as any).latitude = lat;
+        (entry as any).longitude = lng;
+        (entry as any).isOnline = true;
+        (entry as any).name = user?.name || `Patient ${memberId.slice(-4)}`;
+        onlinePatients.push(entry);
+      }
+    } catch (_) {}
 
     return onlinePatients;
   }
@@ -328,46 +268,11 @@ export class LocationsService {
       role === "provider" ? Promise.resolve([]) : this.getActivePatientLocations(),
     ]);
 
-    let providersList = [...providers];
-    if (providersList.length === 0 && this.providerRepo) {
-      try {
-        const dbProviders = await this.providerRepo.find({ where: { available: true } });
-        const locationsFromDb = await this.locationRepo.find({ where: { role: "provider" } });
-        const locMap = new Map<string, LocationEntity>();
-        for (const l of locationsFromDb) {
-          if (l.userId) locMap.set(l.userId, l);
-          locMap.set(l.id, l);
-        }
-        for (const prov of dbProviders) {
-          const l = locMap.get(prov.userId || prov.id);
-          const lat = (l && l.y && !isNaN(l.y) && l.y !== 0) ? l.y : (prov.latitude && !isNaN(prov.latitude) && prov.latitude !== 0 ? prov.latitude : 0);
-          const lng = (l && l.x && !isNaN(l.x) && l.x !== 0) ? l.x : (prov.longitude && !isNaN(prov.longitude) && prov.longitude !== 0 ? prov.longitude : 0);
-          if (lat !== 0 && lng !== 0 && (!l || l.status !== "offline")) {
-            const entry = new LocationEntity();
-            entry.id = l?.id || `loc-${prov.id}`;
-            entry.userId = prov.userId || prov.id;
-            (entry as any).providerId = prov.userId || prov.id;
-            entry.role = "provider";
-            entry.status = l?.status || "available";
-            entry.accuracy = l?.accuracy || 5;
-            entry.privacyMode = l?.privacyMode || false;
-            entry.x = lng;
-            entry.y = lat;
-            (entry as any).lat = lat;
-            (entry as any).lng = lng;
-            (entry as any).isOnline = true;
-            (entry as any).name = prov.name || `Provider ${prov.id.slice(-4)}`;
-            providersList.push(entry);
-          }
-        }
-      } catch (_) {}
-    }
-
     if (role === "provider") {
-      return providersList;
+      return providers;
     }
 
-    return [...providersList, ...patients].sort((a, b) => {
+    return [...providers, ...patients].sort((a, b) => {
       const aVal = a.status === "critical" ? 1 : 0;
       const bVal = b.status === "critical" ? 1 : 0;
       return bVal - aVal;

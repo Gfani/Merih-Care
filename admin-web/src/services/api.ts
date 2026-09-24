@@ -841,8 +841,8 @@ export const api = {
   async getLocations(): Promise<any[]> {
     try {
       const res = await axios.get(`${API_URL}/locations`, { headers: getHeaders() });
-      if (Array.isArray(res.data) && res.data.length > 0) return res.data;
-      if (isDemoMode() || !res.data || res.data.length === 0) {
+      if (Array.isArray(res.data)) return res.data;
+      if (isDemoMode() || !res.data) {
         return [
           { id: "loc-1", userId: "p1", name: "Dr. Meron Alemu", role: "provider", latitude: 9.0192, longitude: 38.7578, status: "available", isOnline: true },
           { id: "loc-2", userId: "p2", name: "Hiwot Girma", role: "provider", latitude: 9.0250, longitude: 38.7620, status: "busy", isOnline: true },
@@ -901,8 +901,8 @@ export const api = {
   async getActiveDispatches(): Promise<any[]> {
     try {
       const res = await axios.get(`${API_URL}/appointments/active-dispatches`, { headers: getHeaders() });
-      if (Array.isArray(res.data) && res.data.length > 0) return res.data;
-      if (isDemoMode() || !res.data || res.data.length === 0) {
+      if (Array.isArray(res.data)) return res.data;
+      if (isDemoMode() || !res.data) {
         return [
           {
             id: "apt-trip-1",
