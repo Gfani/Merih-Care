@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:go_router/go_router.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../core/location/location_tracking_service.dart';
 import '../../core/location/location_service.dart';
 import '../../core/network/network_providers.dart';
@@ -69,13 +70,17 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
         // Start streaming hardware GPS coordinates
         final client = ref.read(apiClientProvider);
         final realtime = ref.read(realtimeServiceProvider);
+        final socket = realtime.socket ?? await service.ensureSocket();
 
-        service.startTracking(
-          providerId: 'provider-active',
-          client: client,
-          realtimeService: realtime,
-          appointmentId: widget.appointmentId,
-        );
+        if (socket != null) {
+          service.startTracking(
+            'provider-active',
+            socket,
+            client: client,
+            realtimeService: realtime,
+            appointmentId: widget.appointmentId,
+          );
+        }
 
         // Listen to live GPS stream
         _locationSub = service.locationStream.listen((position) {
@@ -107,6 +112,57 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
     _eta = max(1, (_distance * 3.0).round());
   }
 
+  Future<void> _moveToMyLocation() async {
+    try {
+      final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location services are disabled. Please enable GPS.')),
+          );
+        }
+        return;
+      }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permissions are denied.')),
+          );
+        }
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      if (!mounted) return;
+      setState(() {
+        _providerLat = position.latitude;
+        _providerLon = position.longitude;
+        _calculateDistanceAndEta();
+      });
+      _mapController.move(LatLng(position.latitude, position.longitude), 15.0);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('📍 Map centered on your current location'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not retrieve current location: $e')),
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
     _locationSub?.cancel();
@@ -125,9 +181,7 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
           IconButton(
             icon: const Icon(Icons.my_location),
             tooltip: 'Re-center GPS',
-            onPressed: () {
-              _mapController.move(LatLng(_providerLat, _providerLon), 15.0);
-            },
+            onPressed: _moveToMyLocation,
           ),
         ],
       ),
@@ -283,25 +337,7 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
                               backgroundColor: Colors.white,
                               foregroundColor: theme.primaryColor,
                               tooltip: 'Auto-detect current GPS location',
-                              onPressed: () async {
-                                final detected = await ref.read(locationProvider.notifier).autoDetectCurrentLocation();
-                                if (!mounted) return;
-                                if (detected != null) {
-                                  setState(() {
-                                    _providerLat = detected.latitude;
-                                    _providerLon = detected.longitude;
-                                    _calculateDistanceAndEta();
-                                  });
-                                  _mapController.move(LatLng(_providerLat, _providerLon), 15.0);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('📍 GPS Centered: ${detected.shortAddress}'),
-                                      backgroundColor: theme.primaryColor,
-                                      duration: const Duration(seconds: 2),
-                                    ),
-                                  );
-                                }
-                              },
+                              onPressed: _moveToMyLocation,
                               child: const Icon(Icons.my_location, size: 20),
                             ),
                           ),

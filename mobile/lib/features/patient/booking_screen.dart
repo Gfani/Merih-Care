@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/network/network_providers.dart';
 import '../../core/location/location_service.dart';
@@ -110,6 +111,57 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
         ];
         _loadingRoute = false;
       });
+    }
+  }
+
+  Future<void> _moveToMyLocation() async {
+    try {
+      final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location services are disabled. Please enable GPS.')),
+          );
+        }
+        return;
+      }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permissions are denied.')),
+          );
+        }
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      if (!mounted) return;
+      setState(() {
+        _patientLat = position.latitude;
+        _patientLon = position.longitude;
+      });
+      _mapController.move(LatLng(position.latitude, position.longitude), 15.0);
+      _fetchOsrmRoute();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('📍 Map centered on your current location'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not retrieve current location: $e')),
+        );
+      }
     }
   }
 
@@ -226,25 +278,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                       ),
                       const SizedBox(width: 4),
                       TextButton.icon(
-                        onPressed: () async {
-                          final detected = await ref.read(locationProvider.notifier).autoDetectCurrentLocation();
-                          if (detected != null && mounted) {
-                            setState(() {
-                              _addressController.text = detected.address;
-                              _patientLat = detected.latitude;
-                              _patientLon = detected.longitude;
-                            });
-                            _mapController.move(LatLng(_patientLat, _patientLon), 14.5);
-                            _fetchOsrmRoute();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('📍 Spot identified: ${detected.displaySpot}'),
-                                backgroundColor: theme.primaryColor,
-                                duration: const Duration(seconds: 2),
-                              ),
-                            );
-                          }
-                        },
+                        onPressed: _moveToMyLocation,
                         icon: const Icon(Icons.my_location, size: 16),
                         label: const Text('Auto-Detect', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                         style: TextButton.styleFrom(
@@ -373,8 +407,20 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                         ),
                       ),
                     Positioned(
+                      bottom: 10,
+                      right: 10,
+                      child: FloatingActionButton.small(
+                        heroTag: 'booking_my_location_btn',
+                        backgroundColor: Colors.white,
+                        foregroundColor: theme.primaryColor,
+                        tooltip: 'My Location',
+                        onPressed: _moveToMyLocation,
+                        child: const Icon(Icons.my_location, size: 20),
+                      ),
+                    ),
+                    Positioned(
                       bottom: 8,
-                      right: 8,
+                      left: 8,
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(

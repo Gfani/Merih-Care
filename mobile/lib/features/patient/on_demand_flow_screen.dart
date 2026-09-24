@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:dio/dio.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/location/location_service.dart';
 import '../../core/network/network_providers.dart';
@@ -178,6 +179,57 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
             {'name': 'Dr. Dawit K.', 'specialty': 'Physiotherapy', 'latitude': _patientLat + 0.003, 'longitude': _patientLon - 0.006, 'role': 'provider'},
           ];
         });
+      }
+    }
+  }
+
+  Future<void> _moveToMyLocation() async {
+    try {
+      final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location services are disabled. Please enable GPS.')),
+          );
+        }
+        return;
+      }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permissions are denied.')),
+          );
+        }
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      if (!mounted) return;
+      setState(() {
+        _patientLat = position.latitude;
+        _patientLon = position.longitude;
+      });
+      _mapController.move(LatLng(position.latitude, position.longitude), 15.0);
+      _fetchNearbyProviders();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('📍 Map centered on your current location'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not retrieve current location: $e')),
+        );
       }
     }
   }
@@ -719,7 +771,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
                   ),
                   child: IconButton(
                     icon: const Icon(Icons.my_location, size: 18, color: Color(0xFF0D7C6A)),
-                    onPressed: () => _mapController.move(LatLng(_patientLat, _patientLon), 15.0),
+                    onPressed: _moveToMyLocation,
                   ),
                 ),
               ],

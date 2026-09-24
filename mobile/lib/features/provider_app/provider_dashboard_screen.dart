@@ -45,11 +45,27 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
     if (_isOnline) {
       final client = ref.read(apiClientProvider);
       final realtime = ref.read(realtimeServiceProvider);
-      ref.read(locationTrackingProvider).startTracking(
-        providerId: _myProviderId ?? '',
-        client: client,
-        realtimeService: realtime,
-      );
+      final tracker = ref.read(locationTrackingProvider);
+      final socket = realtime.socket;
+      if (socket != null) {
+        tracker.startTracking(
+          _myProviderId ?? '',
+          socket,
+          client: client,
+          realtimeService: realtime,
+        );
+      } else {
+        tracker.ensureSocket().then((s) {
+          if (s != null && mounted && _isOnline) {
+            tracker.startTracking(
+              _myProviderId ?? '',
+              s,
+              client: client,
+              realtimeService: realtime,
+            );
+          }
+        });
+      }
     }
 
     // Listen to live realtime dispatches from backend
@@ -175,11 +191,16 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
         // Background GPS Telemetry Streaming when online
         if (_isOnline) {
           final realtime = ref.read(realtimeServiceProvider);
-          ref.read(locationTrackingProvider).startTracking(
-            providerId: _myProviderId ?? '',
-            client: client,
-            realtimeService: realtime,
-          );
+          final tracker = ref.read(locationTrackingProvider);
+          final socket = realtime.socket ?? await tracker.ensureSocket();
+          if (socket != null) {
+            tracker.startTracking(
+              _myProviderId ?? '',
+              socket,
+              client: client,
+              realtimeService: realtime,
+            );
+          }
         }
       } catch (_) {
         final authUser = ref.read(authProvider).user;
@@ -295,11 +316,15 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
                 authUser?['providerId']?.toString() ??
                 authUser?['id']?.toString() ??
                 '');
-        tracker.startTracking(
-          providerId: provId,
-          client: client,
-          realtimeService: realtime,
-        );
+        final socket = realtime.socket ?? await tracker.ensureSocket();
+        if (socket != null) {
+          tracker.startTracking(
+            provId,
+            socket,
+            client: client,
+            realtimeService: realtime,
+          );
+        }
       } else {
         // Toggling offline explicitly emits provider_offline and pauses/cancels getPositionStream
         tracker.stopTracking(realtimeService: realtime);

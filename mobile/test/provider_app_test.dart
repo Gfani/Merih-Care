@@ -4,6 +4,7 @@ import 'package:merihcare/core/connectivity/offline_queue_service.dart';
 import 'package:merihcare/core/location/location_tracking_service.dart';
 import 'package:merihcare/core/location/location_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:socket_io_client/socket_io_client.dart' as io;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -76,8 +77,12 @@ void main() {
     test('Should execute startTracking and goOnline successfully', () async {
       final container = ProviderContainer();
       final service = container.read(locationTrackingProvider);
+      final socket = io.io(
+        'http://localhost:3000',
+        io.OptionBuilder().setTransports(['websocket']).disableAutoConnect().build(),
+      );
 
-      final started = await service.startTracking(providerId: 'prov-test-123');
+      final started = await service.startTracking('prov-test-123', socket);
       expect(started, true);
       expect(service.isTracking, true);
       expect(service.isOnline, true);
@@ -86,7 +91,7 @@ void main() {
       expect(service.isTracking, false);
       expect(service.isOnline, false);
 
-      final wentOnline = await service.goOnline(providerId: 'prov-test-456');
+      final wentOnline = await service.goOnline(providerId: 'prov-test-456', socket: socket);
       expect(wentOnline, true);
       expect(service.isTracking, true);
       expect(service.isOnline, true);
