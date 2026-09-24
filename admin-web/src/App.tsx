@@ -345,8 +345,6 @@ function AppContent() {
     } else if (event === "appointment_status_update") {
       const data = payload?.data || payload;
       if (data?.status === "requested" || data?.status === "searching") {
-        playNotificationChime();
-        toast(`🚨 New Care Request: ${data.service || "Care Service"} by ${data.patientName || "Patient"}`, "info");
         setBadgeCounts((prev) => ({ ...prev, requests: (prev.requests || 0) + 1 }));
       } else if (data?.status === "completed" || data?.status === "cancelled") {
         // Automatically turn off the notification red dot on the service request on the admin page
@@ -357,10 +355,9 @@ function AppContent() {
       loadNotifications();
     } else if (event === "notification") {
       const data = payload?.data || payload;
-      if (data?.type === "new_service_request" || data?.title?.toLowerCase().includes("request")) {
+      if (data?.type !== "new_service_request" && !data?.title?.toLowerCase().includes("request")) {
         playNotificationChime();
-        toast(`🚨 ${data?.title || "New Service Request"}: ${data?.body || ""}`, "info");
-        setBadgeCounts((prev) => ({ ...prev, requests: (prev.requests || 0) + 1 }));
+        toast(`🔔 ${data?.title || "Notification"}: ${data?.body || data?.message || ""}`, "info");
       }
       loadBadgeCounts();
       loadNotifications();
