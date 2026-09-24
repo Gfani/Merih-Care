@@ -80,11 +80,10 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [connectionState, setConnectionState] = useState<UseRealtimeSocketReturn["connectionState"]>("disconnected");
 
-  // Recompute isLive whenever any dependency changes
+  // Recompute isLive whenever socket connection state changes
   useEffect(() => {
-    const age = lastPongRef.current !== null ? Date.now() - lastPongRef.current : Infinity;
-    setIsLive(connected && connectionEstablished && (age < HEARTBEAT_STALE_MS || lastPongRef.current === null));
-  }, [connected, connectionEstablished, heartbeatAge]);
+    setIsLive(connected && connectionEstablished);
+  }, [connected, connectionEstablished]);
 
   useEffect(() => {
     // Attempt connection if token is available or session exists
@@ -100,12 +99,12 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
       auth: effectiveToken ? { token: effectiveToken } : undefined,
       query: effectiveToken ? { token: effectiveToken } : undefined,
       withCredentials: true,
-      // Default to auto-negotiating ["polling", "websocket"] for maximum network resilience
-      transports: fallbackPoll ? ["polling", "websocket"] : ["websocket"],
+      // Prefer WebSocket first for zero-latency direct streaming, with polling fallback
+      transports: fallbackPoll ? ["websocket", "polling"] : ["websocket"],
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
-      reconnectionDelayMax: 30000,
+      reconnectionDelayMax: 10000,
     });
     socketRef.current = socket;
 
@@ -121,7 +120,9 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
       setConnected(true);
       setConnectionEstablished(true);
       setConnectionState("connected");
+      setIsLive(true);
       setLastUpdated(new Date().toISOString());
+      lastPongRef.current = Date.now();
 
       // Register with admin room immediately for realtime platform updates
       socket.emit("join_admin", {});
@@ -137,6 +138,8 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
       setConnectionEstablished(true);
       setLastUpdated(payload?.ts || new Date().toISOString());
       setConnectionState("connected");
+      setIsLive(true);
+      lastPongRef.current = Date.now();
 
       socket.emit("join_admin", {});
 
@@ -162,11 +165,31 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
 
     // ── Heartbeat ─────────────────────────────────────────────────────
     socket.on("ping", () => {
-      socket.emit("pong");
+      socket.emit("pong", {});
       lastPongRef.current = Date.now();
       setHeartbeatAge(0);
       setLastUpdated(new Date().toISOString());
     });
+
+    socket.on("pong", () => {
+      lastPongRef.current = Date.now();
+      setHeartbeatAge(0);
+      setLastUpdated(new Date().toISOString());
+    });
+
+    socket.on("heartbeat_ack", () => {
+      lastPongRef.current = Date.now();
+      setHeartbeatAge(0);
+      setLastUpdated(new Date().toISOString());
+    });
+
+    // Proactive client-side heartbeat to keep server presence and socket connection fresh
+    const heartbeatInterval = setInterval(() => {
+      if (socket.connected) {
+        socket.emit("heartbeat", { ts: Date.now() });
+        socket.emit("pong", {});
+      }
+    }, 15000);
 
     // ── Generic versioned event passthrough ───────────────────────────
     const eventNames = [
@@ -201,15 +224,12 @@ export function useRealtimeSocket(options: UseRealtimeSocketOptions = {}): UseRe
       if (lastPongRef.current !== null) {
         const age = Date.now() - lastPongRef.current;
         setHeartbeatAge(age);
-        // If pong is stale, drop LIVE status
-        if (age >= HEARTBEAT_STALE_MS) {
-          setIsLive(false);
-        }
       }
     }, 5000);
 
     return () => {
       clearInterval(ticker);
+      clearInterval(heartbeatInterval);
       socket.disconnect();
       socketRef.current = null;
       setConnected(false);

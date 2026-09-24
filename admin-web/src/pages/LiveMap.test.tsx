@@ -212,4 +212,56 @@ describe("Admin Web - LiveMap Strict Online GPS Tracking Tests", () => {
       expect(screen.getByText("Bethlehem Patient")).toBeInTheDocument();
     });
   });
+
+  it("should render active tasks and dispatches when loaded from getActiveDispatches", async () => {
+    vi.spyOn(api, "getActiveDispatches").mockResolvedValue([
+      {
+        id: "disp-101",
+        appointmentId: "disp-101",
+        status: "on_the_way",
+        service: "Elderly Physiotherapy",
+        patientName: "Tigist Bekele",
+        patientLat: 9.025,
+        patientLng: 38.748,
+        providerName: "Nurse Aster Kebede",
+        providerLat: 9.019,
+        providerLng: 38.752,
+        etaMinutes: 7,
+        distanceKm: 2.1,
+      },
+    ] as any);
+
+    render(<AdminMapView />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Tigist Bekele")).toBeInTheDocument();
+      expect(screen.getByText("Clinician: Nurse Aster Kebede")).toBeInTheDocument();
+      expect(screen.getByText("ON THE WAY")).toBeInTheDocument();
+    });
+  });
+
+  it("should update active task dynamically via dispatch_update socket event", async () => {
+    render(<AdminMapView />);
+
+    act(() => {
+      if (socketHandlers["dispatch_update"]) {
+        socketHandlers["dispatch_update"]({
+          data: {
+            appointmentId: "disp-202",
+            status: "searching",
+            service: "Emergency Cardiology",
+            patientName: "Kassahun Haile",
+            patientLat: 9.030,
+            patientLng: 38.740,
+          },
+        });
+      }
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Kassahun Haile")).toBeInTheDocument();
+      expect(screen.getByText("SEARCHING")).toBeInTheDocument();
+    });
+  });
 });
+

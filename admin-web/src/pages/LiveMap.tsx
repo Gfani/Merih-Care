@@ -22,7 +22,7 @@ export interface LocationPin {
 export interface ActiveTrip {
   id: string;
   appointmentId: string;
-  status: string; // accepted, on_the_way, in_progress, completed, cancelled
+  status: string; // searching, accepted, on_the_way, in_progress, completed, cancelled
   service?: string;
   patientId: string;
   patientName: string;
@@ -48,13 +48,21 @@ export const STATUS_META: Record<string, { label: string; color: string }> = {
   offline:     { label: "Offline", color: "#94a3b8" },
 };
 
+export const TASK_STATUS_META: Record<string, { label: string; bg: string; text: string; border: string; icon: string }> = {
+  searching:   { label: "Searching", bg: "bg-amber-100 dark:bg-amber-950/80", text: "text-amber-700 dark:text-amber-300", border: "border-amber-300 dark:border-amber-800", icon: "🔍" },
+  accepted:    { label: "Assigned", bg: "bg-indigo-100 dark:bg-indigo-950/80", text: "text-indigo-700 dark:text-indigo-300", border: "border-indigo-300 dark:border-indigo-800", icon: "📋" },
+  on_the_way:  { label: "On The Way", bg: "bg-green-100 dark:bg-green-950/80", text: "text-green-700 dark:text-green-300", border: "border-green-300 dark:border-green-800", icon: "🚗" },
+  in_progress: { label: "In Progress", bg: "bg-emerald-100 dark:bg-emerald-950/80", text: "text-emerald-700 dark:text-emerald-300", border: "border-emerald-300 dark:border-emerald-800", icon: "🩺" },
+};
+
 export function AdminMapView({ compact = false }: { compact?: boolean }) {
   const [locations, setLocations] = useState<LocationPin[]>([]);
   const [activeTrips, setActiveTrips] = useState<ActiveTrip[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<"all" | "providers" | "patients">("all");
+  const [filter, setFilter] = useState<"all" | "providers" | "patients" | "tasks">("all");
   const [selectedPin, setSelectedPin] = useState<LocationPin | null>(null);
+  const [selectedTrip, setSelectedTrip] = useState<ActiveTrip | null>(null);
   const [routeInfo, setRouteInfo] = useState<{ distance: string; eta: number } | null>(null);
   const [activeDispatch, setActiveDispatch] = useState<{
     appointmentId: string;
@@ -77,10 +85,12 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
   const routeLineRef = useRef<L.Polyline | null>(null);
   const prevCountRef = useRef<number>(0);
 
-  // Fetch initial location list strictly from real-time backend
-  const fetchLocations = async () => {
+  // Fetch location list strictly from real-time backend (silent mode prevents UI flickering)
+  const fetchLocations = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent && locations.length === 0) {
+        setLoading(true);
+      }
       setError(null);
       const data = await api.getLocations();
       const raw = Array.isArray(data) ? data : [];
@@ -103,9 +113,13 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
 
       setLocations(normalized);
     } catch (err: any) {
-      setError(err.message || "Failed to fetch map locations.");
+      if (!silent) {
+        setError(err.message || "Failed to fetch map locations.");
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   };
 
@@ -113,8 +127,11 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
     try {
       const data = await api.getActiveDispatches();
       if (Array.isArray(data)) {
-        setActiveTrips(data);
-        const first = data.find((t: any) => t.status === "on_the_way" || t.status === "accepted");
+        const activeOnly = data.filter((t: any) =>
+          ["searching", "accepted", "on_the_way", "in_progress"].includes(t.status)
+        );
+        setActiveTrips(activeOnly);
+        const first = activeOnly.find((t: any) => ["on_the_way", "accepted", "in_progress", "searching"].includes(t.status));
         if (first) {
           setActiveDispatch({
             appointmentId: first.appointmentId,
@@ -132,14 +149,14 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
   };
 
   useEffect(() => {
-    fetchLocations();
+    fetchLocations(false);
     fetchActiveTrips();
   }, []);
 
-  // Re-sync locations and active trips whenever live connection is established
+  // Re-sync locations and active trips quietly whenever live connection is established
   useEffect(() => {
     if (isLive) {
-      fetchLocations();
+      fetchLocations(true);
       fetchActiveTrips();
     }
   }, [isLive]);
@@ -148,7 +165,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
   useEffect(() => {
     if (isLive) return;
     const interval = setInterval(() => {
-      fetchLocations();
+      fetchLocations(true);
       fetchActiveTrips();
     }, 20000);
     return () => clearInterval(interval);
@@ -251,14 +268,15 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       const aptId = String(data.appointmentId || data.id || "");
       if (!aptId) return;
 
-      // When an appointment updates to "completed" or "cancelled", clear the trip immediately
+      // When an appointment updates to "completed", "cancelled", or "rejected", clear the trip immediately
       if (data.status === "completed" || data.status === "cancelled" || data.status === "rejected") {
         setActiveTrips(prev => prev.filter(t => t.appointmentId !== aptId && t.id !== aptId));
         setActiveDispatch(prev => (prev?.appointmentId === aptId ? null : prev));
+        setSelectedTrip(prev => (prev?.appointmentId === aptId || prev?.id === aptId ? null : prev));
         return;
       }
 
-      if (data.status === "searching" || data.status === "accepted" || data.status === "on_the_way" || data.status === "in_progress") {
+      if (["searching", "accepted", "on_the_way", "in_progress"].includes(data.status)) {
         let pts: Array<[number, number]> = [];
         if (Array.isArray(data.routePoints) && data.routePoints.length > 0) {
           pts = data.routePoints.map((pt: any) => [
@@ -320,12 +338,18 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       const data = payload?.data || payload;
       if (!data) return;
       const aptId = String(data.appointmentId || data.id || "");
-      if (data.status === "completed" || data.status === "cancelled") {
+      if (data.status === "completed" || data.status === "cancelled" || data.status === "rejected") {
         setActiveTrips(prev => prev.filter(t => t.appointmentId !== aptId && t.id !== aptId));
         setActiveDispatch(prev => (prev?.appointmentId === aptId ? null : prev));
-      } else if (data.status === "on_the_way" || data.status === "accepted" || data.status === "in_progress") {
+        setSelectedTrip(prev => (prev?.appointmentId === aptId || prev?.id === aptId ? null : prev));
+      } else if (["searching", "accepted", "on_the_way", "in_progress"].includes(data.status)) {
         handleDispatchUpdate(payload);
       }
+    };
+
+    const handleNewServiceRequest = () => {
+      fetchActiveTrips();
+      fetchLocations(true);
     };
 
     on("location_update", handleLocationUpdate);
@@ -337,6 +361,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
     on("dispatch_update", handleDispatchUpdate);
     on("dispatch_offer_sent", handleDispatchUpdate);
     on("appointment_status_update", handleAppointmentStatusUpdate);
+    on("new_service_request", handleNewServiceRequest);
 
     return () => {
       off("location_update", handleLocationUpdate);
@@ -348,6 +373,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       off("dispatch_update", handleDispatchUpdate);
       off("dispatch_offer_sent", handleDispatchUpdate);
       off("appointment_status_update", handleAppointmentStatusUpdate);
+      off("new_service_request", handleNewServiceRequest);
     };
   }, [on, off]);
 
@@ -356,7 +382,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
     const nextPrivacy = !myPrivacy;
     setMyPrivacy(nextPrivacy);
     await api.updateLocationPrivacy(nextPrivacy);
-    fetchLocations();
+    fetchLocations(true);
   };
 
   // Initialize Map
@@ -369,7 +395,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
 
       L.control.zoom({ position: "bottomright" }).addTo(map);
 
-      // Standard 100% free OpenStreetMap tile server
+      // Free OpenStreetMap tile server
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         subdomains: "abc",
@@ -389,7 +415,35 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
     };
   }, []);
 
-  // Update Markers, Clustering, Route Line, and Priority Sorting
+  // Center / Fit View helper
+  const handleFitView = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    const coords: Array<[number, number]> = [];
+    locations.forEach(p => {
+      if (!isNaN(p.y) && !isNaN(p.x) && !(p.y === 0 && p.x === 0)) {
+        coords.push([p.y, p.x]);
+      }
+    });
+    activeTrips.forEach(t => {
+      if (!isNaN(t.patientLat) && !isNaN(t.patientLng) && !(t.patientLat === 0 && t.patientLng === 0)) {
+        coords.push([t.patientLat, t.patientLng]);
+      }
+      if (!isNaN(t.providerLat) && !isNaN(t.providerLng) && !(t.providerLat === 0 && t.providerLng === 0)) {
+        coords.push([t.providerLat, t.providerLng]);
+      }
+    });
+    if (coords.length > 0) {
+      const bounds = L.latLngBounds(coords);
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
+      }
+    } else {
+      map.setView([9.02497, 38.74689], 13);
+    }
+  };
+
+  // Update Markers, Clustering, Route Line, and Active Dispatches
   useEffect(() => {
     const map = mapRef.current;
     const group = markersGroupRef.current;
@@ -397,6 +451,9 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
 
     // Clear previous elements
     group.clearLayers();
+    if (routesGroupRef.current) {
+      routesGroupRef.current.clearLayers();
+    }
     if (routeLineRef.current) {
       routeLineRef.current.remove();
       routeLineRef.current = null;
@@ -410,18 +467,32 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       return true;
     });
 
-    // Fit map bounds automatically to active incoming providers
-    if (filtered.length > 0) {
-      const bounds = L.latLngBounds(filtered.map(p => [p.y, p.x] as [number, number]));
-      if (bounds.isValid()) {
-        if (prevCountRef.current !== filtered.length) {
+    // Fit map bounds automatically strictly on initial load (avoids view resetting on live location pings)
+    if (prevCountRef.current === 0 && (filtered.length > 0 || activeTrips.length > 0)) {
+      const coords: Array<[number, number]> = [];
+      filtered.forEach(p => {
+        if (!isNaN(p.y) && !isNaN(p.x) && !(p.y === 0 && p.x === 0)) {
+          coords.push([p.y, p.x]);
+        }
+      });
+      activeTrips.forEach(t => {
+        if (!isNaN(t.patientLat) && !isNaN(t.patientLng) && !(t.patientLat === 0 && t.patientLng === 0)) {
+          coords.push([t.patientLat, t.patientLng]);
+        }
+        if (!isNaN(t.providerLat) && !isNaN(t.providerLng) && !(t.providerLat === 0 && t.providerLng === 0)) {
+          coords.push([t.providerLat, t.providerLng]);
+        }
+      });
+      if (coords.length > 0) {
+        const bounds = L.latLngBounds(coords);
+        if (bounds.isValid()) {
           map.fitBounds(bounds, { padding: [40, 40], maxZoom: 15 });
-          prevCountRef.current = filtered.length;
+          prevCountRef.current = filtered.length + activeTrips.length;
         }
       }
     }
 
-    // 1. Clustering algorithm for nearby pins
+    // 1. Clustering algorithm for nearby online pins
     const clusters: Array<{ lat: number; lng: number; count: number; pins: LocationPin[] }> = [];
     const CLUSTER_THRESHOLD = 0.008; // ~800m threshold
 
@@ -449,7 +520,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       }
     });
 
-    // 2. Render Markers
+    // 2. Render Markers for Online Providers & Active Patients
     clusters.forEach(c => {
       if (c.count > 1) {
         // Render Cluster Marker
@@ -503,7 +574,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
             justify-content: center;
             box-shadow: 0 4px 6px rgba(0,0,0,0.15);
           ">
-            <span style="color: white; font-size: 10px; font-weight: bold;">
+            <span style="color: white; font-size: 12px; font-weight: bold;">
               ${isEmergency ? "🚨" : isProvider ? "🩺" : "👤"}
             </span>
           </div>
@@ -520,64 +591,98 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
         marker.bindTooltip(`
           <div style="font-family: Inter, sans-serif; font-size: 11px; padding: 2px;">
             <b>${pin.name}</b><br/>
-            Role: ${pin.role}<br/>
+            Role: ${pin.role === "provider" ? "Online Provider" : "Active Patient"}<br/>
             Status: ${STATUS_META[pin.status]?.label || pin.status}
           </div>
         `);
 
         marker.on("click", () => {
+          setSelectedTrip(null);
           setSelectedPin(pin);
         });
       }
     });
 
-    // Clear previous routes
-    if (routesGroupRef.current) {
-      routesGroupRef.current.clearLayers();
-    }
+    // 3. Render ALL Active Tasks / Dispatches (searching, accepted, on_the_way, in_progress)
+    const validActiveTrips = activeTrips.filter((t) =>
+      ["searching", "accepted", "on_the_way", "in_progress"].includes(t.status)
+    );
 
-    // 3. Render Active Navigation Trips ("God's Eye" Fleet View)
-    const onTheWayTrips = activeTrips.filter((t) => t.status === "on_the_way");
-    onTheWayTrips.forEach((trip) => {
-      // a) Plot patient's destination pin in blue
-      if (!isNaN(trip.patientLat) && !isNaN(trip.patientLng) && !(trip.patientLat === 0 && trip.patientLng === 0)) {
+    validActiveTrips.forEach((trip) => {
+      const hasPatientCoords = !isNaN(trip.patientLat) && !isNaN(trip.patientLng) && !(trip.patientLat === 0 && trip.patientLng === 0);
+      const hasProviderCoords = !isNaN(trip.providerLat) && !isNaN(trip.providerLng) && !(trip.providerLat === 0 && trip.providerLng === 0);
+
+      // a) Plot patient's destination / task marker
+      if (hasPatientCoords) {
+        let destBg = "#1b6fba";
+        let destIcon = "📍";
+        let statusBadge = "On The Way";
+
+        if (trip.status === "searching") {
+          destBg = "#d97706";
+          destIcon = "🚨";
+          statusBadge = "Searching Provider";
+        } else if (trip.status === "accepted") {
+          destBg = "#6366f1";
+          destIcon = "📋";
+          statusBadge = "Clinician Assigned";
+        } else if (trip.status === "on_the_way") {
+          destBg = "#1b6fba";
+          destIcon = "📍";
+          statusBadge = "Clinician En Route";
+        } else if (trip.status === "in_progress") {
+          destBg = "#059669";
+          destIcon = "🩺";
+          statusBadge = "Care In Progress";
+        }
+
         const patientIcon = L.divIcon({
           html: `
             <div style="
-              background: #1b6fba;
-              border: 2px solid white;
+              background: ${destBg};
+              border: 2.5px solid white;
               border-radius: 50%;
-              width: 32px;
-              height: 32px;
+              width: 34px;
+              height: 34px;
               display: flex;
               align-items: center;
               justify-content: center;
-              box-shadow: 0 4px 8px rgba(27, 111, 186, 0.45);
-            ">
-              <span style="color: white; font-size: 14px;">📍</span>
+              box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+            " class="${trip.status === "searching" ? "animate-pulse" : ""}">
+              <span style="color: white; font-size: 14px;">${destIcon}</span>
             </div>
           `,
-          className: "custom-patient-dest-icon",
-          iconSize: [32, 32],
-          iconAnchor: [16, 16],
+          className: "custom-task-dest-icon",
+          iconSize: [34, 34],
+          iconAnchor: [17, 17],
         });
+
         const patMarker = L.marker([trip.patientLat, trip.patientLng], { icon: patientIcon }).addTo(group);
         patMarker.bindTooltip(`
-          <div style="font-family: Inter, sans-serif; font-size: 11px; padding: 2px;">
-            <b style="color: #1b6fba;">📍 Patient Destination</b><br/>
-            <b>${trip.patientName}</b><br/>
-            Service: ${trip.service || "Home Care Visit"}<br/>
-            Status: Awaiting Clinician
+          <div style="font-family: Inter, sans-serif; font-size: 11px; padding: 3px;">
+            <b style="color: ${destBg}; font-size: 12px;">${destIcon} ${statusBadge}</b><br/>
+            <b>Patient:</b> ${trip.patientName}<br/>
+            <b>Service:</b> ${trip.service || "Home Care Visit"}<br/>
+            ${trip.providerName ? `<b>Clinician:</b> ${trip.providerName}<br/>` : ""}
+            ${trip.etaMinutes ? `<b>ETA:</b> ~${trip.etaMinutes} min (${trip.distanceKm ?? 1.8} km)` : ""}
           </div>
         `);
+        patMarker.on("click", () => {
+          setSelectedPin(null);
+          setSelectedTrip(trip);
+        });
       }
 
-      // b) Plot provider's vehicle/marker in green
-      if (!isNaN(trip.providerLat) && !isNaN(trip.providerLng) && !(trip.providerLat === 0 && trip.providerLng === 0)) {
+      // b) Plot clinician / vehicle marker when provider is assigned and has coordinates
+      if (hasProviderCoords && trip.status !== "searching") {
+        const isVehicle = trip.status === "on_the_way";
+        const provIconChar = isVehicle ? "🚗" : "🩺";
+        const provBg = isVehicle ? "#16a34a" : trip.status === "in_progress" ? "#059669" : "#0d7c6a";
+
         const vehicleIcon = L.divIcon({
           html: `
             <div class="animate-pulse" style="
-              background: #16a34a;
+              background: ${provBg};
               border: 2.5px solid white;
               border-radius: 50%;
               width: 36px;
@@ -585,46 +690,57 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
               display: flex;
               align-items: center;
               justify-content: center;
-              box-shadow: 0 4px 10px rgba(22, 163, 74, 0.5);
+              box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
             ">
-              <span style="color: white; font-size: 15px;">🚗</span>
+              <span style="color: white; font-size: 15px;">${provIconChar}</span>
             </div>
           `,
-          className: "custom-provider-vehicle-icon",
+          className: "custom-task-provider-icon",
           iconSize: [36, 36],
           iconAnchor: [18, 18],
         });
+
         const provMarker = L.marker([trip.providerLat, trip.providerLng], { icon: vehicleIcon }).addTo(group);
         provMarker.bindTooltip(`
-          <div style="font-family: Inter, sans-serif; font-size: 11px; padding: 2px;">
-            <b style="color: #16a34a;">🩺 Clinician En Route</b><br/>
-            <b>${trip.providerName}</b><br/>
-            Destination: ${trip.patientName}<br/>
-            ETA: ~${trip.etaMinutes ?? 5} min (${trip.distanceKm ?? 1.8} km)
+          <div style="font-family: Inter, sans-serif; font-size: 11px; padding: 3px;">
+            <b style="color: ${provBg}; font-size: 12px;">${provIconChar} Clinician: ${trip.providerName}</b><br/>
+            <b>Status:</b> ${trip.status === "on_the_way" ? "En Route to Patient" : trip.status === "in_progress" ? "On Site Delivering Care" : "Assigned & Preparing"}<br/>
+            <b>Destination:</b> ${trip.patientName}<br/>
+            ${trip.etaMinutes ? `<b>ETA:</b> ~${trip.etaMinutes} min (${trip.distanceKm ?? 1.8} km)` : ""}
           </div>
         `);
+        provMarker.on("click", () => {
+          setSelectedPin(null);
+          setSelectedTrip(trip);
+        });
       }
 
-      // c) Draw polyline connecting provider to patient
-      const pts: Array<[number, number]> =
-        trip.routePoints && trip.routePoints.length >= 2
-          ? trip.routePoints
-          : [
-              [trip.providerLat, trip.providerLng],
-              [trip.patientLat, trip.patientLng],
-            ];
+      // c) Draw polyline connecting provider to patient destination
+      if (hasPatientCoords && hasProviderCoords && trip.status !== "searching") {
+        const pts: Array<[number, number]> =
+          trip.routePoints && trip.routePoints.length >= 2
+            ? trip.routePoints
+            : [
+                [trip.providerLat, trip.providerLng],
+                [trip.patientLat, trip.patientLng],
+              ];
 
-      if (routesGroupRef.current) {
-        L.polyline(pts, {
-          color: "#16a34a",
-          weight: 4.5,
-          opacity: 0.9,
-        }).addTo(routesGroupRef.current);
+        if (routesGroupRef.current) {
+          const lineColor = trip.status === "on_the_way" ? "#16a34a" : trip.status === "in_progress" ? "#059669" : "#6366f1";
+          const dashArray = trip.status === "on_the_way" ? undefined : trip.status === "in_progress" ? "3, 6" : "6, 8";
+
+          L.polyline(pts, {
+            color: lineColor,
+            weight: trip.status === "on_the_way" ? 4.5 : 3.5,
+            dashArray: dashArray,
+            opacity: 0.88,
+          }).addTo(routesGroupRef.current);
+        }
       }
     });
 
     // 4. Render Route Polyline for On-Demand Dispatch OR Emergency (fallback)
-    if (onTheWayTrips.length === 0) {
+    if (validActiveTrips.length === 0) {
       if (activeDispatch && activeDispatch.routePoints && activeDispatch.routePoints.length > 1) {
         const isAccepted = activeDispatch.status === "accepted" || activeDispatch.status === "on_the_way";
         const routeLine = L.polyline(activeDispatch.routePoints, {
@@ -669,6 +785,10 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
     return true;
   });
 
+  const activeTasksList = activeTrips.filter(t =>
+    ["searching", "accepted", "on_the_way", "in_progress"].includes(t.status)
+  );
+
   const mapHeight = compact ? 280 : 640;
 
   return (
@@ -686,58 +806,82 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
           Addis Ababa, Ethiopia
         </div>
 
-        {/* On-The-Way Live Trip Monitoring ("God's Eye" Floating Status Card) */}
-        {activeTrips.filter(t => t.status === "on_the_way").length > 0 ? (
-          <div className="absolute top-12 left-2.5 z-[400] space-y-2 max-w-xs md:max-w-sm pointer-events-auto">
-            {activeTrips.filter(t => t.status === "on_the_way").map((trip) => (
-              <div
-                key={trip.id || trip.appointmentId}
-                className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-[12px] shadow-xl p-3 border border-[#16a34a]/40 ring-1 ring-[#16a34a]/20"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-1.5 text-[10px] font-bold text-[#16a34a] uppercase tracking-wider">
-                    <span className="w-2 h-2 rounded-full bg-[#16a34a] animate-ping" />
-                    Live Fleet Navigation
-                  </span>
-                  <span className="text-[9px] px-2 py-0.5 rounded-full font-bold bg-green-100 dark:bg-green-950/80 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800">
-                    ON THE WAY
-                  </span>
-                </div>
-                <div className="mt-2 flex items-start gap-2.5">
-                  <div className="w-8 h-8 rounded-full bg-green-500/10 dark:bg-green-500/20 text-[#16a34a] flex items-center justify-center text-base shrink-0 border border-green-500/20">
-                    🚗
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold text-[#18232e] dark:text-white leading-snug">
-                      {trip.providerName} en route to {trip.patientName} • ETA {trip.etaMinutes ?? 5} min
-                    </p>
-                    <p className="text-[11px] text-[#5a7a96] dark:text-slate-400 mt-0.5">
-                      Distance: {trip.distanceKm ?? 1.8} km • Service: {trip.service || "Home Care"}
-                    </p>
-                  </div>
-                </div>
+        {/* Active Tasks & Dispatches Floating Monitor */}
+        {!compact && activeTasksList.length > 0 && (
+          <div className="absolute top-12 left-2.5 z-[400] space-y-2 max-w-xs md:max-w-sm pointer-events-auto max-h-[calc(100%-80px)] overflow-y-auto pr-1">
+            <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-[12px] shadow-xl p-3 border border-[#0d7c6a]/30 ring-1 ring-[#0d7c6a]/20">
+              <div className="flex items-center justify-between gap-2 pb-2 border-b border-[#e2e8ee] dark:border-slate-700">
+                <span className="flex items-center gap-1.5 text-[10px] font-bold text-[#0d7c6a] dark:text-cyan-400 uppercase tracking-wider">
+                  <span className="w-2 h-2 rounded-full bg-[#16a34a] animate-ping" />
+                  Active Tasks ({activeTasksList.length})
+                </span>
+                <span className="text-[9px] font-semibold text-[#5a7a96] dark:text-slate-400">
+                  Live Dispatch
+                </span>
               </div>
-            ))}
-          </div>
-        ) : activeDispatch && (
-          <div className="absolute top-10 left-2 z-[400] bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm rounded-[10px] shadow-lg p-2.5 border border-[#0d7c6a]/30 max-w-xs">
-            <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5 text-[10px] font-bold text-[#0d7c6a]">
-                <span className="w-2 h-2 rounded-full bg-[#0d7c6a] animate-pulse" />
-                ON-DEMAND DISPATCH
-              </span>
-              <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-200">
-                {activeDispatch.status === "searching" ? "Matching (30s)" : "Clinician En Route"}
-              </span>
+
+              <div className="mt-2 space-y-2 max-h-56 overflow-y-auto pr-0.5">
+                {activeTasksList.map(trip => {
+                  const meta = TASK_STATUS_META[trip.status] || TASK_STATUS_META.on_the_way;
+                  const isSelected = selectedTrip?.appointmentId === trip.appointmentId || selectedTrip?.id === trip.id;
+                  return (
+                    <div
+                      key={trip.id || trip.appointmentId}
+                      onClick={() => {
+                        setSelectedPin(null);
+                        setSelectedTrip(isSelected ? null : trip);
+                        if (mapRef.current && !isNaN(trip.patientLat) && !isNaN(trip.patientLng)) {
+                          mapRef.current.setView([trip.patientLat, trip.patientLng], 15);
+                        }
+                      }}
+                      className={`p-2 rounded-[8px] cursor-pointer transition-all border ${isSelected ? "bg-teal-50 dark:bg-slate-700 border-[#0d7c6a]" : "bg-slate-50 dark:bg-slate-700/60 hover:bg-teal-50/70 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-600"}`}
+                    >
+                      <div className="flex items-center justify-between gap-1.5">
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold border ${meta.bg} ${meta.text} ${meta.border} flex items-center gap-1`}>
+                          <span>{meta.icon}</span> {meta.label.toUpperCase()}
+                        </span>
+                        {trip.etaMinutes && (
+                          <span className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400">
+                            ~{trip.etaMinutes} min ({trip.distanceKm ?? 1.8} km)
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-1 flex items-start gap-2">
+                        <div className="w-6 h-6 rounded-full bg-teal-500/10 dark:bg-teal-500/20 text-[#0d7c6a] dark:text-cyan-400 flex items-center justify-center text-xs shrink-0 font-bold">
+                          {meta.icon}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-bold text-[#18232e] dark:text-white truncate">
+                            {trip.patientName}
+                          </p>
+                          <p className="text-[11px] text-[#5a7a96] dark:text-slate-300 truncate">
+                            {trip.status === "searching" ? "Matching clinician..." : `Clinician: ${trip.providerName}`}
+                          </p>
+                          {trip.service && (
+                            <p className="text-[10px] text-[#8a9aaa] dark:text-slate-400 truncate">
+                              {trip.service}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <p className="text-xs font-bold text-[#18232e] dark:text-white mt-1 truncate">
-              {activeDispatch.providerName || "Assigned Clinician"}
-            </p>
-            <p className="text-[11px] text-[#5a7a96] dark:text-slate-300">
-              ETA: ~{activeDispatch.etaMinutes ?? 5} min ({activeDispatch.distanceKm ?? 1.2} km)
-            </p>
           </div>
         )}
+
+        {/* Recenter / Fit View Controls */}
+        <div className="absolute bottom-3 left-3 z-[400] flex items-center gap-2">
+          <button
+            onClick={handleFitView}
+            className="bg-white/95 dark:bg-slate-800/90 text-xs font-semibold text-[#0d7c6a] dark:text-cyan-400 px-3 py-1.5 rounded-[8px] shadow-md border border-[#e2e8ee] dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-1.5 backdrop-blur-sm transition-all"
+            title="Fit view to all active providers and tasks"
+          >
+            <span>🎯</span> Fit View
+          </button>
+        </div>
 
         {/* WebSocket Connection State */}
         <div className="absolute top-2 right-2 z-[400] flex items-center gap-1.5 bg-white/95 dark:bg-slate-800/90 rounded-full px-2.5 py-1 shadow-sm border border-[#e2e8ee] dark:border-slate-700">
@@ -760,9 +904,55 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
           </div>
         )}
 
-        {/* Selected info card */}
-        {selectedPin && (
-          <div className="absolute bottom-3 left-3 right-3 z-[400] bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm rounded-[12px] shadow-lg p-3 border border-[#e2e8ee] dark:border-slate-700">
+        {/* Selected Active Trip Details Card */}
+        {selectedTrip && (
+          <div className="absolute bottom-3 left-3 right-3 md:left-24 md:right-16 z-[400] bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm rounded-[12px] shadow-xl p-3 border border-[#0d7c6a]/40 ring-1 ring-[#0d7c6a]/20">
+            <div className="flex items-start gap-2.5">
+              <div
+                className="w-9 h-9 rounded-full flex items-center justify-center text-white text-base font-bold shrink-0 bg-[#0d7c6a]"
+              >
+                {TASK_STATUS_META[selectedTrip.status]?.icon || "🚗"}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p className="text-xs font-bold text-[#18232e] dark:text-white truncate">
+                    {selectedTrip.patientName} • {selectedTrip.service || "Home Care Visit"}
+                  </p>
+                  <span
+                    className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase ${TASK_STATUS_META[selectedTrip.status]?.bg || "bg-teal-100"} ${TASK_STATUS_META[selectedTrip.status]?.text || "text-teal-800"}`}
+                  >
+                    {TASK_STATUS_META[selectedTrip.status]?.label || selectedTrip.status}
+                  </span>
+                </div>
+                <p className="text-[11px] text-[#5a7a96] dark:text-slate-300 mt-0.5">
+                  Clinician: <b className="text-[#18232e] dark:text-white">{selectedTrip.providerName || "Pending Dispatch Matching"}</b>
+                  {selectedTrip.providerPhone ? ` (${selectedTrip.providerPhone})` : ""}
+                </p>
+                <div className="flex items-center gap-3 mt-1 text-[10px] text-[#8a9aaa] dark:text-slate-400 flex-wrap">
+                  {selectedTrip.etaMinutes && (
+                    <span>ETA: <b className="text-emerald-600 dark:text-emerald-400">~{selectedTrip.etaMinutes} min</b></span>
+                  )}
+                  {selectedTrip.distanceKm && (
+                    <span>Distance: <b>{selectedTrip.distanceKm} km</b></span>
+                  )}
+                  {selectedTrip.patientPhone && (
+                    <span>Patient Phone: <b>{selectedTrip.patientPhone}</b></span>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedTrip(null)}
+                className="text-[#8a9aaa] hover:text-[#4a5a6a] shrink-0 text-lg leading-none"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Selected Pin Details Card */}
+        {selectedPin && !selectedTrip && (
+          <div className="absolute bottom-3 left-3 right-3 md:left-24 md:right-16 z-[400] bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm rounded-[12px] shadow-lg p-3 border border-[#e2e8ee] dark:border-slate-700">
             <div className="flex items-center gap-2.5">
               <div
                 className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
@@ -812,13 +1002,13 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
 
         {/* Filter tabs */}
         <div className="flex gap-1 bg-[#f4f7f9] dark:bg-slate-800 rounded-[8px] p-1">
-          {(["all", "providers", "patients"] as const).map(f => (
+          {(["all", "providers", "patients", "tasks"] as const).map(f => (
             <button
               key={f}
               onClick={() => setFilter(f)}
               className={`flex-1 text-[11px] font-semibold py-1 rounded-[6px] capitalize transition-colors ${filter === f ? "bg-white dark:bg-slate-700 text-[#0d7c6a] dark:text-cyan-400 shadow-sm" : "text-[#8a9aaa]"}`}
             >
-              {f === "all" ? "All" : f === "providers" ? "Providers" : "Patients"}
+              {f === "all" ? "All" : f === "providers" ? "Providers" : f === "patients" ? "Patients" : `Tasks (${activeTasksList.length})`}
             </button>
           ))}
         </div>
@@ -828,8 +1018,8 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
           {[
             { label: "Online Providers", count: filteredPins.filter(p => p.role === "provider").length, color: "#0d7c6a" },
             { label: "Active Patients", count: filteredPins.filter(p => p.role === "patient").length, color: "#1b6fba" },
+            { label: "Active Tasks", count: activeTasksList.length, color: "#d97706" },
             { label: "Emergencies", count: filteredPins.filter(p => p.status === "critical").length, color: "#dc2626" },
-            { label: "Total Active", count: filteredPins.length, color: "#0284c7" },
           ].map(s => (
             <div key={s.label} className="bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 rounded-[8px] px-2 py-1.5 text-center shadow-xs">
               <p className="text-sm font-bold" style={{ color: s.color }}>{s.count}</p>
@@ -838,11 +1028,52 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
           ))}
         </div>
 
-        {/* Pin list (Priority sorted - Emergencies first, Online Only) */}
+        {/* Sidebar list items */}
         {loading ? (
           <div className="text-center py-5 text-xs text-[#8a9aaa]">Loading pins...</div>
         ) : error ? (
           <div className="text-center py-5 text-xs text-red-500">{error}</div>
+        ) : filter === "tasks" ? (
+          activeTasksList.length === 0 ? (
+            <div className="text-center py-8 px-2 text-xs text-[#8a9aaa] bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 rounded-[8px]">
+              No active tasks or dispatches currently ongoing.
+            </div>
+          ) : (
+            <div className="space-y-1.5 overflow-y-auto pr-1" style={{ maxHeight: compact ? 130 : "calc(100vh - 430px)", minHeight: compact ? 120 : 320 }}>
+              {activeTasksList.map(trip => {
+                const meta = TASK_STATUS_META[trip.status] || TASK_STATUS_META.on_the_way;
+                const isSelected = selectedTrip?.appointmentId === trip.appointmentId || selectedTrip?.id === trip.id;
+                return (
+                  <button
+                    key={trip.id || trip.appointmentId}
+                    onClick={() => {
+                      setSelectedPin(null);
+                      setSelectedTrip(isSelected ? null : trip);
+                      if (mapRef.current && !isNaN(trip.patientLat) && !isNaN(trip.patientLng)) {
+                        mapRef.current.setView([trip.patientLat, trip.patientLng], 15);
+                      }
+                    }}
+                    className={`w-full flex items-center gap-2 px-2 py-2 rounded-[8px] text-left transition-colors ${isSelected ? "bg-[#e6f5f2] dark:bg-slate-700 border border-[#0d7c6a]/30" : "bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 hover:border-[#0d7c6a]/20"}`}
+                  >
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0 font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                      {meta.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <p className="text-[10px] font-semibold text-[#18232e] dark:text-white truncate">{trip.patientName}</p>
+                        <span className={`text-[8px] px-1 py-0.2 rounded font-bold uppercase ${meta.text}`}>
+                          {meta.label}
+                        </span>
+                      </div>
+                      <p className="text-[9px] text-[#8a9aaa] dark:text-slate-400 truncate">
+                        {trip.status === "searching" ? "Searching clinician" : trip.providerName}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )
         ) : filteredPins.length === 0 ? (
           <div className="text-center py-8 px-2 text-xs text-[#8a9aaa] bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 rounded-[8px]">
             No online providers or active patients currently broadcasting GPS.
@@ -854,7 +1085,10 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
               return (
                 <button
                   key={pin.id}
-                  onClick={() => setSelectedPin(selectedPin?.id === pin.id ? null : pin)}
+                  onClick={() => {
+                    setSelectedTrip(null);
+                    setSelectedPin(selectedPin?.id === pin.id ? null : pin);
+                  }}
                   className={`w-full flex items-center gap-2 px-2 py-2 rounded-[8px] text-left transition-colors ${selectedPin?.id === pin.id ? "bg-[#e6f5f2] dark:bg-slate-700 border border-[#0d7c6a]/20" : "bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 hover:border-[#0d7c6a]/20"}`}
                 >
                   <div
@@ -882,15 +1116,17 @@ export default function LiveMapSection() {
   return (
     <div className="space-y-5 animate-fade-in">
       <div>
-        <h2 className="text-lg font-bold text-[#18232e] dark:text-white" style={{ fontFamily: "DM Sans, sans-serif" }}>Live Provider & Patient Map</h2>
-        <p className="text-sm text-[#8a9aaa] mt-0.5">Real-time tracking across Addis Ababa · Genuine GPS feed</p>
+        <h2 className="text-lg font-bold text-[#18232e] dark:text-white" style={{ fontFamily: "DM Sans, sans-serif" }}>Live Provider, Patient & Task Map</h2>
+        <p className="text-sm text-[#8a9aaa] mt-0.5">Real-time tracking across Addis Ababa · Active providers & dispatches</p>
       </div>
 
       <div className="bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 rounded-[14px] p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-4 text-xs text-[#4a5a6a] dark:text-slate-300">
-            <span className="flex items-center gap-1.5 font-medium"><span className="w-3 h-3 bg-[#0d7c6a] rounded-full inline-block" /> Provider</span>
-            <span className="flex items-center gap-1.5 font-medium"><span className="w-3 h-3 bg-[#1b6fba] rounded-full inline-block" /> Patient</span>
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div className="flex items-center gap-4 text-xs text-[#4a5a6a] dark:text-slate-300 flex-wrap">
+            <span className="flex items-center gap-1.5 font-medium"><span className="w-3 h-3 bg-[#0d7c6a] rounded-full inline-block" /> Online Provider</span>
+            <span className="flex items-center gap-1.5 font-medium"><span className="w-3 h-3 bg-[#1b6fba] rounded-full inline-block" /> Active Patient</span>
+            <span className="flex items-center gap-1.5 font-medium"><span className="w-3 h-3 bg-[#16a34a] rounded-full inline-block" /> Clinician En Route</span>
+            <span className="flex items-center gap-1.5 font-medium"><span className="w-3 h-3 bg-[#d97706] rounded-full inline-block" /> Active Task / Dispatch</span>
             <span className="flex items-center gap-1.5 font-medium"><span className="w-3 h-3 bg-[#dc2626] rounded-full inline-block animate-ping" /> Emergency Alert</span>
           </div>
         </div>

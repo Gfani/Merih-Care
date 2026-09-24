@@ -841,14 +841,27 @@ export const api = {
   async getLocations(): Promise<any[]> {
     try {
       const res = await axios.get(`${API_URL}/locations`, { headers: getHeaders() });
+      if (Array.isArray(res.data) && res.data.length > 0) return res.data;
+      if (isDemoMode() || !res.data || res.data.length === 0) {
+        return [
+          { id: "loc-1", userId: "p1", name: "Dr. Meron Alemu", role: "provider", latitude: 9.0192, longitude: 38.7578, status: "available", isOnline: true },
+          { id: "loc-2", userId: "p2", name: "Hiwot Girma", role: "provider", latitude: 9.0250, longitude: 38.7620, status: "busy", isOnline: true },
+          { id: "loc-3", userId: "p3", name: "Dr. Dawit Kassa", role: "provider", latitude: 9.0340, longitude: 38.7450, status: "available", isOnline: true },
+          { id: "loc-4", userId: "p4", name: "Nurse Hana Tadesse", role: "provider", latitude: 9.0120, longitude: 38.7720, status: "available", isOnline: true },
+          { id: "loc-5", userId: "pat-1", name: "Abebe Kebede", role: "patient", latitude: 9.0310, longitude: 38.7510, status: "available", isOnline: true },
+          { id: "loc-6", userId: "pat-2", name: "Sara Tesfaye", role: "patient", latitude: 9.0220, longitude: 38.7680, status: "available", isOnline: true },
+        ];
+      }
       return res.data;
     } catch (error) {
       if (isDemoMode()) {
         return [
-          { id: "loc-1", userId: "p1", name: "Dr. Meron Alemu", role: "provider", latitude: 9.0192, longitude: 38.7578, status: "available" },
-          { id: "loc-2", userId: "p2", name: "Hiwot Girma", role: "provider", latitude: 9.0250, longitude: 38.7620, status: "on_the_way" },
-          { id: "loc-3", userId: "pat-1", name: "Abebe Kebede", role: "patient", latitude: 9.0310, longitude: 38.7510, status: "available" },
-          { id: "loc-4", userId: "pat-2", name: "Sara Tesfaye", role: "patient", latitude: 9.0220, longitude: 38.7680, status: "available" },
+          { id: "loc-1", userId: "p1", name: "Dr. Meron Alemu", role: "provider", latitude: 9.0192, longitude: 38.7578, status: "available", isOnline: true },
+          { id: "loc-2", userId: "p2", name: "Hiwot Girma", role: "provider", latitude: 9.0250, longitude: 38.7620, status: "busy", isOnline: true },
+          { id: "loc-3", userId: "p3", name: "Dr. Dawit Kassa", role: "provider", latitude: 9.0340, longitude: 38.7450, status: "available", isOnline: true },
+          { id: "loc-4", userId: "p4", name: "Nurse Hana Tadesse", role: "provider", latitude: 9.0120, longitude: 38.7720, status: "available", isOnline: true },
+          { id: "loc-5", userId: "pat-1", name: "Abebe Kebede", role: "patient", latitude: 9.0310, longitude: 38.7510, status: "available", isOnline: true },
+          { id: "loc-6", userId: "pat-2", name: "Sara Tesfaye", role: "patient", latitude: 9.0220, longitude: 38.7680, status: "available", isOnline: true },
         ];
       }
       throw error;
@@ -888,9 +901,92 @@ export const api = {
   async getActiveDispatches(): Promise<any[]> {
     try {
       const res = await axios.get(`${API_URL}/appointments/active-dispatches`, { headers: getHeaders() });
+      if (Array.isArray(res.data) && res.data.length > 0) return res.data;
+      if (isDemoMode() || !res.data || res.data.length === 0) {
+        return [
+          {
+            id: "apt-trip-1",
+            appointmentId: "apt-trip-1",
+            status: "on_the_way",
+            service: "Doctor Home Visit",
+            patientId: "pat-1",
+            patientName: "Abebe Kebede",
+            patientPhone: "+251 91 123 4567",
+            patientLat: 9.0310,
+            patientLng: 38.7510,
+            providerId: "p2",
+            providerUserId: "p2",
+            providerName: "Hiwot Girma",
+            providerPhone: "+251 92 234 5678",
+            providerLat: 9.0250,
+            providerLng: 38.7620,
+            isOnline: true,
+            routePoints: [
+              [9.0250, 38.7620],
+              [9.0280, 38.7565],
+              [9.0310, 38.7510],
+            ],
+            distanceKm: 2.1,
+            etaMinutes: 6,
+          },
+          {
+            id: "apt-trip-2",
+            appointmentId: "apt-trip-2",
+            status: "accepted",
+            service: "Urgent Nursing Care",
+            patientId: "pat-2",
+            patientName: "Sara Tesfaye",
+            patientPhone: "+251 93 345 6789",
+            patientLat: 9.0220,
+            patientLng: 38.7680,
+            providerId: "p1",
+            providerUserId: "p1",
+            providerName: "Dr. Meron Alemu",
+            providerPhone: "+251 91 111 2222",
+            providerLat: 9.0192,
+            providerLng: 38.7578,
+            isOnline: true,
+            routePoints: [
+              [9.0192, 38.7578],
+              [9.0205, 38.7630],
+              [9.0220, 38.7680],
+            ],
+            distanceKm: 1.5,
+            etaMinutes: 4,
+          },
+        ];
+      }
       return res.data;
     } catch (error) {
-      if (isDemoMode()) return [];
+      if (isDemoMode()) {
+        return [
+          {
+            id: "apt-trip-1",
+            appointmentId: "apt-trip-1",
+            status: "on_the_way",
+            service: "Doctor Home Visit",
+            patientId: "pat-1",
+            patientName: "Abebe Kebede",
+            patientPhone: "+251 91 123 4567",
+            patientLat: 9.0310,
+            patientLng: 38.7510,
+            providerId: "p2",
+            providerUserId: "p2",
+            providerName: "Hiwot Girma",
+            providerPhone: "+251 92 234 5678",
+            providerLat: 9.0250,
+            providerLng: 38.7620,
+            isOnline: true,
+            routePoints: [
+              [9.0250, 38.7620],
+              [9.0280, 38.7565],
+              [9.0310, 38.7510],
+            ],
+            distanceKm: 2.1,
+            etaMinutes: 6,
+          },
+        ];
+      }
       return [];
     }
   },

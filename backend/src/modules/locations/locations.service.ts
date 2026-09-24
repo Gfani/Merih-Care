@@ -319,19 +319,55 @@ export class LocationsService {
   }
 
   async getLiveMapLocations(role?: string): Promise<LocationEntity[]> {
-    if (role === "provider") {
-      return this.getActiveProviderLocations();
-    }
     if (role === "patient") {
       return this.getActivePatientLocations();
     }
 
     const [providers, patients] = await Promise.all([
       this.getActiveProviderLocations(),
-      this.getActivePatientLocations(),
+      role === "provider" ? Promise.resolve([]) : this.getActivePatientLocations(),
     ]);
 
-    return [...providers, ...patients].sort((a, b) => {
+    let providersList = [...providers];
+    if (providersList.length === 0 && this.providerRepo) {
+      try {
+        const dbProviders = await this.providerRepo.find({ where: { available: true } });
+        const locationsFromDb = await this.locationRepo.find({ where: { role: "provider" } });
+        const locMap = new Map<string, LocationEntity>();
+        for (const l of locationsFromDb) {
+          if (l.userId) locMap.set(l.userId, l);
+          locMap.set(l.id, l);
+        }
+        for (const prov of dbProviders) {
+          const l = locMap.get(prov.userId || prov.id);
+          const lat = (l && l.y && !isNaN(l.y) && l.y !== 0) ? l.y : (prov.latitude && !isNaN(prov.latitude) && prov.latitude !== 0 ? prov.latitude : 0);
+          const lng = (l && l.x && !isNaN(l.x) && l.x !== 0) ? l.x : (prov.longitude && !isNaN(prov.longitude) && prov.longitude !== 0 ? prov.longitude : 0);
+          if (lat !== 0 && lng !== 0 && (!l || l.status !== "offline")) {
+            const entry = new LocationEntity();
+            entry.id = l?.id || `loc-${prov.id}`;
+            entry.userId = prov.userId || prov.id;
+            (entry as any).providerId = prov.userId || prov.id;
+            entry.role = "provider";
+            entry.status = l?.status || "available";
+            entry.accuracy = l?.accuracy || 5;
+            entry.privacyMode = l?.privacyMode || false;
+            entry.x = lng;
+            entry.y = lat;
+            (entry as any).lat = lat;
+            (entry as any).lng = lng;
+            (entry as any).isOnline = true;
+            (entry as any).name = prov.name || `Provider ${prov.id.slice(-4)}`;
+            providersList.push(entry);
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (role === "provider") {
+      return providersList;
+    }
+
+    return [...providersList, ...patients].sort((a, b) => {
       const aVal = a.status === "critical" ? 1 : 0;
       const bVal = b.status === "critical" ? 1 : 0;
       return bVal - aVal;

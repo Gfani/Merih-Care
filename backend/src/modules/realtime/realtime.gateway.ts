@@ -394,6 +394,24 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     this.presence.heartbeat(socket.id);
   }
 
+  @SubscribeMessage("heartbeat")
+  handleHeartbeat(@ConnectedSocket() socket: Socket) {
+    const info = socketUserMap.get(socket.id);
+    if (info) info.lastPong = Date.now();
+    this.presence.heartbeat(socket.id);
+    socket.emit("heartbeat_ack", { ts: new Date().toISOString() });
+    return { ok: true, ts: new Date().toISOString() };
+  }
+
+  @SubscribeMessage("ping")
+  handlePing(@ConnectedSocket() socket: Socket) {
+    const info = socketUserMap.get(socket.id);
+    if (info) info.lastPong = Date.now();
+    this.presence.heartbeat(socket.id);
+    socket.emit("pong", { ts: new Date().toISOString() });
+    return { ok: true, ts: new Date().toISOString() };
+  }
+
   // ─── Room Join Events ────────────────────────────────────────────
 
   private async canAccessAppointment(userId: string, role: string, appointmentId: string): Promise<boolean> {
