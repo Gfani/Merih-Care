@@ -291,10 +291,17 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
               loc.status = "available";
               await this.locationRepo.save(loc).catch(() => {});
             }
+            let realName = loc.name;
+            if (!realName && this.dataSource && this.dataSource.isInitialized) {
+              try {
+                const u = await this.dataSource.getRepository(UserEntity).findOne({ where: { id: userId } });
+                if (u?.name) realName = u.name;
+              } catch (_) {}
+            }
             const initialPayload = {
               providerId: isProvider ? userId : undefined,
               userId,
-              name: loc.name || (isProvider ? `Provider ${userId.slice(-4)}` : `User ${userId.slice(-4)}`),
+              name: realName || (isProvider ? `Provider ${userId.slice(-4)}` : `User ${userId.slice(-4)}`),
               role: isProvider ? "provider" : "patient",
               lat: loc.y,
               lng: loc.x,
@@ -308,6 +315,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
             };
             this.realtimeService.emitToRoom("admin_room", "location_update", initialPayload);
             this.realtimeService.emitToRoom("admin", "location_update", initialPayload);
+            if (isProvider) {
+              this.realtimeService.emitToRoom("admin_room", "provider_location_update", initialPayload);
+              this.realtimeService.emitToRoom("admin", "provider_location_update", initialPayload);
+            }
           }
         }).catch(() => {});
       }

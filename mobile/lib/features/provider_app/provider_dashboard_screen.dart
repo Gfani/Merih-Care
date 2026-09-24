@@ -41,6 +41,13 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
     ref.read(realtimeServiceProvider).joinProviders();
     _loadDashboardData();
 
+    final authUser = ref.read(authProvider).user;
+    final initialProvId = _myProviderId ??
+        authUser?['provider']?['id']?.toString() ??
+        authUser?['providerId']?.toString() ??
+        authUser?['id']?.toString() ??
+        '';
+
     // Stream live GPS coordinates every 10 seconds when Online
     if (_isOnline) {
       final client = ref.read(apiClientProvider);
@@ -49,7 +56,7 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
       final socket = realtime.socket;
       if (socket != null) {
         tracker.startTracking(
-          _myProviderId ?? '',
+          initialProvId,
           socket,
           client: client,
           realtimeService: realtime,
@@ -58,7 +65,7 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
         tracker.ensureSocket().then((s) {
           if (s != null && mounted && _isOnline) {
             tracker.startTracking(
-              _myProviderId ?? '',
+              initialProvId,
               s,
               client: client,
               realtimeService: realtime,

@@ -347,6 +347,17 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       }
     };
 
+    const handlePresence = (payload: any) => {
+      const data = payload?.data || payload;
+      if (!data) return;
+      if (data.status === "offline") {
+        handleOffline(payload);
+      } else if (data.lat && data.lng) {
+        handleLocationUpdate(payload);
+      } else {
+        fetchLocations(true);
+      }
+    };
     const handleNewServiceRequest = () => {
       fetchActiveTrips();
       fetchLocations(true);
@@ -355,6 +366,10 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
     on("location_update", handleLocationUpdate);
     on("provider_location_update", handleLocationUpdate);
     on("patient_location_update", handleLocationUpdate);
+    on("user_presence", handlePresence);
+    on("user_online", handlePresence);
+    on("provider_online", handlePresence);
+    on("patient_online", handlePresence);
     on("provider_offline", handleOffline);
     on("patient_offline", handleOffline);
     on("user_offline", handleOffline);
@@ -367,6 +382,10 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       off("location_update", handleLocationUpdate);
       off("provider_location_update", handleLocationUpdate);
       off("patient_location_update", handleLocationUpdate);
+      off("user_presence", handlePresence);
+      off("user_online", handlePresence);
+      off("provider_online", handlePresence);
+      off("patient_online", handlePresence);
       off("provider_offline", handleOffline);
       off("patient_offline", handleOffline);
       off("user_offline", handleOffline);

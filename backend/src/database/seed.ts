@@ -151,78 +151,32 @@ export class DatabaseSeedService implements OnModuleInit {
       await this.serviceRepo.save(se);
     }
 
-    // 3. Ensure Online Providers and Active Patients are seeded and visible on Live Map
+    // 3. Clean up any demo locations from database and Redis to enforce genuine online tracking
     try {
       const redis = require("../modules/locations/locations.service").getLocationsRedisClient?.();
-
-      const defaultProviders = [
-        { id: "loc-p1", userId: "p1", name: "Dr. Meron Alemu", role: "provider", status: "available", lng: 38.7578, lat: 9.0192 },
-        { id: "loc-p2", userId: "p2", name: "Hiwot Girma", role: "provider", status: "busy", lng: 38.7620, lat: 9.0250 },
-        { id: "loc-p3", userId: "p3", name: "Dr. Dawit Kassa", role: "provider", status: "available", lng: 38.7450, lat: 9.0340 },
-        { id: "loc-p4", userId: "p4", name: "Nurse Hana Tadesse", role: "provider", status: "available", lng: 38.7720, lat: 9.0120 },
-      ];
-
-      for (const prov of defaultProviders) {
-        let loc = await this.locationRepo.findOne({ where: [{ id: prov.id }, { userId: prov.userId }] });
-        if (!loc) {
-          loc = new LocationEntity();
-          loc.id = prov.id;
-          loc.userId = prov.userId;
-          loc.name = prov.name;
-          loc.role = prov.role;
-          loc.status = prov.status;
-          loc.x = prov.lng;
-          loc.y = prov.lat;
-          loc.accuracy = 5;
-          loc.privacyMode = false;
-          loc.locationTimestamp = new Date().toISOString();
-          await this.locationRepo.save(loc);
-        } else if (loc.status === "offline" || (loc.x === 0 && loc.y === 0)) {
-          loc.status = prov.status;
-          loc.x = prov.lng;
-          loc.y = prov.lat;
-          loc.locationTimestamp = new Date().toISOString();
-          await this.locationRepo.save(loc);
-        }
-        if (redis && typeof redis.geoadd === "function") {
-          await redis.geoadd("providers:locations:online", loc.x, loc.y, loc.userId || prov.userId).catch(() => {});
-        }
+      if (redis && typeof redis.del === "function") {
+        await redis.del("providers:locations:online").catch(() => {});
+        await redis.del("patients:locations:online").catch(() => {});
       }
 
-      const defaultPatients = [
-        { id: "loc-pat-1", userId: "pat-1", name: "Abebe Kebede", role: "patient", status: "available", lng: 38.7510, lat: 9.0310 },
-        { id: "loc-pat-2", userId: "pat-2", name: "Sara Tesfaye", role: "patient", status: "available", lng: 38.7680, lat: 9.0220 },
-      ];
+      // Purge mock demo locations so only real users streaming GPS appear
+      const mockIds = ["loc-p1", "loc-p2", "loc-p3", "loc-p4", "loc-pat-1", "loc-pat-2", "loc-1", "loc-2", "loc-3", "loc-4", "loc-5", "loc-6"];
+      for (const id of mockIds) {
+        await this.locationRepo.delete({ id }).catch(() => {});
+      }
 
-      for (const pat of defaultPatients) {
-        let loc = await this.locationRepo.findOne({ where: [{ id: pat.id }, { userId: pat.userId }] });
-        if (!loc) {
-          loc = new LocationEntity();
-          loc.id = pat.id;
-          loc.userId = pat.userId;
-          loc.name = pat.name;
-          loc.role = pat.role;
-          loc.status = pat.status;
-          loc.x = pat.lng;
-          loc.y = pat.lat;
-          loc.accuracy = 10;
-          loc.privacyMode = false;
-          loc.locationTimestamp = new Date().toISOString();
-          await this.locationRepo.save(loc);
-        } else if (loc.x === 0 && loc.y === 0) {
-          loc.x = pat.lng;
-          loc.y = pat.lat;
-          loc.status = "available";
-          await this.locationRepo.save(loc);
-        }
-        if (redis && typeof redis.geoadd === "function") {
-          await redis.geoadd("patients:locations:online", loc.x, loc.y, loc.userId || pat.userId).catch(() => {});
+      // Mark any remaining locations offline until their devices connect
+      const existing = await this.locationRepo.find().catch(() => []);
+      for (const loc of existing) {
+        if (loc.status !== "offline") {
+          loc.status = "offline";
+          await this.locationRepo.save(loc).catch(() => {});
         }
       }
     } catch (err) {
-      console.warn("Non-fatal: could not initialize live map locations:", err);
+      console.warn("Non-fatal: could not clear mock locations:", err);
     }
 
-    console.log("Database seeded successfully (online providers and active users initialized for Live Map)!");
+    console.log("Database seeded successfully (clean state: real-time GPS streaming only)!");
   }
 }

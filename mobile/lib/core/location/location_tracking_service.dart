@@ -7,6 +7,7 @@ import '../network/api_client.dart';
 import '../network/io_client_base.dart';
 import '../network/realtime_service.dart';
 import '../storage/secure_storage.dart';
+import '../../features/auth/auth_provider.dart';
 
 /// Riverpod provider to observe and manage the provider's online/offline availability toggle
 final providerOnlineStatusProvider = StateProvider<bool>((ref) => true);
@@ -20,6 +21,7 @@ class LocationTrackingService with WidgetsBindingObserver {
   bool _isTracking = false;
   bool _isOnline = true;
   DateTime? _lastEmittedAt;
+  DateTime? get lastEmittedAt => _lastEmittedAt;
   Position? _latestPosition;
 
   String? _providerId;
@@ -121,7 +123,17 @@ class LocationTrackingService with WidgetsBindingObserver {
     MobileRealtimeService? realtimeService,
     String? appointmentId,
   }) async {
-    _providerId = providerId.isNotEmpty ? providerId : _providerId;
+    String effectiveId = providerId;
+    if (effectiveId.isEmpty && _ref != null) {
+      try {
+        final authUser = _ref.read(authProvider).user;
+        effectiveId = authUser?['provider']?['id']?.toString() ??
+            authUser?['providerId']?.toString() ??
+            authUser?['id']?.toString() ??
+            '';
+      } catch (_) {}
+    }
+    _providerId = effectiveId.isNotEmpty ? effectiveId : _providerId;
     _socket = socket;
     if (client != null) _client = client;
     if (realtimeService != null) _realtimeService = realtimeService;
@@ -165,9 +177,10 @@ class LocationTrackingService with WidgetsBindingObserver {
       _lat = position.latitude;
       _lon = position.longitude;
       _latestPosition = position;
+      final idToSend = _providerId ?? effectiveId;
 
       socket.emit('location_update', {
-        'providerId': providerId,
+        'providerId': idToSend,
         'lat': position.latitude,
         'lng': position.longitude,
       });
@@ -179,9 +192,9 @@ class LocationTrackingService with WidgetsBindingObserver {
       );
 
       // Persist fallback to backend database
-      if (providerId.isNotEmpty && _client != null) {
+      if (idToSend.isNotEmpty && _client != null) {
         try {
-          _client!.dio.put('/locations/$providerId/move', data: {
+          _client!.dio.put('/locations/$idToSend/move', data: {
             'latitude': position.latitude,
             'longitude': position.longitude,
             'accuracy': position.accuracy,

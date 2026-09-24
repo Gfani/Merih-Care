@@ -60,15 +60,32 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     });
   }
 
-  void _broadcastPatientLocation() {
+  Future<void> _broadcastPatientLocation() async {
     try {
-      final loc = ref.read(locationProvider).location;
-      if (loc != null) {
-        ref.read(realtimeServiceProvider).emitLocationUpdate(
+      final notifier = ref.read(locationProvider.notifier);
+      final loc = await notifier.autoDetectCurrentLocation();
+      if (loc != null && mounted) {
+        final realtime = ref.read(realtimeServiceProvider);
+        final client = ref.read(apiClientProvider);
+        final authUser = ref.read(authProvider).user;
+        final userId = authUser?['id']?.toString() ?? '';
+
+        realtime.emitLocationUpdate(
           lat: loc.latitude,
           lng: loc.longitude,
           accuracy: loc.accuracy,
+          status: 'available',
         );
+
+        if (userId.isNotEmpty) {
+          try {
+            await client.dio.put('/locations/$userId/move', data: {
+              'latitude': loc.latitude,
+              'longitude': loc.longitude,
+              'accuracy': loc.accuracy,
+            });
+          } catch (_) {}
+        }
       }
     } catch (_) {}
   }
@@ -76,6 +93,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    try {
+      ref.read(realtimeServiceProvider).emitUserOffline();
+    } catch (_) {}
     super.dispose();
   }
 
