@@ -288,8 +288,15 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
       final tracker = ref.read(locationTrackingProvider);
       if (next) {
         realtime.setStatus('available');
+        final authUser = ref.read(authProvider).user;
+        final provId = (_myProviderId != null && _myProviderId!.isNotEmpty)
+            ? _myProviderId!
+            : (authUser?['provider']?['id']?.toString() ??
+                authUser?['providerId']?.toString() ??
+                authUser?['id']?.toString() ??
+                '');
         tracker.startTracking(
-          providerId: _myProviderId ?? '',
+          providerId: provId,
           client: client,
           realtimeService: realtime,
         );

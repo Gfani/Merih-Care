@@ -2,8 +2,11 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../network/api_client.dart';
+import '../network/io_client_base.dart';
 import '../network/realtime_service.dart';
+import '../storage/secure_storage.dart';
 
 /// Riverpod provider to observe and manage the provider's online/offline availability toggle
 final providerOnlineStatusProvider = StateProvider<bool>((ref) => true);
@@ -22,6 +25,7 @@ class LocationTrackingService with WidgetsBindingObserver {
   String? _providerId;
   ApiClient? _client;
   MobileRealtimeService? _realtimeService;
+  io.Socket? _socket;
   String? _appointmentId;
 
   final _locationStreamController = StreamController<Position>.broadcast();
@@ -53,7 +57,7 @@ class LocationTrackingService with WidgetsBindingObserver {
     }
   }
 
-  /// Request permissions: LocationPermission.always or LocationPermission.whileInUse
+  /// Request permissions using Geolocator.requestPermission()
   Future<bool> requestPermissions() async {
     try {
       final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -75,17 +79,50 @@ class LocationTrackingService with WidgetsBindingObserver {
     }
   }
 
+  /// Initialize and connect Socket.IO client: http://<host>/realtime with JWT token
+  Future<io.Socket?> ensureSocket({String? token, String? baseUrl}) async {
+    if (_realtimeService?.socket != null && _realtimeService!.socket!.connected) {
+      return _realtimeService!.socket;
+    }
+    if (_socket != null && _socket!.connected) {
+      return _socket;
+    }
+
+    final authToken = token ??
+        _realtimeService?.token ??
+        await SecureStorage.instance.readToken() ??
+        '';
+    final url = baseUrl ?? defaultRealtimeUrl;
+
+    _socket = io.io(
+      '$url/realtime',
+      io.OptionBuilder()
+          .setTransports(['websocket'])
+          .setAuth({'token': authToken})
+          .enableReconnection()
+          .setReconnectionAttempts(999)
+          .setReconnectionDelay(1000)
+          .setReconnectionDelayMax(10000)
+          .build(),
+    );
+
+    _socket!.connect();
+    return _socket;
+  }
+
   /// Start tracking hardware GPS and streaming telemetry over Socket.io
-  void startTracking({
+  Future<bool> startTracking({
     required String providerId,
-    required ApiClient client,
+    ApiClient? client,
     MobileRealtimeService? realtimeService,
     String? appointmentId,
+    String? token,
+    String? baseUrl,
   }) async {
-    _providerId = providerId;
-    _client = client;
-    _realtimeService = realtimeService;
-    _appointmentId = appointmentId;
+    _providerId = providerId.isNotEmpty ? providerId : _providerId;
+    if (client != null) _client = client;
+    if (realtimeService != null) _realtimeService = realtimeService;
+    if (appointmentId != null) _appointmentId = appointmentId;
     _isOnline = true;
 
     final ref = _ref;
@@ -95,32 +132,50 @@ class LocationTrackingService with WidgetsBindingObserver {
       } catch (_) {}
     }
 
-    if (_isTracking) return;
+    // 1. Request GPS permissions using Geolocator.requestPermission()
+    final hasPermission = await requestPermissions();
+    if (!hasPermission) {
+      return false;
+    }
+
+    // 2. Initialize the Socket.IO client and connect to the backend: http://<host>/realtime
+    final activeSocket = await ensureSocket(token: token, baseUrl: baseUrl);
+    if (_realtimeService != null) {
+      _realtimeService!.ensureConnected();
+      _realtimeService!.setStatus('available');
+    }
+
+    if (_isTracking) return true;
     _isTracking = true;
 
-    // Helper to emit coordinates to Socket.io and persist to backend
+    // Helper to emit coordinates to Socket.io and backend
     void emitLocation(Position position) {
       _lat = position.latitude;
       _lon = position.longitude;
       _latestPosition = position;
 
-      // 1. Emit directly over Socket.io:
-      // socket.emit('location_update', { lat: position.latitude, lng: position.longitude });
-      final socket = _realtimeService?.socket;
-      if (socket != null && socket.connected) {
-        socket.emit('location_update', {
-          'lat': position.latitude,
-          'lng': position.longitude,
-        });
-      } else if (_realtimeService != null) {
-        _realtimeService!.sendLocationUpdate(
-          appointmentId: _appointmentId,
-          latitude: position.latitude,
-          longitude: position.longitude,
-        );
+      final socketToUse = _realtimeService?.socket ?? activeSocket ?? _socket;
+      final payload = <String, dynamic>{
+        if (_providerId != null && _providerId!.isNotEmpty) 'providerId': _providerId,
+        'lat': position.latitude,
+        'lng': position.longitude,
+      };
+      if (_appointmentId != null && _appointmentId!.isNotEmpty) {
+        payload['appointmentId'] = _appointmentId;
       }
 
-      // 2. Persist to backend database as background fallback
+      // Broadcast real coordinates to backend over WebSockets
+      if (socketToUse != null) {
+        socketToUse.emit('location_update', payload);
+      }
+
+      _realtimeService?.sendLocationUpdate(
+        appointmentId: _appointmentId,
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+
+      // Persist fallback to backend database
       if (_providerId != null && _providerId!.isNotEmpty && _client != null) {
         try {
           _client!.dio.put('/locations/$_providerId/move', data: {
@@ -132,7 +187,7 @@ class LocationTrackingService with WidgetsBindingObserver {
       }
     }
 
-    // 1. Immediate initial GPS fix
+    // 3. Immediate initial GPS fix
     try {
       final initialPos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
@@ -184,13 +239,14 @@ class LocationTrackingService with WidgetsBindingObserver {
       }
     }
 
-    // 2. Setup Geolocator position stream with LocationAccuracy.high and ~10m distanceFilter
+    // 4. Start location stream: Geolocator.getPositionStream with distanceFilter: 10
     const locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 10,
+      distanceFilter: 10, // Only emit when the provider moves 10 meters
     );
 
     try {
+      _positionSubscription?.cancel();
       _positionSubscription = Geolocator.getPositionStream(
         locationSettings: locationSettings,
       ).listen((Position position) {
@@ -198,18 +254,17 @@ class LocationTrackingService with WidgetsBindingObserver {
         _latestPosition = position;
         _locationStreamController.add(position);
 
-        // Throttle GPS stream to emit over Socket.io exactly once every 10 seconds
+        // Broadcast real coordinates to backend
         final now = DateTime.now();
         if (_lastEmittedAt == null ||
-            now.difference(_lastEmittedAt!).inSeconds >= 10) {
+            now.difference(_lastEmittedAt!).inSeconds >= 2) {
           _lastEmittedAt = now;
           emitLocation(position);
         }
       }, onError: (_) {});
     } catch (_) {}
 
-    // 3. Companion 10-second periodic timer ensures stationary providers still transmit
-    // live heartbeats exactly every 10 seconds
+    // 5. Companion periodic timer ensures stationary providers continue emitting live GPS telemetry
     _gpsTimer?.cancel();
     _gpsTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
       if (!_isTracking || !_isOnline) return;
@@ -236,11 +291,31 @@ class LocationTrackingService with WidgetsBindingObserver {
         }
       }
     });
+
+    return true;
+  }
+
+  /// Convenience method when tapping "Go Online"
+  Future<bool> goOnline({
+    String? providerId,
+    ApiClient? client,
+    MobileRealtimeService? realtimeService,
+    String? appointmentId,
+    String? token,
+    String? baseUrl,
+  }) async {
+    return startTracking(
+      providerId: providerId ?? _providerId ?? '',
+      client: client ?? _client,
+      realtimeService: realtimeService ?? _realtimeService,
+      appointmentId: appointmentId ?? _appointmentId,
+      token: token,
+      baseUrl: baseUrl,
+    );
   }
 
   /// Stop tracking: pause/cancel position stream and timer, and emit provider_offline
   void stopTracking({MobileRealtimeService? realtimeService}) {
-    // 1. Immediately pause/cancel the getPositionStream and periodic timer
     _positionSubscription?.cancel();
     _positionSubscription = null;
     _gpsTimer?.cancel();
@@ -248,12 +323,12 @@ class LocationTrackingService with WidgetsBindingObserver {
     _isTracking = false;
     _isOnline = false;
 
-    // 2. Explicitly emit offline event to backend before disconnecting socket:
-    // socket.emit('provider_offline', {});
     final rt = realtimeService ?? _realtimeService;
-    final socket = rt?.socket;
-    if (socket != null) {
-      socket.emit('provider_offline', <String, dynamic>{});
+    final socketToUse = rt?.socket ?? _socket;
+    if (socketToUse != null) {
+      socketToUse.emit('provider_offline', {
+        if (_providerId != null && _providerId!.isNotEmpty) 'providerId': _providerId,
+      });
     }
     rt?.emitProviderOffline();
 
@@ -269,18 +344,11 @@ class LocationTrackingService with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Returned to foreground:
-      // Verify WebSocket connection was not dropped by the OS
       _realtimeService?.ensureConnected();
 
-      // If online and tracking, transmit an immediate fresh location fix
       if (_isTracking && _isOnline) {
         _refreshLocationNow();
       }
-    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      // App entered background:
-      // The OS location manager continues delivering updates via getPositionStream
-      // Keep socket and stream alive while waiting for dispatch requests
     }
   }
 
@@ -294,19 +362,20 @@ class LocationTrackingService with WidgetsBindingObserver {
       _lastEmittedAt = DateTime.now();
       _locationStreamController.add(pos);
 
-      final socket = _realtimeService?.socket;
-      if (socket != null && socket.connected) {
-        socket.emit('location_update', {
+      final socketToUse = _realtimeService?.socket ?? _socket;
+      if (socketToUse != null) {
+        socketToUse.emit('location_update', {
+          if (_providerId != null && _providerId!.isNotEmpty) 'providerId': _providerId,
           'lat': pos.latitude,
           'lng': pos.longitude,
         });
-      } else if (_realtimeService != null) {
-        _realtimeService!.sendLocationUpdate(
-          appointmentId: _appointmentId,
-          latitude: pos.latitude,
-          longitude: pos.longitude,
-        );
       }
+
+      _realtimeService?.sendLocationUpdate(
+        appointmentId: _appointmentId,
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+      );
     } catch (_) {}
   }
 
@@ -315,6 +384,9 @@ class LocationTrackingService with WidgetsBindingObserver {
       WidgetsBinding.instance.removeObserver(this);
     } catch (_) {}
     stopTracking();
+    _socket?.disconnect();
+    _socket?.dispose();
+    _socket = null;
     _locationStreamController.close();
   }
 
@@ -322,6 +394,7 @@ class LocationTrackingService with WidgetsBindingObserver {
   bool get isOnline => _isOnline;
   double get currentLat => _lat;
   double get currentLon => _lon;
+  io.Socket? get socket => _realtimeService?.socket ?? _socket;
 }
 
 final locationTrackingProvider = Provider<LocationTrackingService>((ref) {

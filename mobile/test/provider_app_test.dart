@@ -72,6 +72,27 @@ void main() {
       expect(service.isOnline, false);
       expect(container.read(providerOnlineStatusProvider), false);
     });
+
+    test('Should execute startTracking and goOnline successfully', () async {
+      final container = ProviderContainer();
+      final service = container.read(locationTrackingProvider);
+
+      final started = await service.startTracking(providerId: 'prov-test-123');
+      expect(started, true);
+      expect(service.isTracking, true);
+      expect(service.isOnline, true);
+
+      service.stopTracking();
+      expect(service.isTracking, false);
+      expect(service.isOnline, false);
+
+      final wentOnline = await service.goOnline(providerId: 'prov-test-456');
+      expect(wentOnline, true);
+      expect(service.isTracking, true);
+      expect(service.isOnline, true);
+
+      service.stopTracking();
+    });
   });
 
   group('Location Service Tests', () {

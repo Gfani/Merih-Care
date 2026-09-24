@@ -764,7 +764,11 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       try {
         if (isProvider) {
           const provRepo = this.dataSource.getRepository(ProviderEntity);
-          const prov = await provRepo.findOne({ where: [{ userId }, { id: userId }] });
+          const provWhere: any[] = [{ userId }, { id: userId }];
+          if (data?.providerId) {
+            provWhere.push({ id: data.providerId }, { userId: data.providerId });
+          }
+          const prov = await provRepo.findOne({ where: provWhere });
           if (prov) {
             prov.latitude = lat;
             prov.longitude = lng;
@@ -798,7 +802,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
     // 3. Immediately broadcast the update to the admin dashboard
     const broadcastData = {
-      providerId: isProvider ? userId : undefined,
+      providerId: isProvider ? (data?.providerId || userId) : undefined,
       userId,
       name: displayName || loc.name || (isProvider ? `Provider ${userId.slice(-4)}` : `User ${userId.slice(-4)}`),
       role: targetRole,
