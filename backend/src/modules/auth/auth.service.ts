@@ -732,10 +732,23 @@ export class AuthService {
     if (providerData) {
       rolesSet.add("provider");
     }
+    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+    const isOwner =
+      user.role === "owner" ||
+      user.adminRole === "owner" ||
+      (user.email && user.email.toLowerCase().trim() === ownerEmail);
+
+    if (isOwner) {
+      rolesSet.add("owner");
+      rolesSet.add("super_admin");
+      rolesSet.add("admin");
+    }
+
     if (
       user.adminRole ||
       user.role === "admin" ||
-      user.role === "super_admin"
+      user.role === "super_admin" ||
+      isOwner
     ) {
       rolesSet.add("admin");
       if (user.adminRole) rolesSet.add(user.adminRole);
@@ -746,17 +759,17 @@ export class AuthService {
     const payload = { 
       sub: user.id, 
       email: user.email, 
-      role: activeRole || user.role, 
+      role: isOwner ? (user.role === "owner" ? "owner" : (activeRole || "owner")) : (activeRole || user.role), 
       roles: allRoles,
       tokenVersion: user.tokenVersion || 0,
-      adminRole: user.adminRole,
-      permissions: user.permissions,
+      adminRole: isOwner ? (user.adminRole || "owner") : user.adminRole,
+      permissions: isOwner ? "all" : user.permissions,
       hasProviderAccount: !!providerData,
       hasAdminAccount: rolesSet.has("admin"),
       hasPatientAccount: true,
     };
 
-    const isAdmin = rolesSet.has("admin") || user.role === "admin" || !!user.adminRole;
+    const isAdmin = rolesSet.has("admin") || user.role === "admin" || !!user.adminRole || isOwner;
     const tokenExpiry = isAdmin
       ? (process.env.ADMIN_JWT_EXPIRATION_TIME || "7d")
       : (process.env.JWT_EXPIRATION_TIME || "1d");
@@ -781,9 +794,9 @@ export class AuthService {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: activeRole || user.role,
+        role: isOwner ? (user.role === "owner" ? "owner" : (activeRole || "owner")) : (activeRole || user.role),
         roles: allRoles,
-        adminRole: user.adminRole,
+        adminRole: isOwner ? (user.adminRole || "owner") : user.adminRole,
         mfaEnabled: user.mfaEnabled,
         hasProviderAccount: !!providerData,
         hasAdminAccount: rolesSet.has("admin"),
@@ -1474,6 +1487,15 @@ export class AuthService {
     const user = await this.userRepo.findOne({ where: { id } });
     if (!user) return null;
     const { password, ...result } = user;
+    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+    if (
+      user.role === "owner" ||
+      user.adminRole === "owner" ||
+      (user.email && user.email.toLowerCase().trim() === ownerEmail)
+    ) {
+      (result as any).role = user.role === "patient" || user.role === "provider" ? user.role : "owner";
+      (result as any).adminRole = "owner";
+    }
     if (user.role === "provider" && this.providerRepo) {
       const provider = await this.providerRepo.findOne({ where: { userId: id } }).catch(() => null);
       if (provider) {

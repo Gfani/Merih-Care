@@ -221,7 +221,8 @@ export class AdminService {
     return this.userRepo.find({
       where: [
         { role: "admin", isApproved: true },
-        { role: "super_admin", isApproved: true }
+        { role: "super_admin", isApproved: true },
+        { role: "owner", isApproved: true },
       ],
       order: { dateJoined: "DESC" as any }
     });
@@ -254,12 +255,12 @@ export class AdminService {
     admin.email = emailNorm;
     admin.password = hashedPassword;
     admin.phone = phoneNorm;
-    admin.role = "admin";
-    admin.roles = "admin";
+    admin.role = data.adminRole === "owner" ? "owner" : "admin";
+    admin.roles = data.adminRole === "owner" ? "owner,admin" : "admin";
     admin.adminRole = data.adminRole || (data.department ? `${data.department.toLowerCase()}_admin` : "operations_admin");
     admin.isApproved = true;
     admin.status = "active";
-    admin.permissions = admin.adminRole === "super_admin" 
+    admin.permissions = (admin.adminRole === "super_admin" || admin.adminRole === "owner")
       ? "all" 
       : (ROLE_PERMISSIONS[admin.adminRole] || []).join(",");
     admin.dateJoined = new Date().toISOString().split("T")[0];
@@ -278,9 +279,30 @@ export class AdminService {
 
     // Resolve actor details
     const actorUser = actorId ? await this.userRepo.findOne({ where: { id: actorId } }) : null;
-    const isActorSuper = actorUser?.adminRole === "super_admin" || actorUser?.role === "super_admin";
+    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+
+    const isActorOwner =
+      actorUser?.role === "owner" ||
+      actorUser?.adminRole === "owner" ||
+      (actorUser?.email && actorUser.email.toLowerCase().trim() === ownerEmail);
+
+    const isActorSuper =
+      isActorOwner ||
+      actorUser?.adminRole === "super_admin" ||
+      actorUser?.role === "super_admin";
+
     if (!isActorSuper) {
       throw new Error("Only super administrators have permission to delete administrators");
+    }
+
+    // Supreme Owner Protection: Nobody can delete the Owner account under any circumstances
+    const isTargetOwner =
+      targetUser.role === "owner" ||
+      targetUser.adminRole === "owner" ||
+      (targetUser.email && targetUser.email.toLowerCase().trim() === ownerEmail);
+
+    if (isTargetOwner) {
+      throw new Error("The platform Owner account cannot be deleted under any circumstances");
     }
 
     // Check if target is a super administrator
@@ -289,11 +311,9 @@ export class AdminService {
       targetUser.role === "super_admin";
 
     if (isTargetSuper) {
-      const remainingSuperAdmins = await this.userRepo.count({
-        where: [{ adminRole: "super_admin" }, { role: "super_admin" }],
-      });
-      if (remainingSuperAdmins <= 1) {
-        throw new Error("Cannot delete the last remaining super administrator account");
+      // Standard super_admin accounts cannot delete other super_admins; ONLY the Owner can delete a super_admin
+      if (!isActorOwner) {
+        throw new Error("Super administrators cannot delete other super administrators. Only the platform Owner has permission to delete a super administrator.");
       }
     }
 
@@ -335,6 +355,7 @@ export class AdminService {
     const isTargetAdmin =
       user.role === "admin" ||
       user.role === "super_admin" ||
+      user.role === "owner" ||
       !!user.adminRole ||
       (user.roles && user.roles.includes("admin"));
 
@@ -342,12 +363,32 @@ export class AdminService {
       throw new Error("Target user is not an administrator account. Operation rejected.");
     }
 
+    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
     const actorUser = actorEmail ? await this.userRepo.findOne({ where: { email: actorEmail } }) : null;
-    const isActorSuper = actorUser?.adminRole === "super_admin" || actorUser?.role === "super_admin";
+
+    const isActorOwner =
+      actorUser?.role === "owner" ||
+      actorUser?.adminRole === "owner" ||
+      (actorEmail && actorEmail.toLowerCase().trim() === ownerEmail);
+
+    const isActorSuper =
+      isActorOwner ||
+      actorUser?.adminRole === "super_admin" ||
+      actorUser?.role === "super_admin";
+
     const isSelf = actorUser && actorUser.id === user.id;
 
     if (!isActorSuper && !isSelf) {
       throw new Error("Only super administrators can reset passwords for other administrator accounts.");
+    }
+
+    const isTargetOwner =
+      user.role === "owner" ||
+      user.adminRole === "owner" ||
+      (user.email && user.email.toLowerCase().trim() === ownerEmail);
+
+    if (isTargetOwner && !isActorOwner && !isSelf) {
+      throw new Error("Cannot reset the password of the platform Owner.");
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -368,16 +409,29 @@ export class AdminService {
 
   async promoteAdministrator(actorId: string, targetUserId: string, targetAdminRole: string): Promise<UserEntity> {
     const actorUser = await this.userRepo.findOne({ where: { id: actorId } });
+    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+
+    const isActorOwner =
+      actorUser?.role === "owner" ||
+      actorUser?.adminRole === "owner" ||
+      (actorUser?.email && actorUser.email.toLowerCase().trim() === ownerEmail);
+
     const isSuper =
+      isActorOwner ||
       actorUser?.adminRole === "super_admin" ||
       actorUser?.role === "super_admin";
+
     if (!isSuper) {
       throw new Error("Only super administrators have permission to promote administrators or reassign administrative roles");
     }
 
-    const validRoles = ["super_admin", "operations_admin", "finance_admin", "verification_admin", "support_admin"];
+    const validRoles = ["owner", "super_admin", "operations_admin", "finance_admin", "verification_admin", "support_admin", "medical_admin"];
     if (!validRoles.includes(targetAdminRole)) {
       throw new Error(`Invalid administrative role. Must be one of: ${validRoles.join(", ")}`);
+    }
+
+    if (targetAdminRole === "owner" && !isActorOwner) {
+      throw new Error("Only the platform Owner can designate an Owner account");
     }
 
     const targetUser = await this.userRepo.findOne({ where: { id: targetUserId } });
@@ -385,22 +439,28 @@ export class AdminService {
       throw new Error("Target user account not found");
     }
 
+    const isTargetOwner =
+      targetUser.role === "owner" ||
+      targetUser.adminRole === "owner" ||
+      (targetUser.email && targetUser.email.toLowerCase().trim() === ownerEmail);
+
+    if (isTargetOwner) {
+      throw new Error("The platform Owner role cannot be demoted or altered");
+    }
+
     const isTargetSuper = targetUser.adminRole === "super_admin" || targetUser.role === "super_admin";
-    if (isTargetSuper && targetAdminRole !== "super_admin") {
-      const remainingSuperAdmins = await this.userRepo.count({
-        where: [{ adminRole: "super_admin" }, { role: "super_admin" }],
-      });
-      if (remainingSuperAdmins <= 1) {
-        throw new Error("Cannot demote the last remaining super administrator");
+    if (isTargetSuper && targetAdminRole !== "super_admin" && targetAdminRole !== "owner") {
+      if (!isActorOwner) {
+        throw new Error("Super administrators cannot demote other super administrators. Only the platform Owner has permission to demote a super administrator.");
       }
     }
 
-    targetUser.role = "admin";
+    targetUser.role = targetAdminRole === "owner" ? "owner" : "admin";
     targetUser.adminRole = targetAdminRole;
     targetUser.isApproved = true;
     targetUser.status = "active";
     targetUser.permissions =
-      targetAdminRole === "super_admin"
+      (targetAdminRole === "super_admin" || targetAdminRole === "owner")
         ? "all"
         : (ROLE_PERMISSIONS[targetAdminRole] || []).join(",");
     targetUser.tokenVersion = (targetUser.tokenVersion || 0) + 1;

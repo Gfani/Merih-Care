@@ -52,7 +52,15 @@ export default function UsersSection() {
     try { return JSON.parse(raw); } catch { return {}; }
   };
   const adminUser = getAdminUser();
+  const adminEmail = (adminUser.email || "").toLowerCase().trim();
+  const isOwner =
+    adminUser.role === "owner" ||
+    adminUser.adminRole === "owner" ||
+    adminEmail === "owner@merihcare.et" ||
+    adminEmail === "owner@merihcare.live";
+
   const isSuperAdmin =
+    isOwner ||
     adminUser.adminRole === "super_admin" ||
     adminUser.role === "super_admin" ||
     adminUser.permissions === "all";
@@ -538,13 +546,19 @@ export default function UsersSection() {
                               <span>Reset PW</span>
                             </Button>
                           )}
-                          {isSuperAdmin && row.id !== adminUser?.id && row.adminRole !== "super_admin" && (
+                          {row.id !== adminUser?.id &&
+                            row.adminRole !== "owner" &&
+                            row.role !== "owner" &&
+                            (row.email || "").toLowerCase().trim() !== "owner@merihcare.et" &&
+                            (row.email || "").toLowerCase().trim() !== "owner@merihcare.live" &&
+                            ((isOwner && (row.adminRole === "super_admin" || row.role === "super_admin")) ||
+                              (isSuperAdmin && row.adminRole !== "super_admin" && row.role !== "super_admin")) && (
                             <Button
                               size="sm"
                               variant="ghost"
                               className="!py-1 !px-2 text-xs text-red-600 hover:!bg-red-50 dark:hover:!bg-red-950/30 cursor-pointer"
                               onClick={() => handleDeleteUser(row)}
-                              title="Delete Administrator Account"
+                              title={row.adminRole === "super_admin" ? "Delete Super Administrator (Owner Override)" : "Delete Administrator Account"}
                             >
                               <Trash2 size={14} />
                             </Button>

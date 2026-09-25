@@ -75,7 +75,17 @@ export class JwtAuthGuard implements CanActivate {
         user.roles.split(",").map((r) => r.trim()).filter(Boolean).forEach((r) => rolesSet.add(r));
       }
       rolesSet.add("patient"); // Every user has patient capability
-      if (user.adminRole || user.role === "admin" || user.role === "super_admin") {
+      const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+      const isOwner =
+        user.role === "owner" ||
+        user.adminRole === "owner" ||
+        (user.email && user.email.toLowerCase().trim() === ownerEmail);
+      if (isOwner) {
+        rolesSet.add("owner");
+        rolesSet.add("super_admin");
+        rolesSet.add("admin");
+      }
+      if (user.adminRole || user.role === "admin" || user.role === "super_admin" || isOwner) {
         rolesSet.add("admin");
         if (user.adminRole) rolesSet.add(user.adminRole);
       }
@@ -94,10 +104,10 @@ export class JwtAuthGuard implements CanActivate {
         id: user.id,
         email: user.email,
         name: user.name,
-        role: user.role,
+        role: isOwner ? (user.role === "owner" ? "owner" : (payload.role || "owner")) : user.role,
         roles: Array.from(rolesSet),
-        adminRole: user.adminRole,
-        permissions: user.permissions,
+        adminRole: isOwner ? (user.adminRole || "owner") : user.adminRole,
+        permissions: isOwner ? "all" : user.permissions,
         status: user.status,
         mfaEnabled: !!user.mfaEnabled,
         provider: providerData,

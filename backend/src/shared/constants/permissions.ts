@@ -19,6 +19,7 @@ export enum Permission {
 }
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
+  owner: Object.values(Permission),
   super_admin: Object.values(Permission),
   operations_admin: [
     Permission.USERS_READ,
@@ -60,13 +61,23 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
 
 export function getEffectivePermissions(user: any): string[] {
   if (!user) return [];
+
+  const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+  const isOwner =
+    user.role === "owner" ||
+    user.adminRole === "owner" ||
+    (user.email && user.email.toLowerCase().trim() === ownerEmail);
+  if (isOwner) {
+    return Object.values(Permission);
+  }
+
   const permissionsSet = new Set<string>();
 
   // Explicit user.permissions
   if (user.permissions) {
     if (typeof user.permissions === "string") {
       if (user.permissions === "all") {
-        if (user.adminRole === "super_admin" || user.role === "super_admin") {
+        if (user.adminRole === "super_admin" || user.role === "super_admin" || isOwner) {
           return Object.values(Permission);
         }
       } else {

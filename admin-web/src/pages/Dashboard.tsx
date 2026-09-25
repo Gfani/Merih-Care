@@ -13,7 +13,16 @@ import { useAuth } from "../context/AuthContext";
 import { Link } from "react-router-dom";
 
 export default function DashboardSection() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const userEmail = (user?.email || "").toLowerCase().trim();
+  const isSuperOrOwner =
+    user?.adminRole === "super_admin" ||
+    user?.role === "super_admin" ||
+    user?.role === "owner" ||
+    user?.adminRole === "owner" ||
+    userEmail === "owner@merihcare.et" ||
+    userEmail === "owner@merihcare.live";
+
   const PIE_COLORS = ["#0d7c6a", "#1b6fba", "#d97706", "#dc2626", "#7c3aed"];
   const [stats, setStats] = useState<any>(null);
   const [logs, setLogs] = useState<any[]>([]);
@@ -135,14 +144,16 @@ export default function DashboardSection() {
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-2 ${isSuperOrOwner ? "lg:grid-cols-4" : "lg:grid-cols-3"} gap-4`}>
         <StatCard label="Total Patients" value={loading ? "..." : (stats?.kpis?.totalPatients ?? 0).toLocaleString()} sub="Registered patients" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>} trend={{ value: 8, up: true }} />
         <StatCard label="Total Providers" value={loading ? "..." : (stats?.kpis?.totalProviders ?? 0).toLocaleString()} sub="Verified clinicians" color="#1b6fba" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="2"/></svg>} trend={{ value: 3, up: true }} />
         <StatCard label="Active Requests" value={loading ? "..." : (stats?.kpis?.activeRequests ?? 0).toLocaleString()} sub="In transit / pending" color="#d97706" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>} trend={{ value: 5, up: true }} />
-        <StatCard label="Revenue" value={loading ? "..." : `ETB ${(stats?.kpis?.totalRevenue ?? 0).toLocaleString()}`} sub="Platform earnings" color="#7c3aed" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>} trend={{ value: 6, up: true }} />
+        {isSuperOrOwner && (
+          <StatCard label="Revenue" value={loading ? "..." : `ETB ${(stats?.kpis?.totalRevenue ?? 0).toLocaleString()}`} sub="Platform earnings" color="#7c3aed" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>} trend={{ value: 6, up: true }} />
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className={`grid grid-cols-1 ${isSuperOrOwner ? "lg:grid-cols-2" : "lg:grid-cols-1"} gap-4`}>
         {/* Weekly requests */}
         <Card className="p-5">
           <p className="text-sm font-semibold text-[#18232e] dark:text-white mb-4" style={{ fontFamily: "DM Sans, sans-serif" }}>Weekly Requests</p>
@@ -167,31 +178,33 @@ export default function DashboardSection() {
         </Card>
 
         {/* Revenue trend */}
-        <Card className="p-5">
-          <p className="text-sm font-semibold text-[#18232e] dark:text-white mb-4" style={{ fontFamily: "DM Sans, sans-serif" }}>Revenue Trend</p>
-          <div className="sr-only">
-            Summary: Area chart showing monthly revenue trend. Displays total transaction values in Ethiopian Birr across recent months.
-          </div>
-          {loading ? (
-            <SkeletonCard />
-          ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={stats?.revenueData || []}>
-                <defs>
-                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#1b6fba" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#1b6fba" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f4f7" />
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#8a9aaa" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: "#8a9aaa" }} axisLine={false} tickLine={false} tickFormatter={v => `${v / 1000}k`} />
-                <Tooltip formatter={(v: any) => [`ETB ${Number(v).toLocaleString()}`, "Revenue"]} contentStyle={{ fontSize: 11, borderRadius: 8 }} />
-                <Area type="monotone" dataKey="revenue" stroke="#1b6fba" strokeWidth={2} fill="url(#revGrad)" dot={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-        </Card>
+        {isSuperOrOwner && (
+          <Card className="p-5">
+            <p className="text-sm font-semibold text-[#18232e] dark:text-white mb-4" style={{ fontFamily: "DM Sans, sans-serif" }}>Revenue Trend</p>
+            <div className="sr-only">
+              Summary: Area chart showing monthly revenue trend. Displays total transaction values in Ethiopian Birr across recent months.
+            </div>
+            {loading ? (
+              <SkeletonCard />
+            ) : (
+              <ResponsiveContainer width="100%" height={200}>
+                <AreaChart data={stats?.revenueData || []}>
+                  <defs>
+                    <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#1b6fba" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="#1b6fba" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f4f7" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#8a9aaa" }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: "#8a9aaa" }} axisLine={false} tickLine={false} tickFormatter={v => `${v / 1000}k`} />
+                  <Tooltip formatter={(v: any) => [`ETB ${Number(v).toLocaleString()}`, "Revenue"]} contentStyle={{ fontSize: 11, borderRadius: 8 }} />
+                  <Area type="monotone" dataKey="revenue" stroke="#1b6fba" strokeWidth={2} fill="url(#revGrad)" dot={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

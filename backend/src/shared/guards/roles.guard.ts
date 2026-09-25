@@ -33,6 +33,17 @@ export class RolesGuard implements CanActivate {
       userRoles.push("patient");
     }
 
+    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+    const isOwner =
+      user.role === "owner" ||
+      user.adminRole === "owner" ||
+      (user.email && user.email.toLowerCase().trim() === ownerEmail);
+
+    // Supreme Owner role has absolute authority across all routes
+    if (isOwner) {
+      return true;
+    }
+
     const adminRole = user.adminRole || (user.role === "super_admin" ? "super_admin" : null);
 
     // Evaluate each required role strictly

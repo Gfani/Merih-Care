@@ -204,11 +204,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsAuthenticated(false);
   };
 
-  const role: UserRole = (user?.adminRole as UserRole) || (user?.role as UserRole) || "admin";
+  const userEmail = (user?.email || "").toLowerCase().trim();
+  const isOwner =
+    user?.role === "owner" ||
+    user?.adminRole === "owner" ||
+    userEmail === "owner@merihcare.et" ||
+    userEmail === "owner@merihcare.live";
+
+  const role: UserRole = isOwner
+    ? "owner"
+    : ((user?.adminRole as UserRole) || (user?.role as UserRole) || "admin");
 
   const hasPermission = (allowedRoles: UserRole[]): boolean => {
     if (!allowedRoles || allowedRoles.length === 0) return true;
-    if (role === "super_admin") return true;
+    if (role === "owner" || role === "super_admin") return true;
     const currentRole = role || (user?.role as UserRole);
     return allowedRoles.includes(currentRole);
   };

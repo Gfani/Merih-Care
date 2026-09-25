@@ -303,7 +303,7 @@ describe("Auth & User Security Checklist Tests", () => {
       ).rejects.toThrow("Only super administrators have permission to delete administrators");
     });
 
-    it("should prevent deleting the last remaining super administrator", async () => {
+    it("should prevent super administrators from deleting other super administrators or owner", async () => {
       const actorSuper = new UserEntity();
       actorSuper.id = "u-actor";
       actorSuper.email = "super1@merihcare.et";
@@ -317,34 +317,76 @@ describe("Auth & User Security Checklist Tests", () => {
       mockUserRepo.findOne
         .mockResolvedValueOnce(targetSuper)
         .mockResolvedValueOnce(actorSuper);
-      mockUserRepo.count = jest.fn().mockResolvedValue(1);
 
       await expect(
         adminService.deleteAdministrator("u-actor", "u-target")
-      ).rejects.toThrow("Cannot delete the last remaining super administrator account");
+      ).rejects.toThrow("Super administrators cannot delete other super administrators. Only the platform Owner has permission to delete a super administrator.");
     });
 
-    it("should allow a super administrator to delete an admin when quorum is preserved", async () => {
+    it("should allow a super administrator to delete a standard administrator", async () => {
       const superActor = new UserEntity();
       superActor.id = "u-actor";
       superActor.email = "super1@merihcare.et";
       superActor.adminRole = "super_admin";
 
-      const targetSuper = new UserEntity();
-      targetSuper.id = "u-target";
-      targetSuper.email = "super2@merihcare.et";
-      targetSuper.adminRole = "super_admin";
+      const targetAdmin = new UserEntity();
+      targetAdmin.id = "u-target";
+      targetAdmin.email = "ops@merihcare.et";
+      targetAdmin.adminRole = "operations_admin";
 
       mockUserRepo.findOne
-        .mockResolvedValueOnce(targetSuper)
+        .mockResolvedValueOnce(targetAdmin)
         .mockResolvedValueOnce(superActor);
-      mockUserRepo.count = jest.fn().mockResolvedValue(2);
-      mockUserRepo.remove.mockResolvedValue(targetSuper);
+      mockUserRepo.remove.mockResolvedValue(targetAdmin);
 
       const result = await adminService.deleteAdministrator("u-actor", "u-target");
       expect(result.success).toBe(true);
       expect(mockSessionRepo.delete).toHaveBeenCalledWith({ userId: "u-target" });
+      expect(mockUserRepo.remove).toHaveBeenCalledWith(targetAdmin);
+    });
+
+    it("should allow the supreme Owner to delete a super administrator", async () => {
+      const ownerActor = new UserEntity();
+      ownerActor.id = "u-owner";
+      ownerActor.email = "owner@merihcare.et";
+      ownerActor.role = "owner";
+      ownerActor.adminRole = "owner";
+
+      const targetSuper = new UserEntity();
+      targetSuper.id = "u-super";
+      targetSuper.email = "super@merihcare.et";
+      targetSuper.adminRole = "super_admin";
+
+      mockUserRepo.findOne
+        .mockResolvedValueOnce(targetSuper)
+        .mockResolvedValueOnce(ownerActor);
+      mockUserRepo.remove.mockResolvedValue(targetSuper);
+
+      const result = await adminService.deleteAdministrator("u-owner", "u-super");
+      expect(result.success).toBe(true);
+      expect(mockSessionRepo.delete).toHaveBeenCalledWith({ userId: "u-super" });
       expect(mockUserRepo.remove).toHaveBeenCalledWith(targetSuper);
+    });
+
+    it("should prevent anyone from deleting the platform Owner account", async () => {
+      const actorSuper = new UserEntity();
+      actorSuper.id = "u-actor";
+      actorSuper.email = "super@merihcare.et";
+      actorSuper.adminRole = "super_admin";
+
+      const targetOwner = new UserEntity();
+      targetOwner.id = "u-owner";
+      targetOwner.email = "owner@merihcare.et";
+      targetOwner.role = "owner";
+      targetOwner.adminRole = "owner";
+
+      mockUserRepo.findOne
+        .mockResolvedValueOnce(targetOwner)
+        .mockResolvedValueOnce(actorSuper);
+
+      await expect(
+        adminService.deleteAdministrator("u-actor", "u-owner")
+      ).rejects.toThrow("The platform Owner account cannot be deleted under any circumstances");
     });
   });
 });

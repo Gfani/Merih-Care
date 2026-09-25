@@ -101,4 +101,55 @@ describe("Reporting & Dashboard Checklist Tests", () => {
       expect(csv).toContain('"apt-101","pat-1","prov-1","Telemedicine","completed","500","2026-08-31"');
     });
   });
+
+  describe("Administrative Revenue Masking & Hierarchy", () => {
+    let controller: any;
+
+    beforeEach(() => {
+      const { ReportsController } = require("../src/modules/reports/reports.controller");
+      controller = new ReportsController(service);
+    });
+
+    it("should mask revenue data to 0 and empty trend array for standard operations administrators", async () => {
+      const apt = new AppointmentEntity();
+      apt.id = "apt-rev-1";
+      apt.status = "completed";
+      apt.amount = 5400;
+      apt.service = "General Care";
+      mockAppointmentRepo.find.mockResolvedValue([apt]);
+
+      const standardAdminReq = {
+        user: { id: "admin-ops", role: "admin", adminRole: "operations_admin" },
+      };
+
+      const result = await controller.getDashboardStats(standardAdminReq);
+      expect(result.kpis.totalRevenue).toBe(0); // Masked!
+      expect(result.revenueData).toEqual([]); // Omitted!
+      expect(result.kpis.totalPatients).toBe(150); // Other KPIs intact
+    });
+
+    it("should display full revenue data to super_admin and owner roles", async () => {
+      const apt = new AppointmentEntity();
+      apt.id = "apt-rev-2";
+      apt.status = "completed";
+      apt.amount = 5400;
+      apt.service = "General Care";
+      mockAppointmentRepo.find.mockResolvedValue([apt]);
+
+      const superAdminReq = {
+        user: { id: "admin-super", role: "admin", adminRole: "super_admin" },
+      };
+
+      const superResult = await controller.getDashboardStats(superAdminReq);
+      expect(superResult.kpis.totalRevenue).toBe(5400); // Visible!
+      expect(superResult.revenueData).toHaveLength(1);
+
+      const ownerReq = {
+        user: { id: "admin-owner", role: "owner", adminRole: "owner" },
+      };
+
+      const ownerResult = await controller.getDashboardStats(ownerReq);
+      expect(ownerResult.kpis.totalRevenue).toBe(5400); // Visible!
+    });
+  });
 });

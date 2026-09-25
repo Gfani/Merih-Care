@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   ShieldCheck, ShieldAlert, UserPlus, Trash2, KeyRound, Check, X,
   Search, RefreshCw, UserCheck, Phone, Building2, Calendar, AlertCircle,
-  CheckCircle2, Clock
+  CheckCircle2, Clock, Crown
 } from "lucide-react";
 import { api } from "../services/api";
 import { Avatar, toast } from "../components/ui";
@@ -40,7 +40,15 @@ export default function AdministratorsSection() {
 
   const { token, user: authUser } = useAuth();
   const currentUser = authUser;
+  const userEmail = (currentUser?.email || "").toLowerCase().trim();
+  const isOwner =
+    currentUser?.role === "owner" ||
+    currentUser?.adminRole === "owner" ||
+    userEmail === "owner@merihcare.et" ||
+    userEmail === "owner@merihcare.live";
+
   const isSuperAdmin =
+    isOwner ||
     currentUser?.adminRole === "super_admin" ||
     currentUser?.role === "super_admin" ||
     currentUser?.permissions === "all";
@@ -178,9 +186,27 @@ export default function AdministratorsSection() {
     );
   });
 
-  const superAdminCount = activeAdmins.filter(
-    (a) => a.adminRole === "super_admin" || a.role === "super_admin"
-  ).length;
+  const ownerCount = activeAdmins.filter((a) => {
+    const email = (a.email || "").toLowerCase().trim();
+    return (
+      a.adminRole === "owner" ||
+      a.role === "owner" ||
+      email === "owner@merihcare.et" ||
+      email === "owner@merihcare.live"
+    );
+  }).length;
+
+  const superAdminCount = activeAdmins.filter((a) => {
+    const email = (a.email || "").toLowerCase().trim();
+    const isOwnerRow =
+      a.adminRole === "owner" ||
+      a.role === "owner" ||
+      email === "owner@merihcare.et" ||
+      email === "owner@merihcare.live";
+    return !isOwnerRow && (a.adminRole === "super_admin" || a.role === "super_admin");
+  }).length;
+
+  const standardAdminCount = Math.max(0, activeAdmins.length - ownerCount - superAdminCount);
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -188,8 +214,15 @@ export default function AdministratorsSection() {
       <div className="bg-gradient-to-r from-[#0d7c6a] to-[#085044] rounded-[16px] p-6 text-white shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-white/20 text-white backdrop-blur-sm">
-              Super Admin Control
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-white/20 text-white backdrop-blur-sm flex items-center gap-1">
+              {isOwner ? (
+                <>
+                  <Crown size={12} className="text-amber-300" />
+                  Supreme Owner Authority
+                </>
+              ) : (
+                "Super Admin Control"
+              )}
             </span>
           </div>
           <h1 className="text-2xl font-bold tracking-tight">Administrator Management</h1>
@@ -222,11 +255,18 @@ export default function AdministratorsSection() {
         </div>
 
         <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-[#e2e8ee] dark:border-slate-700 shadow-sm">
-          <p className="text-xs font-semibold text-[#8a9aaa] uppercase tracking-wider">Super Admins</p>
+          <p className="text-xs font-semibold text-[#8a9aaa] uppercase tracking-wider">Super Admins / Owner</p>
           <div className="flex items-center justify-between mt-2">
-            <span className="text-2xl font-extrabold text-purple-600 dark:text-purple-400">{superAdminCount}</span>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-extrabold text-purple-600 dark:text-purple-400">{superAdminCount}</span>
+              {ownerCount > 0 && (
+                <span className="text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800/40">
+                  +{ownerCount} Owner
+                </span>
+              )}
+            </div>
             <div className="p-2 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400">
-              <ShieldAlert size={20} />
+              {ownerCount > 0 ? <Crown size={20} className="text-amber-500" /> : <ShieldAlert size={20} />}
             </div>
           </div>
         </div>
@@ -234,7 +274,7 @@ export default function AdministratorsSection() {
         <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-[#e2e8ee] dark:border-slate-700 shadow-sm">
           <p className="text-xs font-semibold text-[#8a9aaa] uppercase tracking-wider">Standard Admins</p>
           <div className="flex items-center justify-between mt-2">
-            <span className="text-2xl font-extrabold text-[#0d7c6a]">{Math.max(0, activeAdmins.length - superAdminCount)}</span>
+            <span className="text-2xl font-extrabold text-[#0d7c6a]">{standardAdminCount}</span>
             <div className="p-2 rounded-lg bg-teal-500/10 text-teal-600">
               <UserCheck size={20} />
             </div>
@@ -335,10 +375,18 @@ export default function AdministratorsSection() {
                 </thead>
                 <tbody className="divide-y divide-[#e2e8ee] dark:divide-slate-700">
                   {filteredAdmins.map((admin) => {
+                    const targetEmail = (admin.email || "").toLowerCase().trim();
+                    const isRowOwner =
+                      admin.adminRole === "owner" ||
+                      admin.role === "owner" ||
+                      targetEmail === "owner@merihcare.et" ||
+                      targetEmail === "owner@merihcare.live";
                     const isRowSuperAdmin =
-                      admin.adminRole === "super_admin" ||
-                      admin.role === "super_admin";
-                    const isSelf = currentUser?.id ? admin.id === currentUser.id : (admin.email || "").toLowerCase().trim() === (currentUser?.email || "").toLowerCase().trim();
+                      !isRowOwner &&
+                      (admin.adminRole === "super_admin" || admin.role === "super_admin");
+                    const isSelf = currentUser?.id
+                      ? admin.id === currentUser.id
+                      : (admin.email || "").toLowerCase().trim() === (currentUser?.email || "").toLowerCase().trim();
 
                     return (
                       <tr key={admin.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
@@ -354,7 +402,12 @@ export default function AdministratorsSection() {
                                   </span>
                                 )}
                               </div>
-                              {isRowSuperAdmin ? (
+                              {isRowOwner ? (
+                                <span className="text-[11px] text-amber-600 dark:text-amber-400 font-bold flex items-center gap-1">
+                                  <Crown size={11} />
+                                  [Platform Owner]
+                                </span>
+                              ) : isRowSuperAdmin ? (
                                 <span className="text-[11px] text-purple-600 dark:text-purple-400 font-bold flex items-center gap-1">
                                   <ShieldAlert size={10} />
                                   [Super Admin]
@@ -367,7 +420,12 @@ export default function AdministratorsSection() {
                         </td>
 
                         <td className="py-3 px-4">
-                          {isRowSuperAdmin ? (
+                          {isRowOwner ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-700/60 shadow-xs">
+                              <Crown size={11} className="text-amber-600 dark:text-amber-400" />
+                              Platform Owner
+                            </span>
+                          ) : isRowSuperAdmin ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
                               <ShieldAlert size={11} />
                               Super Admin
@@ -383,7 +441,7 @@ export default function AdministratorsSection() {
                         <td className="py-3 px-4 text-[#4a5a6a] dark:text-slate-300">
                           <div className="flex items-center gap-1.5">
                             <Building2 size={13} className="text-[#8a9aaa]" />
-                            <span>{admin.department || "Operations"}</span>
+                            <span>{admin.department || (isRowOwner ? "Executive / Ownership" : "Operations")}</span>
                           </div>
                         </td>
 
@@ -408,24 +466,46 @@ export default function AdministratorsSection() {
                         {isSuperAdmin && (
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() => {
-                                  setAdminToModify(admin);
-                                  setNewPassword("");
-                                  setResetPassModal(true);
-                                }}
-                                title="Reset Password"
-                                className="px-2.5 py-1 rounded-lg border border-[#e2e8ee] dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 text-[#0d7c6a] font-semibold text-[11px] flex items-center gap-1"
-                              >
-                                <KeyRound size={12} />
-                                Reset
-                              </button>
+                              {/* Reset password button: allowed if caller is Owner, or if caller is super_admin and target is not Owner */}
+                              {(!isRowOwner || isOwner || isSelf) && (
+                                <button
+                                  onClick={() => {
+                                    setAdminToModify(admin);
+                                    setNewPassword("");
+                                    setResetPassModal(true);
+                                  }}
+                                  title="Reset Password"
+                                  className="px-2.5 py-1 rounded-lg border border-[#e2e8ee] dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 text-[#0d7c6a] font-semibold text-[11px] flex items-center gap-1 cursor-pointer"
+                                >
+                                  <KeyRound size={12} />
+                                  Reset
+                                </button>
+                              )}
 
                               {!isSelf && (
-                                isRowSuperAdmin ? (
-                                  <span className="px-2 py-1 rounded-lg text-[10px] font-bold bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800/40" title="Super Admin accounts cannot be deleted directly">
-                                    Protected (Super Admin)
+                                isRowOwner ? (
+                                  <span className="px-2 py-1 rounded-lg text-[10px] font-extrabold bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40 flex items-center gap-1" title="Supreme Owner account has absolute root authority and cannot be deleted">
+                                    <Crown size={11} />
+                                    Root Authority
                                   </span>
+                                ) : isRowSuperAdmin ? (
+                                  isOwner ? (
+                                    <button
+                                      onClick={() => {
+                                        setAdminToModify(admin);
+                                        setDeleteAdminModal(true);
+                                      }}
+                                      title="Delete Super Administrator (Owner Override)"
+                                      className="px-2.5 py-1 rounded-lg border border-red-300 dark:border-red-800/60 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 text-red-700 font-bold text-[11px] flex items-center gap-1 shadow-xs cursor-pointer"
+                                    >
+                                      <Trash2 size={12} />
+                                      Delete
+                                    </button>
+                                  ) : (
+                                    <span className="px-2 py-1 rounded-lg text-[10px] font-bold bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800/40" title="Super Admin accounts can only be deleted by the platform Owner">
+                                      Protected (Super Admin)
+                                    </span>
+                                  )
                                 ) : (
                                   <button
                                     onClick={() => {
@@ -433,7 +513,7 @@ export default function AdministratorsSection() {
                                       setDeleteAdminModal(true);
                                     }}
                                     title="Delete Administrator"
-                                    className="px-2.5 py-1 rounded-lg border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/30 text-red-600 font-semibold text-[11px] flex items-center gap-1"
+                                    className="px-2.5 py-1 rounded-lg border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/30 text-red-600 font-semibold text-[11px] flex items-center gap-1 cursor-pointer"
                                   >
                                     <Trash2 size={12} />
                                     Delete
@@ -628,6 +708,7 @@ export default function AdministratorsSection() {
                     <option value="medical_admin">Medical Director</option>
                     <option value="support_admin">Support Specialist</option>
                     <option value="super_admin">Super Administrator</option>
+                    {isOwner && <option value="owner">Platform Owner (Root Authority)</option>}
                   </select>
                 </div>
 

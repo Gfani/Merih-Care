@@ -95,7 +95,7 @@ export class VerifyMfaDto {
 
 export class PromoteAdminDto {
   @IsNotEmpty()
-  @IsIn(["super_admin", "operations_admin", "finance_admin", "verification_admin", "support_admin"])
+  @IsIn(["owner", "super_admin", "operations_admin", "finance_admin", "verification_admin", "support_admin", "medical_admin"])
   adminRole: string;
 }
 
@@ -224,9 +224,17 @@ export class AdminController {
   @Post("admin/administrators")
   @Roles("super_admin")
   async createAdministrator(@Body() body: CreateAdminDto, @Req() req: any) {
-    const isSuper = req.user?.adminRole === "super_admin" || req.user?.role === "super_admin";
+    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+    const isOwner =
+      req.user?.role === "owner" ||
+      req.user?.adminRole === "owner" ||
+      (req.user?.email && req.user.email.toLowerCase().trim() === ownerEmail);
+    const isSuper = isOwner || req.user?.adminRole === "super_admin" || req.user?.role === "super_admin";
     if (!isSuper) {
-      throw new BadRequestException("Only super administrators can create administrator accounts");
+      throw new BadRequestException("Only super administrators or owners can create administrator accounts");
+    }
+    if (body.adminRole === "owner" && !isOwner) {
+      throw new BadRequestException("Only the platform Owner can provision another Owner account");
     }
     try {
       return await this.adminService.createAdministrator(body);
@@ -238,9 +246,14 @@ export class AdminController {
   @Delete("admin/administrators/:id")
   @Roles("super_admin")
   async deleteAdministrator(@Param("id") id: string, @Req() req: any) {
-    const isSuper = req.user?.adminRole === "super_admin" || req.user?.role === "super_admin";
+    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+    const isOwner =
+      req.user?.role === "owner" ||
+      req.user?.adminRole === "owner" ||
+      (req.user?.email && req.user.email.toLowerCase().trim() === ownerEmail);
+    const isSuper = isOwner || req.user?.adminRole === "super_admin" || req.user?.role === "super_admin";
     if (!isSuper) {
-      throw new BadRequestException("Only super administrators can delete administrator accounts");
+      throw new BadRequestException("Only super administrators or owners can delete administrator accounts");
     }
     const actorId = req.user?.id || req.user?.sub;
     // Step-up MFA check if enabled
@@ -264,9 +277,14 @@ export class AdminController {
   @Post("admin/administrators/:id/reset-password")
   @Roles("super_admin")
   async resetAdminPassword(@Param("id") id: string, @Body() body: ResetAdminPasswordDto, @Req() req: any) {
-    const isSuper = req.user?.adminRole === "super_admin" || req.user?.role === "super_admin";
+    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+    const isOwner =
+      req.user?.role === "owner" ||
+      req.user?.adminRole === "owner" ||
+      (req.user?.email && req.user.email.toLowerCase().trim() === ownerEmail);
+    const isSuper = isOwner || req.user?.adminRole === "super_admin" || req.user?.role === "super_admin";
     if (!isSuper) {
-      throw new BadRequestException("Only super administrators can reset administrator passwords");
+      throw new BadRequestException("Only super administrators or owners can reset administrator passwords");
     }
 
     const actorId = req.user?.id || req.user?.sub;
@@ -297,9 +315,14 @@ export class AdminController {
     @Body() body: PromoteAdminDto,
     @Req() req: any
   ) {
-    const isSuper = req.user?.adminRole === "super_admin" || req.user?.role === "super_admin";
+    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+    const isOwner =
+      req.user?.role === "owner" ||
+      req.user?.adminRole === "owner" ||
+      (req.user?.email && req.user.email.toLowerCase().trim() === ownerEmail);
+    const isSuper = isOwner || req.user?.adminRole === "super_admin" || req.user?.role === "super_admin";
     if (!isSuper) {
-      throw new BadRequestException("Only super administrators can promote administrators or reassign administrative roles");
+      throw new BadRequestException("Only super administrators or owners can promote administrators or reassign administrative roles");
     }
     const actorId = req.user?.id || req.user?.sub;
     try {
