@@ -160,14 +160,27 @@ export class LocationsService {
       const onlineProviders: LocationEntity[] = [];
 
       // Query database to attach the provider's name/metadata to the Redis coordinates
-      const providersFromDb = this.providerRepo
-        ? await this.providerRepo.find().catch(() => [])
-        : [];
+      const [providersFromDb, usersFromDb] = await Promise.all([
+        this.providerRepo ? this.providerRepo.find().catch(() => []) : [],
+        this.userRepo ? this.userRepo.find().catch(() => []) : [],
+      ]);
 
       const provMap = new Map<string, ProviderEntity>();
       for (const p of providersFromDb) {
         if (p.userId) provMap.set(p.userId, p);
         provMap.set(p.id, p);
+      }
+
+      const adminUserIds = new Set<string>();
+      for (const u of usersFromDb) {
+        const isAdmin =
+          u.role === "admin" ||
+          u.role === "super_admin" ||
+          (typeof u.roles === "string" && (u.roles.includes("admin") || u.roles.includes("super_admin"))) ||
+          (Array.isArray(u.roles) && (u.roles.includes("admin") || u.roles.includes("super_admin")));
+        if (isAdmin) {
+          adminUserIds.add(u.id);
+        }
       }
 
       const seenProviderIds = new Set<string>();
@@ -186,7 +199,19 @@ export class LocationsService {
           lng = temp;
         }
 
+        // Strictly disallow admin user IDs from being treated as providers
+        if (adminUserIds.has(memberId)) {
+          redis.zrem("providers:locations:online", memberId).catch(() => {});
+          continue;
+        }
+
         const prov = provMap.get(memberId);
+        // If providers exist in DB and this member does not match any provider, purge it
+        if (provMap.size > 0 && !prov) {
+          redis.zrem("providers:locations:online", memberId).catch(() => {});
+          continue;
+        }
+
         const canonicalId = prov?.userId || prov?.id || memberId;
         if (seenProviderIds.has(canonicalId)) {
           // If a secondary alias member exists in Redis, purge it asynchronously
@@ -261,6 +286,18 @@ export class LocationsService {
         }
 
         const user = userMap.get(memberId);
+        const isAdmin = user && (
+          user.role === "admin" ||
+          user.role === "super_admin" ||
+          (typeof user.roles === "string" && (user.roles.includes("admin") || user.roles.includes("super_admin"))) ||
+          (Array.isArray(user.roles) && (user.roles.includes("admin") || user.roles.includes("super_admin")))
+        );
+
+        if (isAdmin) {
+          redis.zrem("patients:locations:online", memberId).catch(() => {});
+          continue;
+        }
+
         const canonicalId = user?.id || memberId;
         if (seenPatientIds.has(canonicalId)) {
           continue;
@@ -384,12 +421,25 @@ export class LocationsService {
       throw new BadRequestException(`Longitude ${longitude} is out of valid range [-180, 180]`);
     }
 
+    // If a provider ID (e.g. prov-uuid) was passed, resolve to provider's canonical userId
+    let canonicalUserId = id;
+    if (this.providerRepo && (id.startsWith("prov-") || id.startsWith("pro-"))) {
+      try {
+        const prov = await this.providerRepo.findOne({ where: { id } }).catch(() => null);
+        if (prov?.userId) {
+          canonicalUserId = prov.userId;
+        }
+      } catch (_) {}
+    }
+
     // Try to find by location ID or user ID
-    let loc = await this.locationRepo.findOne({ where: [{ id }, { userId: id }] });
+    let loc = await this.locationRepo.findOne({
+      where: [{ id: canonicalUserId }, { userId: canonicalUserId }, { id }, { userId: id }],
+    });
     let resolvedRole = roleOverride || loc?.role;
     if (!resolvedRole) {
       if (this.userRepo) {
-        const user = await this.userRepo.findOne({ where: [{ id }, { email: id }] }).catch(() => null);
+        const user = await this.userRepo.findOne({ where: [{ id: canonicalUserId }, { id }] }).catch(() => null);
         if (user?.role) resolvedRole = user.role;
       }
     }
@@ -397,14 +447,15 @@ export class LocationsService {
 
     if (!loc) {
       loc = new LocationEntity();
-      loc.id = id.startsWith("loc-") ? id : `loc-${crypto.randomUUID()}`;
-      loc.userId = id;
+      loc.id = `loc-${canonicalUserId}`;
+      loc.userId = canonicalUserId;
       loc.role = resolvedRole;
       loc.status = "available";
       loc.privacyMode = false;
     } else if (!loc.role || roleOverride) {
       loc.role = resolvedRole;
     }
+    loc.userId = canonicalUserId;
 
     if (loc.status === "offline") {
       loc.status = "available";
@@ -447,7 +498,7 @@ export class LocationsService {
     const redisKey = loc.role === "patient" ? "patients:locations:online" : "providers:locations:online";
     if (redis) {
       try {
-        const memberId = loc.userId || id;
+        const memberId = loc.userId || canonicalUserId || id;
         if (loc.status !== "offline") {
           // Redis GEOADD: key longitude latitude member (longitude MUST precede latitude in Redis)
           await redis.geoadd(redisKey, longitude, latitude, memberId);

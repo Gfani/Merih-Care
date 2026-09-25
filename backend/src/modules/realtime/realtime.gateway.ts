@@ -231,11 +231,6 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         }
       }
 
-      const isProvider = role === "provider" || roles.includes("provider") || (socket as any).hasProviderAccount;
-      if (isProvider) {
-        // Clear stale Redis provider keys on provider reconnect
-        this.purgeStaleOnlineProviders().catch(() => {});
-      }
       const isAdmin =
         role === "admin" ||
         role === "super_admin" ||
@@ -244,6 +239,21 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         (socket as any).hasAdminAccount ||
         !!(socket as any).adminRole ||
         (typeof role === "string" && role.includes("admin"));
+
+      // A genuine field provider session is strictly NOT an admin session
+      const isProvider = !isAdmin && (role === "provider" || (roles.includes("provider") && !roles.includes("admin")) || (socket as any).hasProviderAccount);
+
+      if (isProvider) {
+        // Clear stale Redis provider keys on provider reconnect
+        this.purgeStaleOnlineProviders().catch(() => {});
+      } else if (isAdmin) {
+        // Ensure admin user is never present in online providers or patients
+        const redis = getLocationsRedisClient();
+        if (redis) {
+          redis.zrem("providers:locations:online", userId).catch(() => {});
+          redis.zrem("patients:locations:online", userId).catch(() => {});
+        }
+      }
 
       // Auto-join personal room
       const personalRoom = isProvider ? `provider:${userId}` : (isAdmin ? `admin:${userId}` : `patient:${userId}`);
@@ -514,11 +524,17 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
       const activeProviderUserIds = new Set<string>();
       for (const [_, info] of socketUserMap.entries()) {
+        const infoIsAdmin =
+          info.role === "admin" ||
+          info.role === "super_admin" ||
+          (info as any).adminRole ||
+          (info as any).roles?.includes("admin");
         if (
           info.userId &&
+          !infoIsAdmin &&
           (info.role === "provider" ||
             (info as any).hasProviderAccount ||
-            (info as any).roles?.includes("provider"))
+            ((info as any).roles?.includes("provider") && !(info as any).roles?.includes("admin")))
         ) {
           activeProviderUserIds.add(info.userId);
         }
@@ -699,7 +715,16 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   @SubscribeMessage("join_provider")
   async handleJoinProvider(@ConnectedSocket() socket: Socket) {
     const { userId, role, roles } = (socket as any);
-    const isProvider = role === "provider" || (roles as string[])?.includes("provider") || (socket as any).hasProviderAccount;
+    const isAdmin =
+      role === "admin" ||
+      role === "super_admin" ||
+      (roles as string[])?.includes("admin") ||
+      (roles as string[])?.includes("super_admin") ||
+      (socket as any).hasAdminAccount ||
+      !!(socket as any).adminRole ||
+      (typeof role === "string" && role.includes("admin"));
+
+    const isProvider = !isAdmin && (role === "provider" || (roles as string[])?.includes("provider") || (socket as any).hasProviderAccount);
 
     if (!isProvider) {
       socket.emit("error", { message: "Provider role required" });
@@ -731,40 +756,46 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
     // Ensure provider presence & location is in Redis GEO and emitted to admin
     const redisClient = getLocationsRedisClient();
-    if (redisClient) {
+    if (redisClient && isProvider) {
       try {
         await this.purgeStaleOnlineProviders().catch(() => {});
         const provInRedis = await redisClient.zscore("providers:locations:online", userId);
         if (!provInRedis) {
           let loc = this.locationRepo ? await this.locationRepo.findOne({ where: [{ userId }, { id: userId }] }) : null;
-          let lat = loc?.y ?? 9.02497;
-          let lng = loc?.x ?? 38.74689;
-          if (lat > 25 && lng < 20) {
-            const temp = lat;
-            lat = lng;
-            lng = temp;
+          let prov = this.dataSource?.isInitialized
+            ? await this.dataSource.getRepository(ProviderEntity).findOne({ where: [{ userId }, { id: userId }] }).catch(() => null)
+            : null;
+          let lat = (loc && typeof loc.y === "number" && !isNaN(loc.y) && loc.y !== 0) ? loc.y : prov?.latitude;
+          let lng = (loc && typeof loc.x === "number" && !isNaN(loc.x) && loc.x !== 0) ? loc.x : prov?.longitude;
+          if (lat && lng && !isNaN(lat) && !isNaN(lng) && (lat !== 0 || lng !== 0)) {
+            if (lat > 25 && lng < 20) {
+              const temp = lat;
+              lat = lng;
+              lng = temp;
+            }
+            await redisClient.geoadd("providers:locations:online", lng, lat, userId).catch(() => {});
+            const displayName = prov?.name || loc?.name || `Provider ${userId.slice(-4)}`;
+            const payload = {
+              providerId: userId,
+              userId,
+              name: displayName,
+              role: "provider",
+              lat,
+              lng,
+              latitude: lat,
+              longitude: lng,
+              x: lng,
+              y: lat,
+              status: "available",
+              isOnline: true,
+              lastUpdated: new Date().toISOString(),
+              ts: new Date().toISOString(),
+            };
+            this.realtimeService.emitToRoom("admin_room", "location_update", payload);
+            this.realtimeService.emitToRoom("admin", "location_update", payload);
+            this.realtimeService.emitToRoom("admin_room", "provider_location_update", payload);
+            this.realtimeService.emitToRoom("admin", "provider_location_update", payload);
           }
-          await redisClient.geoadd("providers:locations:online", lng, lat, userId).catch(() => {});
-          const payload = {
-            providerId: userId,
-            userId,
-            name: loc?.name || `Provider ${userId.slice(-4)}`,
-            role: "provider",
-            lat,
-            lng,
-            latitude: lat,
-            longitude: lng,
-            x: lng,
-            y: lat,
-            status: "available",
-            isOnline: true,
-            lastUpdated: new Date().toISOString(),
-            ts: new Date().toISOString(),
-          };
-          this.realtimeService.emitToRoom("admin_room", "location_update", payload);
-          this.realtimeService.emitToRoom("admin", "location_update", payload);
-          this.realtimeService.emitToRoom("admin_room", "provider_location_update", payload);
-          this.realtimeService.emitToRoom("admin", "provider_location_update", payload);
         }
       } catch (_) {}
     }
@@ -914,13 +945,23 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   ) {
     const { userId, role } = (socket as any);
     const roles: string[] = (socket as any).roles || [];
+    const isAdmin =
+      role === "admin" ||
+      role === "super_admin" ||
+      roles.includes("admin") ||
+      roles.includes("super_admin") ||
+      (socket as any).hasAdminAccount ||
+      !!(socket as any).adminRole ||
+      (typeof role === "string" && role.includes("admin"));
+
     const isProvider =
-      role === "provider" ||
-      role === "doctor" ||
-      role === "nurse" ||
-      role === "specialist" ||
-      roles.includes("provider") ||
-      (socket as any).hasProviderAccount;
+      !isAdmin &&
+      (role === "provider" ||
+        role === "doctor" ||
+        role === "nurse" ||
+        role === "specialist" ||
+        (roles.includes("provider") && !roles.includes("admin")) ||
+        (socket as any).hasProviderAccount);
 
     // Explicitly handle when status is set to 'offline' or isOnline is false
     if (data?.status === "offline" || data?.isOnline === false) {
@@ -1289,7 +1330,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
       const uniqueOnlineProviderIds = new Set(
         [...socketUserMap.values()]
-          .filter(s => s.role === "provider" || (s as any).hasProviderAccount || (s as any).roles?.includes("provider"))
+          .filter(s => {
+            const isAdm = s.role === "admin" || s.role === "super_admin" || (s as any).adminRole || (s as any).roles?.includes("admin");
+            return !isAdm && (s.role === "provider" || (s as any).hasProviderAccount || (s as any).roles?.includes("provider"));
+          })
           .map(s => s.userId)
       );
       const onlineProviders = uniqueOnlineProviderIds.size;

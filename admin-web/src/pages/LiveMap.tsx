@@ -85,6 +85,18 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
   const routeLineRef = useRef<L.Polyline | null>(null);
   const prevCountRef = useRef<number>(0);
 
+  // Helper to obtain logged in admin's user ID so admin never appears as a provider pin on the map
+  const getCurrentAdminId = (): string => {
+    try {
+      const raw = sessionStorage.getItem("admin_user") || localStorage.getItem("admin_user");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return String(parsed.id || parsed.userId || "");
+      }
+    } catch (_) {}
+    return "";
+  };
+
   // Fetch location list strictly from real-time backend (silent mode prevents UI flickering)
   const fetchLocations = async (silent = false) => {
     try {
@@ -94,8 +106,13 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       setError(null);
       const data = await api.getLocations();
       const raw = Array.isArray(data) ? data : [];
+      const adminId = getCurrentAdminId();
       const normalized: LocationPin[] = raw
-        .filter((loc: any) => loc.status !== "offline" && loc.isOnline !== false)
+        .filter((loc: any) =>
+          loc.status !== "offline" &&
+          loc.isOnline !== false &&
+          (!adminId || (loc.userId !== adminId && loc.id !== adminId && loc.id !== `loc-${adminId}`))
+        )
         .map((loc: any) => {
           let lng = Number(loc.x ?? loc.longitude ?? loc.lng ?? 0);
           let lat = Number(loc.y ?? loc.latitude ?? loc.lat ?? 0);
@@ -200,6 +217,10 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       if (!targetId) return;
       const provId = updated.providerId ? String(updated.providerId) : "";
       const uId = updated.userId ? String(updated.userId) : "";
+      const adminId = getCurrentAdminId();
+      if (adminId && (targetId === adminId || provId === adminId || uId === adminId)) {
+        return;
+      }
 
       // Drop immediately if marked offline
       if (updated.status === "offline" || updated.isOnline === false) {

@@ -563,22 +563,30 @@ class LocationNotifier extends StateNotifier<LocationState> {
         }
 
         if (position == null) {
-          // 1. Try high accuracy GPS (satellite) with 6s timeout
+          // 1. Try high accuracy GPS (satellite) with 5s timeout
           try {
             position = await Geolocator.getCurrentPosition(
               desiredAccuracy: LocationAccuracy.high,
-              timeLimit: const Duration(seconds: 6),
+              timeLimit: const Duration(seconds: 5),
             );
           } catch (_) {
-            // 2. Fall back to balanced/medium (Wi-Fi & cell tower) with 4s timeout
+            // 2. Fall back to balanced/medium (Wi-Fi & cell tower) with 3s timeout
             try {
               position = await Geolocator.getCurrentPosition(
                 desiredAccuracy: LocationAccuracy.medium,
-                timeLimit: const Duration(seconds: 4),
+                timeLimit: const Duration(seconds: 3),
               );
             } catch (_) {
-              // 3. Fall back to OS cached last known position
-              position = await Geolocator.getLastKnownPosition();
+              // 3. Fall back to low accuracy with 3s timeout
+              try {
+                position = await Geolocator.getCurrentPosition(
+                  desiredAccuracy: LocationAccuracy.low,
+                  timeLimit: const Duration(seconds: 3),
+                );
+              } catch (_) {
+                // 4. Fall back to OS cached last known position
+                position = await Geolocator.getLastKnownPosition();
+              }
             }
           }
         }

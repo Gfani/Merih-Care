@@ -44,12 +44,22 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
     realtime.joinProviders();
     _loadDashboardData();
 
+    final authUser = ref.read(authProvider).user;
+    final initialProvId = authUser?['id']?.toString() ??
+        authUser?['userId']?.toString() ??
+        _myProviderId ??
+        authUser?['provider']?['id']?.toString() ??
+        '';
+
     // Auto-detect genuine hardware GPS location immediately upon opening dashboard and broadcast
     Future.microtask(() async {
       try {
+        final tracker = ref.read(locationTrackingProvider);
+        if (initialProvId.isNotEmpty) {
+          tracker.setProviderId(initialProvId);
+        }
         final detected = await ref.read(locationProvider.notifier).autoDetectCurrentLocation();
         if (detected != null && mounted) {
-          final tracker = ref.read(locationTrackingProvider);
           await tracker.emitDirectCoordinates(
             detected.latitude,
             detected.longitude,
@@ -59,12 +69,21 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
       } catch (_) {}
     });
 
-    final authUser = ref.read(authProvider).user;
-    final initialProvId = _myProviderId ??
-        authUser?['provider']?['id']?.toString() ??
-        authUser?['providerId']?.toString() ??
-        authUser?['id']?.toString() ??
-        '';
+    // If WebSocket is already connected, start tracking immediately without waiting for reconnect event
+    if (realtime.isConnected && _isOnline) {
+      realtime.joinProviders();
+      final client = ref.read(apiClientProvider);
+      final tracker = ref.read(locationTrackingProvider);
+      final s = realtime.socket;
+      if (s != null) {
+        tracker.startTracking(
+          initialProvId,
+          s,
+          client: client,
+          realtimeService: realtime,
+        );
+      }
+    }
 
     // Listen to connection state so tracking re-triggers instantly the moment WebSocket connects
     _connSub = realtime.connectionStateStream.listen((state) {
@@ -223,7 +242,7 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
       try {
         final provRes = await client.dio.get('/providers/me');
         final dynamic pData = provRes.data is Map<String, dynamic> ? provRes.data : {};
-        _myProviderId = pData['id']?.toString() ?? pData['userId']?.toString();
+        _myProviderId = pData['userId']?.toString() ?? pData['id']?.toString();
         if (pData['rating'] != null) {
           ratingVal = (pData['rating'] as num).toDouble();
         }

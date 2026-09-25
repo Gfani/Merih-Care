@@ -34,6 +34,10 @@ class LocationTrackingService with WidgetsBindingObserver {
   final _locationStreamController = StreamController<Position>.broadcast();
   Stream<Position> get locationStream => _locationStreamController.stream;
 
+  void setProviderId(String id) {
+    if (id.isNotEmpty) _providerId = id;
+  }
+
   LocationTrackingService([this._ref]) {
     try {
       WidgetsBinding.instance.addObserver(this);
@@ -125,13 +129,17 @@ class LocationTrackingService with WidgetsBindingObserver {
     String? appointmentId,
   }) async {
     String effectiveId = providerId;
-    if (effectiveId.isEmpty && _ref != null) {
+    if ((effectiveId.isEmpty || effectiveId.startsWith('prov-')) && _ref != null) {
       try {
         final authUser = _ref.read(authProvider).user;
-        effectiveId = authUser?['provider']?['id']?.toString() ??
-            authUser?['providerId']?.toString() ??
-            authUser?['id']?.toString() ??
-            '';
+        final canonicalId = authUser?['id']?.toString() ?? authUser?['userId']?.toString();
+        if (canonicalId != null && canonicalId.isNotEmpty) {
+          effectiveId = canonicalId;
+        } else {
+          effectiveId = authUser?['provider']?['id']?.toString() ??
+              authUser?['providerId']?.toString() ??
+              '';
+        }
       } catch (_) {}
     }
     final previousId = _providerId;
@@ -260,20 +268,28 @@ class LocationTrackingService with WidgetsBindingObserver {
           if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
             Position? freshPos;
             try {
-              // 1. Try high accuracy satellite GPS (up to 6s)
+              // 1. Try high accuracy satellite GPS (up to 5s)
               freshPos = await Geolocator.getCurrentPosition(
                 desiredAccuracy: LocationAccuracy.high,
-                timeLimit: const Duration(seconds: 6),
+                timeLimit: const Duration(seconds: 5),
               );
             } catch (_) {
               try {
                 // 2. Fall back to medium accuracy (Wi-Fi / Cell tower fused location in 3s)
                 freshPos = await Geolocator.getCurrentPosition(
                   desiredAccuracy: LocationAccuracy.medium,
-                  timeLimit: const Duration(seconds: 4),
+                  timeLimit: const Duration(seconds: 3),
                 );
               } catch (_) {
-                freshPos = await Geolocator.getLastKnownPosition();
+                try {
+                  // 3. Fall back to low accuracy
+                  freshPos = await Geolocator.getCurrentPosition(
+                    desiredAccuracy: LocationAccuracy.low,
+                    timeLimit: const Duration(seconds: 3),
+                  );
+                } catch (_) {
+                  freshPos = await Geolocator.getLastKnownPosition();
+                }
               }
             }
 
@@ -325,7 +341,14 @@ class LocationTrackingService with WidgetsBindingObserver {
             timeLimit: const Duration(seconds: 3),
           );
         } catch (_) {
-          fresh = await Geolocator.getLastKnownPosition();
+          try {
+            fresh = await Geolocator.getCurrentPosition(
+              desiredAccuracy: LocationAccuracy.low,
+              timeLimit: const Duration(seconds: 3),
+            );
+          } catch (_) {
+            fresh = await Geolocator.getLastKnownPosition();
+          }
         }
       }
 
@@ -371,7 +394,18 @@ class LocationTrackingService with WidgetsBindingObserver {
     _locationStreamController.add(pos);
 
     final socketToUse = _socket ?? _realtimeService?.socket ?? await ensureSocket();
-    final idToSend = _providerId ?? '';
+    var idToSend = _providerId ?? '';
+    if (idToSend.isEmpty && _ref != null) {
+      try {
+        final authUser = _ref.read(authProvider).user;
+        idToSend = authUser?['id']?.toString() ??
+            authUser?['userId']?.toString() ??
+            authUser?['provider']?['id']?.toString() ??
+            authUser?['providerId']?.toString() ??
+            '';
+        if (idToSend.isNotEmpty) _providerId = idToSend;
+      } catch (_) {}
+    }
     final payload = {
       if (idToSend.isNotEmpty) 'providerId': idToSend,
       'userId': idToSend,
