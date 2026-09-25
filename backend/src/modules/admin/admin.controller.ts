@@ -214,7 +214,14 @@ export class AdminController {
   @Get("admin/administrators")
   @Roles("super_admin")
   async getAdministrators(@Req() req: any) {
-    const isSuper = req.user?.adminRole === "super_admin" || req.user?.role === "super_admin";
+    const ownerEmail = (process.env.OWNER_EMAIL || "fanuelgoitom79@gmail.com").toLowerCase().trim();
+    const userEmail = (req.user?.email || "").toLowerCase().trim();
+    const isOwner =
+      req.user?.role === "owner" ||
+      req.user?.adminRole === "owner" ||
+      userEmail === "fanuelgoitom79@gmail.com" ||
+      (ownerEmail && userEmail === ownerEmail);
+    const isSuper = isOwner || req.user?.adminRole === "super_admin" || req.user?.role === "super_admin" || req.user?.permissions === "all";
     if (!isSuper) {
       throw new BadRequestException("Only super administrators can view full administrator directory");
     }

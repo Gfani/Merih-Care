@@ -218,14 +218,18 @@ export class AdminService {
   }
 
   async getAllAdministrators(): Promise<UserEntity[]> {
-    return this.userRepo.find({
-      where: [
-        { role: "admin", isApproved: true },
-        { role: "super_admin", isApproved: true },
-        { role: "owner", isApproved: true },
-      ],
+    const all = await this.userRepo.find({
       order: { dateJoined: "DESC" as any }
     });
+    // Return any user who has an administrative role or permissions
+    return all.filter(u =>
+      u.role === "admin" ||
+      u.role === "super_admin" ||
+      u.role === "owner" ||
+      !!u.adminRole ||
+      u.permissions === "all" ||
+      (u.roles && (u.roles.includes("admin") || u.roles.includes("owner")))
+    );
   }
 
   async createAdministrator(data: { name: string; email: string; password: string; adminRole?: string; department?: string; phone?: string }): Promise<UserEntity> {

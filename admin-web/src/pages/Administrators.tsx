@@ -44,6 +44,7 @@ export default function AdministratorsSection() {
   const isOwner =
     currentUser?.role === "owner" ||
     currentUser?.adminRole === "owner" ||
+    userEmail === "fanuelgoitom79@gmail.com" ||
     userEmail === "owner@merihcare.et" ||
     userEmail === "owner@merihcare.live";
 
