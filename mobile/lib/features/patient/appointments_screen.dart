@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../core/network/network_providers.dart';
+import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/offline_banner.dart';
 import '../../shared/widgets/error_state.dart';
 
@@ -244,11 +245,47 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> with Si
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openBooking,
-        backgroundColor: theme.primaryColor,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('Schedule Care', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 10, right: 4),
+        child: FloatingActionButton.extended(
+          onPressed: _openBooking,
+          elevation: 4,
+          highlightElevation: 6,
+          backgroundColor: theme.primaryColor,
+          icon: const Icon(Icons.add, color: Colors.white),
+          label: const Text('Schedule Care', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+        ),
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: 2,
+        onDestinationSelected: (index) {
+          switch (index) {
+            case 0:
+              context.go('/dashboard');
+              break;
+            case 1:
+              context.push('/services');
+              break;
+            case 2:
+              break;
+            case 3:
+              context.push('/chat/apt-101');
+              break;
+            case 4:
+              context.push('/profile-settings');
+              break;
+          }
+        },
+        backgroundColor: theme.brightness == Brightness.dark ? const Color(0xFF1E293B) : Colors.white,
+        elevation: 2,
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home, color: AppTheme.primaryColor), label: 'Home'),
+          NavigationDestination(icon: Icon(Icons.medical_services_outlined), selectedIcon: Icon(Icons.medical_services, color: AppTheme.primaryColor), label: 'Services'),
+          NavigationDestination(icon: Icon(Icons.calendar_today_outlined), selectedIcon: Icon(Icons.calendar_today, color: AppTheme.primaryColor), label: 'Schedule'),
+          NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble, color: AppTheme.primaryColor), label: 'Messages'),
+          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person, color: AppTheme.primaryColor), label: 'Profile'),
+        ],
       ),
       body: Column(
         children: [
@@ -279,7 +316,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> with Si
     final appointmentsForDay = _getAppointmentsForDate(_selectedDate);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -549,7 +586,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> with Si
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
       itemCount: list.length,
       itemBuilder: (context, idx) {
         final appt = list[idx];
