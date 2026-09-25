@@ -461,14 +461,40 @@ class LocationTrackingService with WidgetsBindingObserver {
     _isTracking = false;
     _isOnline = false;
 
+    var idToSend = _providerId ?? '';
+    if (idToSend.isEmpty && _ref != null) {
+      try {
+        final authUser = _ref.read(authProvider).user;
+        idToSend = authUser?['id']?.toString() ??
+            authUser?['userId']?.toString() ??
+            authUser?['provider']?['id']?.toString() ??
+            '';
+      } catch (_) {}
+    }
+
+    final offlinePayload = {
+      if (idToSend.isNotEmpty) 'providerId': idToSend,
+      if (idToSend.isNotEmpty) 'userId': idToSend,
+      'status': 'offline',
+      'isOnline': false,
+      'role': 'provider',
+    };
+
     final rt = realtimeService ?? _realtimeService;
     final socketToUse = _socket ?? rt?.socket;
     if (socketToUse != null) {
-      socketToUse.emit('provider_offline', {
-        if (_providerId != null && _providerId!.isNotEmpty) 'providerId': _providerId,
-      });
+      socketToUse.emit('provider_offline', offlinePayload);
+      socketToUse.emit('location_update', offlinePayload);
+      socketToUse.emit('provider_location_update', offlinePayload);
+      socketToUse.emit('set_status', {'status': 'offline'});
     }
     rt?.emitProviderOffline();
+
+    if (_client != null) {
+      try {
+        _client!.dio.put('/locations/status', data: {'status': 'offline'}).then((_) {}, onError: (_) {});
+      } catch (_) {}
+    }
 
     final ref = _ref;
     if (ref != null) {

@@ -316,11 +316,33 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
     const handleOffline = (payload: any) => {
       const data = payload?.data || payload;
       const targetId = String(data?.providerId || data?.patientId || data?.userId || data?.id || "");
-      if (!targetId) return;
+      const provId = data?.providerId ? String(data.providerId) : "";
+      const uId = data?.userId ? String(data.userId) : "";
+      if (!targetId && !provId && !uId) return;
 
-      setLocations(prev => prev.filter(l => l.userId !== targetId && l.id !== targetId && l.id !== `loc-${targetId}`));
-      setSelectedPin(prev => (prev?.userId === targetId || prev?.id === targetId || prev?.id === `loc-${targetId}` ? null : prev));
-      setActiveTrips(prev => prev.map(t => (t.providerId === targetId || t.providerUserId === targetId || t.patientId === targetId ? { ...t, isOnline: false } : t)));
+      setLocations(prev => prev.filter(l => {
+        const matchesTarget = targetId && (l.userId === targetId || l.id === targetId || l.id === `loc-${targetId}` || (l as any).providerId === targetId);
+        const matchesProv = provId && (l.userId === provId || l.id === provId || l.id === `loc-${provId}` || (l as any).providerId === provId);
+        const matchesUser = uId && (l.userId === uId || l.id === uId || l.id === `loc-${uId}` || (l as any).providerId === uId);
+        return !matchesTarget && !matchesProv && !matchesUser;
+      }));
+
+      setSelectedPin(prev => {
+        if (!prev) return null;
+        const matchesTarget = targetId && (prev.userId === targetId || prev.id === targetId || prev.id === `loc-${targetId}`);
+        const matchesProv = provId && (prev.userId === provId || prev.id === provId || prev.id === `loc-${provId}`);
+        const matchesUser = uId && (prev.userId === uId || prev.id === uId || prev.id === `loc-${uId}`);
+        return (matchesTarget || matchesProv || matchesUser) ? null : prev;
+      });
+
+      setActiveTrips(prev => prev.map(t => {
+        if (t.providerId === targetId || t.providerUserId === targetId || t.patientId === targetId ||
+            (provId && (t.providerId === provId || t.providerUserId === provId)) ||
+            (uId && (t.providerId === uId || t.providerUserId === uId))) {
+          return { ...t, isOnline: false };
+        }
+        return t;
+      }));
     };
 
     const handleDispatchUpdate = (payload: any) => {

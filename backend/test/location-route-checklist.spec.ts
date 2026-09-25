@@ -142,6 +142,49 @@ describe("Map, Location & Route Checklist Tests", () => {
       expect(result).toHaveLength(1); // Exactly 1 provider returned!
       expect(result[0].userId).toBe("prov-dup");
     });
+
+    it("should purge and exclude provider from active locations if provider is marked unavailable in database", async () => {
+      const mockRedis = {
+        zrange: jest.fn().mockResolvedValue(["prov-offline-1"]),
+        geopos: jest.fn().mockResolvedValue([["38.7578", "9.0192"]]),
+        zrem: jest.fn().mockResolvedValue(1),
+      };
+      (service as any).redis = mockRedis;
+      (service as any).dataSource = {
+        isInitialized: true,
+        getRepository: jest.fn().mockReturnValue({
+          find: jest.fn().mockResolvedValue([
+            { id: "prov-offline-1", userId: "user-1", available: false, status: "offline" },
+          ]),
+        }),
+      };
+
+      const result = await service.getActiveProviderLocations();
+      expect(result).toHaveLength(0); // Excluded!
+      expect(mockRedis.zrem).toHaveBeenCalledWith("providers:locations:online", "prov-offline-1");
+    });
+
+    it("should purge and exclude provider from active locations if location entity is marked offline", async () => {
+      const mockRedis = {
+        zrange: jest.fn().mockResolvedValue(["user-offline-2"]),
+        geopos: jest.fn().mockResolvedValue([["38.7578", "9.0192"]]),
+        zrem: jest.fn().mockResolvedValue(1),
+      };
+      (service as any).redis = mockRedis;
+      (service as any).dataSource = {
+        isInitialized: true,
+        getRepository: jest.fn().mockReturnValue({
+          find: jest.fn().mockResolvedValue([]),
+        }),
+      };
+      mockLocationRepo.find.mockResolvedValue([
+        { id: "loc-2", userId: "user-offline-2", status: "offline", isOnline: false },
+      ]);
+
+      const result = await service.getActiveProviderLocations();
+      expect(result).toHaveLength(0); // Excluded!
+      expect(mockRedis.zrem).toHaveBeenCalledWith("providers:locations:online", "user-offline-2");
+    });
   });
 
   describe("Active Users & Live Map Visibility", () => {

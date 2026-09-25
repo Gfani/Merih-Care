@@ -160,15 +160,24 @@ export class LocationsService {
       const onlineProviders: LocationEntity[] = [];
 
       // Query database to attach the provider's name/metadata to the Redis coordinates
-      const [providersFromDb, usersFromDb] = await Promise.all([
-        this.providerRepo ? this.providerRepo.find().catch(() => []) : [],
-        this.userRepo ? this.userRepo.find().catch(() => []) : [],
+      const effectiveProvRepo = this.providerRepo || ((this as any).dataSource?.isInitialized ? (this as any).dataSource.getRepository(ProviderEntity) : null);
+      const effectiveUserRepo = this.userRepo || ((this as any).dataSource?.isInitialized ? (this as any).dataSource.getRepository(UserEntity) : null);
+      const [providersFromDb, usersFromDb, locationsFromDb] = await Promise.all([
+        effectiveProvRepo ? effectiveProvRepo.find().catch(() => []) : [],
+        effectiveUserRepo ? effectiveUserRepo.find().catch(() => []) : [],
+        this.locationRepo ? this.locationRepo.find().catch(() => []) : [],
       ]);
 
       const provMap = new Map<string, ProviderEntity>();
       for (const p of providersFromDb) {
         if (p.userId) provMap.set(p.userId, p);
         provMap.set(p.id, p);
+      }
+
+      const locMap = new Map<string, LocationEntity>();
+      for (const l of locationsFromDb) {
+        if (l.userId) locMap.set(l.userId, l);
+        locMap.set(l.id, l);
       }
 
       const adminUserIds = new Set<string>();
@@ -206,6 +215,12 @@ export class LocationsService {
         }
 
         const prov = provMap.get(memberId);
+        // If provider turned off online status (available === false) or is marked offline/suspended, immediately purge from Redis and skip
+        if (prov && (prov.available === false || prov.status === "offline" || prov.status === "suspended")) {
+          redis.zrem("providers:locations:online", memberId).catch(() => {});
+          continue;
+        }
+
         // If providers exist in DB and this member does not match any provider, purge it
         if (provMap.size > 0 && !prov) {
           redis.zrem("providers:locations:online", memberId).catch(() => {});
@@ -213,6 +228,11 @@ export class LocationsService {
         }
 
         const canonicalId = prov?.userId || prov?.id || memberId;
+        const loc = locMap.get(memberId) || (canonicalId ? locMap.get(canonicalId) : null);
+        if (loc && (loc.status === "offline" || (loc as any).isOnline === false)) {
+          redis.zrem("providers:locations:online", memberId).catch(() => {});
+          continue;
+        }
         if (seenProviderIds.has(canonicalId)) {
           // If a secondary alias member exists in Redis, purge it asynchronously
           if (memberId !== canonicalId) {
@@ -585,12 +605,30 @@ export class LocationsService {
       try {
         if (status === "offline") {
           await redis.zrem(redisKey, userId);
+          if (loc.id && loc.id !== userId) {
+            await redis.zrem(redisKey, loc.id).catch(() => {});
+          }
         } else if (typeof loc.x === "number" && typeof loc.y === "number" && (loc.x !== 0 || loc.y !== 0)) {
           await redis.geoadd(redisKey, loc.x, loc.y, userId);
         }
       } catch (err) {
         // Safe failover
       }
+    }
+
+    // Synchronize ProviderEntity availability
+    if (this.providerRepo && (loc.role === "provider" || status === "offline")) {
+      try {
+        const prov = await this.providerRepo.findOne({ where: [{ userId }, { id: userId }] }).catch(() => null);
+        if (prov) {
+          prov.available = status !== "offline";
+          if (status === "offline") prov.status = "offline";
+          await this.providerRepo.save(prov);
+          if (status === "offline" && redis && prov.id !== userId) {
+            await redis.zrem(redisKey, prov.id).catch(() => {});
+          }
+        }
+      } catch (_) {}
     }
 
     if (this.realtimeService) {

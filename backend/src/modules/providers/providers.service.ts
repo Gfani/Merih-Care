@@ -5,6 +5,9 @@ import { ProviderEntity } from "../../database/entities/provider.entity";
 import { UserEntity } from "../../database/entities/user.entity";
 import { SessionEntity } from "../../database/entities/session.entity";
 import { NotificationsService } from "../notifications/notifications.service";
+import { LocationEntity } from "../../database/entities/location.entity";
+import { RealtimeService } from "../realtime/realtime.service";
+import { getLocationsRedisClient } from "../locations/locations.service";
 import * as crypto from "crypto";
 
 @Injectable()
@@ -20,6 +23,11 @@ export class ProvidersService {
     @Optional()
     @InjectRepository(SessionEntity)
     private readonly sessionRepo?: Repository<SessionEntity>,
+    @Optional()
+    @InjectRepository(LocationEntity)
+    private readonly locationRepo?: Repository<LocationEntity>,
+    @Optional()
+    private readonly realtimeService?: RealtimeService,
   ) {}
 
   /**
@@ -192,7 +200,39 @@ export class ProvidersService {
     if (data.name !== undefined) provider.name = data.name;
     if (data.title !== undefined) provider.title = data.title;
     if (data.pricePerVisit !== undefined) provider.pricePerVisit = data.pricePerVisit;
-    if (data.available !== undefined) provider.available = data.available;
+    if (data.available !== undefined) {
+      provider.available = data.available;
+      if (data.available === false) {
+        provider.status = "offline";
+        const redis = getLocationsRedisClient();
+        if (redis) {
+          if (userId) redis.zrem("providers:locations:online", userId).catch(() => {});
+          if (provider.id && provider.id !== userId) redis.zrem("providers:locations:online", provider.id).catch(() => {});
+        }
+        if (this.locationRepo) {
+          this.locationRepo.findOne({ where: [{ userId }, { id: userId }] }).then(async (loc) => {
+            if (loc) {
+              loc.status = "offline";
+              await this.locationRepo.save(loc).catch(() => {});
+            }
+          }).catch(() => {});
+        }
+        if (this.realtimeService) {
+          const offlinePayload = {
+            providerId: provider.id || userId,
+            userId,
+            role: "provider",
+            status: "offline",
+            isOnline: false,
+            ts: new Date().toISOString(),
+          };
+          this.realtimeService.emitToRoom("admin", "provider_offline", offlinePayload);
+          this.realtimeService.emitToRoom("admin_room", "provider_offline", offlinePayload);
+          this.realtimeService.emitToRoom("admin", "location_update", offlinePayload);
+          this.realtimeService.emitToRoom("admin_room", "location_update", offlinePayload);
+        }
+      }
+    }
     if (data.latitude !== undefined) provider.latitude = data.latitude;
     if (data.longitude !== undefined) provider.longitude = data.longitude;
     if (data.services !== undefined) provider.services = data.services;

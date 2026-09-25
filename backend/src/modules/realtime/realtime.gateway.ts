@@ -1175,34 +1175,64 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   @SubscribeMessage("provider_offline")
   async handleProviderStatus(
     @ConnectedSocket() socket: Socket,
-    @MessageBody() data: { status?: string },
+    @MessageBody() data: any,
   ) {
     const { userId } = (socket as any);
     if (!userId) return { ok: false, error: "UNAUTHORIZED" };
-    const status = data?.status || "offline";
+    const status = data?.status || (data?.isOnline === false ? "offline" : "offline");
     const redis = getLocationsRedisClient();
+    const provId = data?.providerId ? String(data.providerId) : userId;
 
     if (status === "offline") {
       if (redis) {
-        await redis.zrem("providers:locations:online", userId).catch(() => {});
+        await Promise.all([
+          redis.zrem("providers:locations:online", userId).catch(() => {}),
+          redis.zrem("patients:locations:online", userId).catch(() => {}),
+          ...(provId ? [redis.zrem("providers:locations:online", provId).catch(() => {})] : []),
+        ]);
       }
-      let loc = await this.locationRepo.findOne({ where: { userId } });
+      let loc = await this.locationRepo.findOne({ where: [{ userId }, { id: userId }] });
       if (loc) {
         loc.status = "offline";
         await this.locationRepo.save(loc);
       }
+      if (this.dataSource?.isInitialized) {
+        try {
+          const provRepo = this.dataSource.getRepository(ProviderEntity);
+          const prov = await provRepo.findOne({ where: [{ userId }, { id: userId }, { id: provId }] }).catch(() => null);
+          if (prov) {
+            prov.available = false;
+            prov.status = "offline";
+            await provRepo.save(prov);
+            if (redis && prov.id !== userId) {
+              await redis.zrem("providers:locations:online", prov.id).catch(() => {});
+            }
+          }
+        } catch (_) {}
+      }
       const offlinePayload = {
-        providerId: userId,
+        providerId: provId,
         userId,
+        role: "provider",
         status: "offline",
+        isOnline: false,
         ts: new Date().toISOString(),
       };
       if (this.server) {
         this.server.to?.("admin_room")?.emit("provider_offline", offlinePayload);
         this.server.to?.("admin")?.emit("provider_offline", offlinePayload);
+        this.server.to?.("admin_room")?.emit("location_update", { data: offlinePayload });
+        this.server.to?.("admin")?.emit("location_update", { data: offlinePayload });
+        this.server.to?.("admin_room")?.emit("location_update", offlinePayload);
+        this.server.to?.("admin")?.emit("location_update", offlinePayload);
       }
-      this.realtimeService.emitToRoom("admin", "provider_offline", offlinePayload);
-      this.realtimeService.emitToRoom("admin_room", "provider_offline", offlinePayload);
+      if (this.realtimeService) {
+        this.realtimeService.emitToRoom("admin", "provider_offline", offlinePayload);
+        this.realtimeService.emitToRoom("admin_room", "provider_offline", offlinePayload);
+        this.realtimeService.emitToRoom("admin", "location_update", offlinePayload);
+        this.realtimeService.emitToRoom("admin_room", "location_update", offlinePayload);
+      }
+      return { ok: true, status: "offline", userId };
     } else {
       let loc = await this.locationRepo.findOne({ where: { userId } });
       if (loc) {

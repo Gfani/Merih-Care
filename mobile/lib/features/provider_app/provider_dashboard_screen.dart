@@ -368,18 +368,18 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
     try {
       final client = ref.read(apiClientProvider);
       await client.dio.put('/providers/me', data: {'available': next});
+      await client.dio.put('/locations/status', data: {'status': next ? 'available' : 'offline'});
 
       final realtime = ref.read(realtimeServiceProvider);
       final tracker = ref.read(locationTrackingProvider);
       if (next) {
         realtime.setStatus('available');
         final authUser = ref.read(authProvider).user;
-        final provId = (_myProviderId != null && _myProviderId!.isNotEmpty)
-            ? _myProviderId!
-            : (authUser?['provider']?['id']?.toString() ??
-                authUser?['providerId']?.toString() ??
-                authUser?['id']?.toString() ??
-                '');
+        final provId = authUser?['id']?.toString() ??
+            authUser?['userId']?.toString() ??
+            ((_myProviderId != null && _myProviderId!.isNotEmpty) ? _myProviderId : null) ??
+            authUser?['provider']?['id']?.toString() ??
+            '';
         final socket = realtime.socket ?? await tracker.ensureSocket();
         if (socket != null) {
           tracker.startTracking(
@@ -390,7 +390,7 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
           );
         }
       } else {
-        // Toggling offline explicitly emits provider_offline and pauses/cancels getPositionStream
+        // Toggling offline explicitly emits provider_offline, location_update, and cancels getPositionStream
         tracker.stopTracking(realtimeService: realtime);
       }
     } catch (e) {
