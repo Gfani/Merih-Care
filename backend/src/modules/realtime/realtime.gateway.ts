@@ -217,7 +217,25 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         return;
       }
 
+      // Enforce ONE active session per physical user: disconnect older sessions & clean up
+      for (const [existingSocketId, existingInfo] of socketUserMap.entries()) {
+        if (existingInfo.userId === userId && existingSocketId !== socket.id) {
+          try {
+            const oldSocket = this.server?.sockets?.sockets?.get(existingSocketId);
+            if (oldSocket) {
+              oldSocket.disconnect(true);
+            }
+          } catch (_) {}
+          this.presence.unregisterSession(existingSocketId);
+          socketUserMap.delete(existingSocketId);
+        }
+      }
+
       const isProvider = role === "provider" || roles.includes("provider") || (socket as any).hasProviderAccount;
+      if (isProvider) {
+        // Clear stale Redis provider keys on provider reconnect
+        this.purgeStaleOnlineProviders().catch(() => {});
+      }
       const isAdmin =
         role === "admin" ||
         role === "super_admin" ||
@@ -317,6 +335,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
               ? prov.longitude
               : null;
 
+          // Auto-correct swapped coordinates for Ethiopia (lat ~3-15, lng ~33-48)
+          if (initialLat !== null && initialLng !== null && initialLat > 25 && initialLng < 20) {
+            const temp = initialLat;
+            initialLat = initialLng;
+            initialLng = temp;
+          }
+
           // If a genuine provider connects, immediately ensure valid active coordinates so they pop up on the live map the millisecond the app opens
           if (isProvider && (!initialLat || !initialLng || (initialLat === 0 && initialLng === 0))) {
             initialLat = 9.02497;
@@ -326,7 +351,12 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
           if (initialLat && initialLng && !isNaN(initialLat) && !isNaN(initialLng) && (initialLat !== 0 || initialLng !== 0)) {
             const redisKey = isProvider ? "providers:locations:online" : "patients:locations:online";
             if (redisClient) {
+              // Redis GEOADD: key longitude latitude member (longitude MUST precede latitude in Redis GEO)
               await redisClient.geoadd(redisKey, initialLng, initialLat, userId).catch(() => {});
+              // Purge alias provider entity ID from Redis so duplicate online entries never accumulate
+              if (prov && prov.id && prov.id !== userId) {
+                await redisClient.zrem(redisKey, prov.id).catch(() => {});
+              }
             }
 
             if (!loc && this.locationRepo) {
@@ -469,6 +499,58 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     }
     socketUserMap.delete(socket.id);
     socketEventRateMap.delete(socket.id);
+  }
+
+  /**
+   * Purges any stale geospatial entries in Redis older than 30 seconds or bound to a dead socket.
+   * Ensures the admin live map strictly displays exact physical providers currently online.
+   */
+  async purgeStaleOnlineProviders(): Promise<void> {
+    const redis = getLocationsRedisClient();
+    if (!redis || typeof redis.zrange !== "function") return;
+    try {
+      const members: string[] = await redis.zrange("providers:locations:online", 0, -1);
+      if (!Array.isArray(members) || members.length === 0) return;
+
+      const activeProviderUserIds = new Set<string>();
+      for (const [_, info] of socketUserMap.entries()) {
+        if (
+          info.userId &&
+          (info.role === "provider" ||
+            (info as any).hasProviderAccount ||
+            (info as any).roles?.includes("provider"))
+        ) {
+          activeProviderUserIds.add(info.userId);
+        }
+      }
+
+      const now = Date.now();
+      for (const member of members) {
+        let isStale = false;
+        if (!activeProviderUserIds.has(member)) {
+          isStale = true;
+        } else if (this.locationRepo) {
+          try {
+            const loc = await this.locationRepo.findOne({
+              where: [{ userId: member }, { id: member }],
+            });
+            if (loc && loc.locationTimestamp) {
+              const age = now - new Date(loc.locationTimestamp).getTime();
+              if (!isNaN(age) && age > 30000) {
+                const activeSession = [...socketUserMap.values()].find((s) => s.userId === member);
+                if (!activeSession || (now - (activeSession.lastPong || 0)) > 30000) {
+                  isStale = true;
+                }
+              }
+            }
+          } catch (_) {}
+        }
+
+        if (isStale) {
+          await redis.zrem("providers:locations:online", member).catch(() => {});
+        }
+      }
+    } catch (_) {}
   }
 
   // ─── Heartbeat ──────────────────────────────────────────────────
@@ -651,11 +733,17 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     const redisClient = getLocationsRedisClient();
     if (redisClient) {
       try {
+        await this.purgeStaleOnlineProviders().catch(() => {});
         const provInRedis = await redisClient.zscore("providers:locations:online", userId);
         if (!provInRedis) {
           let loc = this.locationRepo ? await this.locationRepo.findOne({ where: [{ userId }, { id: userId }] }) : null;
-          const lat = loc?.y ?? 9.02497;
-          const lng = loc?.x ?? 38.74689;
+          let lat = loc?.y ?? 9.02497;
+          let lng = loc?.x ?? 38.74689;
+          if (lat > 25 && lng < 20) {
+            const temp = lat;
+            lat = lng;
+            lng = temp;
+          }
           await redisClient.geoadd("providers:locations:online", lng, lat, userId).catch(() => {});
           const payload = {
             providerId: userId,
@@ -894,11 +982,18 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       return { ok: false, error: "Only providers may send location updates during appointments" };
     }
 
-    const lat = Number(data?.lat ?? data?.latitude ?? data?.y);
-    const lng = Number(data?.lng ?? data?.longitude ?? data?.x);
+    let lat = Number(data?.lat ?? data?.latitude ?? data?.y);
+    let lng = Number(data?.lng ?? data?.longitude ?? data?.x);
 
     if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
       return { ok: false, error: "INVALID_COORDINATES" };
+    }
+
+    // Auto-correct swapped coordinates for Ethiopia (lat ~3-15, lng ~33-48)
+    if (lat > 25 && lng < 20) {
+      const temp = lat;
+      lat = lng;
+      lng = temp;
     }
 
     const now = Date.now();
@@ -968,12 +1063,13 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       await this.locationRepo.save(loc).catch(() => {});
     }
 
-    // In-memory Redis Geospatial update
+    // In-memory Redis Geospatial update: strictly longitude before latitude
     const redis = getLocationsRedisClient();
     if (redis) {
       redis.geoadd(redisKey, lng, lat, userId).catch(() => {});
+      // Purge alias providerId from Redis so duplicate online entries never accumulate
       if (isProvider && data?.providerId && data.providerId !== userId) {
-        redis.geoadd(redisKey, lng, lat, data.providerId).catch(() => {});
+        redis.zrem(redisKey, data.providerId).catch(() => {});
       }
     }
 
@@ -981,7 +1077,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
     // 3. Immediately broadcast the update to the admin dashboard
     const broadcastData = {
-      providerId: isProvider ? (data?.providerId || userId) : undefined,
+      providerId: isProvider ? userId : undefined,
       userId,
       name: displayName || loc.name || (isProvider ? `Provider ${userId.slice(-4)}` : `User ${userId.slice(-4)}`),
       role: targetRole,
@@ -1191,9 +1287,20 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         this.appointmentRepo.count({ where: { status: "requested" } } as any),
       ]);
 
-      const onlineProviders = [...socketUserMap.values()].filter(s => s.role === "provider").length;
-      const onlinePatients = [...socketUserMap.values()].filter(s => s.role === "patient").length;
-      const totalConnections = socketUserMap.size;
+      const uniqueOnlineProviderIds = new Set(
+        [...socketUserMap.values()]
+          .filter(s => s.role === "provider" || (s as any).hasProviderAccount || (s as any).roles?.includes("provider"))
+          .map(s => s.userId)
+      );
+      const onlineProviders = uniqueOnlineProviderIds.size;
+
+      const uniqueOnlinePatientIds = new Set(
+        [...socketUserMap.values()]
+          .filter(s => (s.role === "patient" || !s.role) && !uniqueOnlineProviderIds.has(s.userId))
+          .map(s => s.userId)
+      );
+      const onlinePatients = uniqueOnlinePatientIds.size;
+      const totalConnections = new Set([...socketUserMap.values()].map(s => s.userId)).size;
 
       this.realtimeService.emitAdminMetrics({
         activeAppointments,

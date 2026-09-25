@@ -96,22 +96,42 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       const raw = Array.isArray(data) ? data : [];
       const normalized: LocationPin[] = raw
         .filter((loc: any) => loc.status !== "offline" && loc.isOnline !== false)
-        .map((loc: any) => ({
-          id: String(loc.id || loc.userId || `pin-${Date.now()}`),
-          userId: String(loc.userId || loc.id),
-          name: loc.name || (loc.userId ? `User ${String(loc.userId).substring(0, 6)}` : `User ${loc.id || "00"}`),
-          role: loc.role || "provider",
-          status: loc.status || "available",
-          isOnline: loc.isOnline !== false,
-          x: Number(loc.x ?? loc.longitude ?? loc.lng ?? 0),
-          y: Number(loc.y ?? loc.latitude ?? loc.lat ?? 0),
-          accuracy: loc.accuracy ?? 5,
-          privacyMode: Boolean(loc.privacyMode),
-          locationTimestamp: loc.locationTimestamp || loc.updatedAt || new Date().toISOString(),
-        }))
+        .map((loc: any) => {
+          let lng = Number(loc.x ?? loc.longitude ?? loc.lng ?? 0);
+          let lat = Number(loc.y ?? loc.latitude ?? loc.lat ?? 0);
+          // Ethiopian coordinate check: lat ~ 3-15, lng ~ 33-48
+          if (lat > 25 && lng < 20) {
+            const temp = lat;
+            lat = lng;
+            lng = temp;
+          }
+          const uId = String(loc.userId || loc.id || "");
+          return {
+            id: String(loc.id || loc.userId || `pin-${Date.now()}`),
+            userId: uId,
+            name: loc.name || (loc.userId ? `User ${String(loc.userId).substring(0, 6)}` : `User ${loc.id || "00"}`),
+            role: loc.role || "provider",
+            status: loc.status || "available",
+            isOnline: loc.isOnline !== false,
+            x: lng,
+            y: lat,
+            accuracy: loc.accuracy ?? 5,
+            privacyMode: Boolean(loc.privacyMode),
+            locationTimestamp: loc.locationTimestamp || loc.updatedAt || new Date().toISOString(),
+          };
+        })
         .filter((pin: LocationPin) => !isNaN(pin.x) && !isNaN(pin.y) && !(pin.x === 0 && pin.y === 0));
 
-      setLocations(normalized);
+      // Strictly deduplicate pins by canonical userId
+      const uniquePins = new Map<string, LocationPin>();
+      for (const pin of normalized) {
+        const key = pin.userId || pin.id;
+        if (!uniquePins.has(key)) {
+          uniquePins.set(key, pin);
+        }
+      }
+
+      setLocations(Array.from(uniquePins.values()));
     } catch (err: any) {
       if (!silent) {
         setError(err.message || "Failed to fetch map locations.");
@@ -193,16 +213,25 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
         return;
       }
 
-      const lat = Number(updated.lat ?? updated.latitude ?? updated.y);
-      const lng = Number(updated.lng ?? updated.longitude ?? updated.x);
+      let lat = Number(updated.lat ?? updated.latitude ?? updated.y);
+      let lng = Number(updated.lng ?? updated.longitude ?? updated.x);
       if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) return;
+
+      // Auto-correct swapped coordinates for Ethiopia (lat ~3-15, lng ~33-48)
+      if (lat > 25 && lng < 20) {
+        const temp = lat;
+        lat = lng;
+        lng = temp;
+      }
 
       const role = updated.role || updated.targetRole || (updated.patientId ? "patient" : "provider");
       const isPatient = role === "patient";
-      const name = updated.name || (isPatient ? `Patient ${targetId.slice(-4)}` : `Provider ${targetId.slice(-4)}`);
+      const canonicalUserId = uId || provId || targetId;
+      const name = updated.name || (isPatient ? `Patient ${canonicalUserId.slice(-4)}` : `Provider ${canonicalUserId.slice(-4)}`);
 
       setLocations(prev => {
         const idx = prev.findIndex(l =>
+          (canonicalUserId && (l.userId === canonicalUserId || l.id === canonicalUserId || l.id === `loc-${canonicalUserId}`)) ||
           (targetId && (l.userId === targetId || l.id === targetId || l.id === `loc-${targetId}`)) ||
           (provId && (l.userId === provId || (l as any).providerId === provId || l.id === provId || l.id === `loc-${provId}`)) ||
           (uId && (l.userId === uId || (l as any).providerId === uId || l.id === uId || l.id === `loc-${uId}`))
@@ -211,6 +240,7 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
           const updatedList = [...prev];
           updatedList[idx] = {
             ...updatedList[idx],
+            userId: canonicalUserId,
             role: role || updatedList[idx].role,
             name: updated.name || updatedList[idx].name,
             x: lng,
@@ -225,8 +255,8 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
           return [
             ...prev,
             {
-              id: `loc-${targetId}`,
-              userId: targetId,
+              id: `loc-${canonicalUserId}`,
+              userId: canonicalUserId,
               role: role,
               name: name,
               status: updated.status || "available",
@@ -289,15 +319,51 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       if (["searching", "accepted", "on_the_way", "in_progress"].includes(data.status)) {
         let pts: Array<[number, number]> = [];
         if (Array.isArray(data.routePoints) && data.routePoints.length > 0) {
-          pts = data.routePoints.map((pt: any) => [
-            Number(pt.lat ?? pt[0]),
-            Number(pt.lng ?? pt[1]),
-          ]);
+          pts = data.routePoints.map((pt: any) => {
+            let pLat = Number(pt.lat ?? (Array.isArray(pt) ? pt[0] : 0));
+            let pLng = Number(pt.lng ?? (Array.isArray(pt) ? pt[1] : 0));
+            // GeoJSON coordinates are [lng, lat]
+            if (pLat > 25 && pLng < 20) {
+              const temp = pLat;
+              pLat = pLng;
+              pLng = temp;
+            }
+            return [pLat, pLng] as [number, number];
+          });
         } else if (data.providerLat && data.providerLng) {
+          let provLat = Number(data.providerLat);
+          let provLng = Number(data.providerLng);
+          if (provLat > 25 && provLng < 20) {
+            const temp = provLat;
+            provLat = provLng;
+            provLng = temp;
+          }
+          let patLat = Number(data.patientLat || 9.02497);
+          let patLng = Number(data.patientLng || 38.74689);
+          if (patLat > 25 && patLng < 20) {
+            const temp = patLat;
+            patLat = patLng;
+            patLng = temp;
+          }
           pts = [
-            [Number(data.providerLat), Number(data.providerLng)],
-            [Number(data.patientLat || 9.02497), Number(data.patientLng || 38.74689)],
+            [provLat, provLng],
+            [patLat, patLng],
           ];
+        }
+
+        let patLat = Number(data.patientLat || 9.02497);
+        let patLng = Number(data.patientLng || 38.74689);
+        if (patLat > 25 && patLng < 20) {
+          const temp = patLat;
+          patLat = patLng;
+          patLng = temp;
+        }
+        let provLat = Number(data.providerLat || 9.018);
+        let provLng = Number(data.providerLng || 38.765);
+        if (provLat > 25 && provLng < 20) {
+          const temp = provLat;
+          provLat = provLng;
+          provLng = temp;
         }
 
         const newTrip: ActiveTrip = {
@@ -308,14 +374,14 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
           patientId: String(data.patientId || ""),
           patientName: data.patientName || "Patient",
           patientPhone: data.patientPhone,
-          patientLat: Number(data.patientLat || 9.02497),
-          patientLng: Number(data.patientLng || 38.74689),
+          patientLat: patLat,
+          patientLng: patLng,
           providerId: String(data.providerId || ""),
           providerUserId: String(data.providerUserId || data.providerId || ""),
           providerName: data.providerName || "Matched Clinician",
           providerPhone: data.providerPhone,
-          providerLat: Number(data.providerLat || 9.018),
-          providerLng: Number(data.providerLng || 38.765),
+          providerLat: provLat,
+          providerLng: provLng,
           routePoints: pts,
           distanceKm: data.distanceKm ? Number(data.distanceKm) : undefined,
           etaMinutes: data.etaMinutes ? Number(data.etaMinutes) : undefined,
@@ -527,9 +593,16 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
     const CLUSTER_THRESHOLD = 0.008; // ~800m threshold
 
     filtered.forEach(pin => {
-      const lat = pin.y;
-      const lng = pin.x;
+      let lat = pin.y;
+      let lng = pin.x;
       if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) return;
+
+      // Auto-correct swapped coordinates
+      if (lat > 25 && lng < 20) {
+        const temp = lat;
+        lat = lng;
+        lng = temp;
+      }
 
       let added = false;
       for (const c of clusters) {
@@ -809,12 +882,21 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
     }
   }, [locations, filter, activeDispatch, activeTrips]);
 
-  const filteredPins = locations.filter(loc => {
-    if (loc.status === "offline" || loc.isOnline === false) return false;
-    if (filter === "providers") return loc.role === "provider";
-    if (filter === "patients") return loc.role === "patient";
-    return true;
-  });
+  const filteredPins = Array.from(
+    locations
+      .filter(loc => {
+        if (loc.status === "offline" || loc.isOnline === false) return false;
+        if (filter === "providers") return loc.role === "provider";
+        if (filter === "patients") return loc.role === "patient";
+        return true;
+      })
+      .reduce((map, loc) => {
+        const k = loc.userId || loc.id;
+        if (!map.has(k)) map.set(k, loc);
+        return map;
+      }, new Map<string, LocationPin>())
+      .values()
+  );
 
   const activeTasksList = activeTrips.filter(t =>
     ["searching", "accepted", "on_the_way", "in_progress"].includes(t.status)
@@ -1044,13 +1126,13 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
           ))}
         </div>
 
-        {/* Count indicators (Strictly active & online) */}
+        {/* Count indicators (Strictly active & online unique users) */}
         <div className="grid grid-cols-2 gap-1.5">
           {[
-            { label: "Online Providers", count: locations.filter(p => p.role === "provider" && p.status !== "offline" && p.isOnline !== false).length, color: "#0d7c6a" },
-            { label: "Active Patients", count: locations.filter(p => p.role === "patient" && p.status !== "offline" && p.isOnline !== false).length, color: "#1b6fba" },
+            { label: "Online Providers", count: new Set(locations.filter(p => p.role === "provider" && p.status !== "offline" && p.isOnline !== false).map(p => p.userId || p.id)).size, color: "#0d7c6a" },
+            { label: "Active Patients", count: new Set(locations.filter(p => p.role === "patient" && p.status !== "offline" && p.isOnline !== false).map(p => p.userId || p.id)).size, color: "#1b6fba" },
             { label: "Active Tasks", count: activeTasksList.length, color: "#d97706" },
-            { label: "Emergencies", count: locations.filter(p => p.status === "critical" && p.isOnline !== false).length, color: "#dc2626" },
+            { label: "Emergencies", count: new Set(locations.filter(p => p.status === "critical" && p.isOnline !== false).map(p => p.userId || p.id)).size, color: "#dc2626" },
           ].map(s => (
             <div key={s.label} className="bg-white dark:bg-slate-800 border border-[#e2e8ee] dark:border-slate-700 rounded-[8px] px-2 py-1.5 text-center shadow-xs">
               <p className="text-sm font-bold" style={{ color: s.color }}>{s.count}</p>

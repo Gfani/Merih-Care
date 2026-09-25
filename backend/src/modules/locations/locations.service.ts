@@ -170,19 +170,37 @@ export class LocationsService {
         provMap.set(p.id, p);
       }
 
+      const seenProviderIds = new Set<string>();
       for (let i = 0; i < members.length; i++) {
         const memberId = members[i];
         const pos = positions[i];
         if (!pos) continue;
-        const lng = parseFloat(pos[0]);
-        const lat = parseFloat(pos[1]);
+        let lng = parseFloat(pos[0]);
+        let lat = parseFloat(pos[1]);
         if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) continue;
 
+        // Auto-correct swapped coordinates for Ethiopia (lat ~3-15, lng ~33-48)
+        if (lat > 25 && lng < 20) {
+          const temp = lat;
+          lat = lng;
+          lng = temp;
+        }
+
         const prov = provMap.get(memberId);
+        const canonicalId = prov?.userId || prov?.id || memberId;
+        if (seenProviderIds.has(canonicalId)) {
+          // If a secondary alias member exists in Redis, purge it asynchronously
+          if (memberId !== canonicalId) {
+            redis.zrem("providers:locations:online", memberId).catch(() => {});
+          }
+          continue;
+        }
+        seenProviderIds.add(canonicalId);
+
         const entry = new LocationEntity();
-        entry.id = `loc-${memberId}`;
-        entry.userId = memberId;
-        (entry as any).providerId = memberId;
+        entry.id = `loc-${canonicalId}`;
+        entry.userId = canonicalId;
+        (entry as any).providerId = canonicalId;
         entry.role = "provider";
         entry.status = "available";
         entry.accuracy = 5;
@@ -195,7 +213,7 @@ export class LocationsService {
         (entry as any).latitude = lat;
         (entry as any).longitude = lng;
         (entry as any).isOnline = true;
-        (entry as any).name = prov?.name || `Provider ${memberId.slice(-4)}`;
+        (entry as any).name = prov?.name || `Provider ${canonicalId.slice(-4)}`;
         onlineProviders.push(entry);
       }
 
@@ -226,18 +244,32 @@ export class LocationsService {
         userMap.set(u.id, u);
       }
 
+      const seenPatientIds = new Set<string>();
       for (let i = 0; i < members.length; i++) {
         const memberId = members[i];
         const pos = positions[i];
         if (!pos) continue;
-        const lng = parseFloat(pos[0]);
-        const lat = parseFloat(pos[1]);
+        let lng = parseFloat(pos[0]);
+        let lat = parseFloat(pos[1]);
         if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) continue;
 
+        // Auto-correct swapped coordinates for Ethiopia
+        if (lat > 25 && lng < 20) {
+          const temp = lat;
+          lat = lng;
+          lng = temp;
+        }
+
         const user = userMap.get(memberId);
+        const canonicalId = user?.id || memberId;
+        if (seenPatientIds.has(canonicalId)) {
+          continue;
+        }
+        seenPatientIds.add(canonicalId);
+
         const entry = new LocationEntity();
-        entry.id = `loc-pat-${memberId}`;
-        entry.userId = memberId;
+        entry.id = `loc-pat-${canonicalId}`;
+        entry.userId = canonicalId;
         entry.role = "patient";
         entry.status = "available";
         entry.accuracy = 10;
@@ -250,7 +282,7 @@ export class LocationsService {
         (entry as any).latitude = lat;
         (entry as any).longitude = lng;
         (entry as any).isOnline = true;
-        (entry as any).name = user?.name || `Patient ${memberId.slice(-4)}`;
+        (entry as any).name = user?.name || `Patient ${canonicalId.slice(-4)}`;
         onlinePatients.push(entry);
       }
 
@@ -338,6 +370,13 @@ export class LocationsService {
     if (typeof latitude !== "number" || typeof longitude !== "number" || isNaN(latitude) || isNaN(longitude)) {
       throw new BadRequestException("Invalid coordinates: latitude and longitude must be numbers");
     }
+    // Auto-correct swapped coordinates for Ethiopia (lat ~3-15, lng ~33-48)
+    if (latitude > 25 && longitude < 20) {
+      const temp = latitude;
+      latitude = longitude;
+      longitude = temp;
+    }
+
     if (latitude < -90 || latitude > 90) {
       throw new BadRequestException(`Latitude ${latitude} is out of valid range [-90, 90]`);
     }
@@ -412,13 +451,20 @@ export class LocationsService {
         if (loc.status !== "offline") {
           // Redis GEOADD: key longitude latitude member (longitude MUST precede latitude in Redis)
           await redis.geoadd(redisKey, longitude, latitude, memberId);
-          if (loc.userId && loc.userId !== id) {
-            await redis.geoadd(redisKey, longitude, latitude, loc.userId);
+          // Purge secondary alias from Redis if different from memberId
+          if (id && id !== memberId) {
+            await redis.zrem(redisKey, id).catch(() => {});
+          }
+          if (loc.userId && loc.userId !== memberId) {
+            await redis.zrem(redisKey, loc.userId).catch(() => {});
           }
         } else {
           await redis.zrem(redisKey, memberId);
-          if (loc.userId && loc.userId !== id) {
-            await redis.zrem(redisKey, loc.userId);
+          if (id && id !== memberId) {
+            await redis.zrem(redisKey, id).catch(() => {});
+          }
+          if (loc.userId && loc.userId !== memberId) {
+            await redis.zrem(redisKey, loc.userId).catch(() => {});
           }
         }
       } catch (err) {
@@ -589,8 +635,13 @@ export class LocationsService {
                 : item.coordinates
                 ? [item.coordinates.longitude, item.coordinates.latitude]
                 : [0, 0];
-              const lng = Array.isArray(coords) ? parseFloat(coords[0]) : 0;
-              const lat = Array.isArray(coords) ? parseFloat(coords[1]) : 0;
+              let lng = Array.isArray(coords) ? parseFloat(coords[0]) : 0;
+              let lat = Array.isArray(coords) ? parseFloat(coords[1]) : 0;
+              if (lat > 25 && lng < 20) {
+                const temp = lat;
+                lat = lng;
+                lng = temp;
+              }
               return {
                 providerId: String(member),
                 lat,
@@ -615,10 +666,15 @@ export class LocationsService {
 
     for (const loc of locations) {
       if (loc.status === "offline") continue;
-      const lat = loc.y;
-      const lng = loc.x;
+      let lat = loc.y;
+      let lng = loc.x;
       if (typeof lat !== "number" || typeof lng !== "number" || isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
         continue;
+      }
+      if (lat > 25 && lng < 20) {
+        const temp = lat;
+        lat = lng;
+        lng = temp;
       }
       const distInfo = this.calculateDistanceAndEta(patientLat, patientLng, lat, lng);
       const distKm = parseFloat(distInfo.distance);

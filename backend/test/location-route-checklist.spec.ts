@@ -116,6 +116,32 @@ describe("Map, Location & Route Checklist Tests", () => {
       expect(result[0].y).toBe(9.0192);
       expect((result[0] as any).isOnline).toBe(true);
     });
+
+    it("should automatically correct swapped coordinates (lat > 25 && lng < 20)", async () => {
+      const mockRedis = {
+        zrange: jest.fn().mockResolvedValue(["prov-swapped"]),
+        geopos: jest.fn().mockResolvedValue([["9.0192", "38.7578"]]), // lng=9.0192, lat=38.7578 (inverted)
+      };
+      (service as any).redis = mockRedis;
+
+      const result = await service.getActiveProviderLocations();
+      expect(result).toHaveLength(1);
+      expect(result[0].x).toBe(38.7578); // Corrected to longitude
+      expect(result[0].y).toBe(9.0192);  // Corrected to latitude
+    });
+
+    it("should deduplicate online providers when Redis contains duplicate or alias members for the same provider", async () => {
+      const mockRedis = {
+        zrange: jest.fn().mockResolvedValue(["prov-dup", "prov-dup"]),
+        geopos: jest.fn().mockResolvedValue([["38.7578", "9.0192"], ["38.7578", "9.0192"]]),
+        zrem: jest.fn().mockResolvedValue(1),
+      };
+      (service as any).redis = mockRedis;
+
+      const result = await service.getActiveProviderLocations();
+      expect(result).toHaveLength(1); // Exactly 1 provider returned!
+      expect(result[0].userId).toBe("prov-dup");
+    });
   });
 
   describe("Active Users & Live Map Visibility", () => {

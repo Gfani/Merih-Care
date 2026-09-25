@@ -66,12 +66,14 @@ export class LocationsController {
 
   @Put(":id/move")
   @UseGuards(JwtAuthGuard)
-  async move(@Param("id") id: string, @Body() body: MoveLocationDto) {
+  async move(@Param("id") id: string, @Body() body: any) {
+    const latitude = Number(body?.latitude ?? body?.lat ?? body?.y);
+    const longitude = Number(body?.longitude ?? body?.lng ?? body?.x);
     return this.locationsService.updateLocation(
       id,
-      body.latitude,
-      body.longitude,
-      body.accuracy || 0,
+      latitude,
+      longitude,
+      body?.accuracy || 0,
     );
   }
 

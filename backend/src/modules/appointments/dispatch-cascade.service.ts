@@ -233,8 +233,13 @@ export class DispatchCascadeService {
                   : item.coordinates
                   ? [item.coordinates.longitude, item.coordinates.latitude]
                   : [0, 0];
-                const lng = Array.isArray(coords) ? parseFloat(coords[0]) : 0;
-                const lat = Array.isArray(coords) ? parseFloat(coords[1]) : 0;
+                let lng = Array.isArray(coords) ? parseFloat(coords[0]) : 0;
+                let lat = Array.isArray(coords) ? parseFloat(coords[1]) : 0;
+                if (lat > 25 && lng < 20) {
+                  const temp = lat;
+                  lat = lng;
+                  lng = temp;
+                }
                 return {
                   providerId: String(member),
                   lat,

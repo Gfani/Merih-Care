@@ -905,8 +905,13 @@ export class AppointmentsService {
         try {
           const pos = await redis.geopos("providers:locations:online", provUserId);
           if (pos && pos[0]) {
-            const lng = parseFloat(pos[0][0]);
-            const lat = parseFloat(pos[0][1]);
+            let lng = parseFloat(pos[0][0]);
+            let lat = parseFloat(pos[0][1]);
+            if (lat > 25 && lng < 20) {
+              const temp = lat;
+              lat = lng;
+              lng = temp;
+            }
             if (!isNaN(lat) && !isNaN(lng) && (lat !== 0 || lng !== 0)) {
               providerLat = lat;
               providerLng = lng;
