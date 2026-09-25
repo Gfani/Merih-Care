@@ -279,12 +279,15 @@ export class AdminService {
 
     // Resolve actor details
     const actorUser = actorId ? await this.userRepo.findOne({ where: { id: actorId } }) : null;
-    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+    const ownerEmail = (process.env.OWNER_EMAIL || "fanuelgoitom79@gmail.com").toLowerCase().trim();
+    const actorEmail = (actorUser?.email || "").toLowerCase().trim();
+    const targetEmail = (targetUser.email || "").toLowerCase().trim();
 
     const isActorOwner =
       actorUser?.role === "owner" ||
       actorUser?.adminRole === "owner" ||
-      (actorUser?.email && actorUser.email.toLowerCase().trim() === ownerEmail);
+      actorEmail === "fanuelgoitom79@gmail.com" ||
+      (ownerEmail && actorEmail === ownerEmail);
 
     const isActorSuper =
       isActorOwner ||
@@ -299,7 +302,8 @@ export class AdminService {
     const isTargetOwner =
       targetUser.role === "owner" ||
       targetUser.adminRole === "owner" ||
-      (targetUser.email && targetUser.email.toLowerCase().trim() === ownerEmail);
+      targetEmail === "fanuelgoitom79@gmail.com" ||
+      (ownerEmail && targetEmail === ownerEmail);
 
     if (isTargetOwner) {
       throw new Error("The platform Owner account cannot be deleted under any circumstances");
@@ -363,7 +367,7 @@ export class AdminService {
       throw new Error("Target user is not an administrator account. Operation rejected.");
     }
 
-    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+    const ownerEmail = (process.env.OWNER_EMAIL || "fanuelgoitom79@gmail.com").toLowerCase().trim();
     const actorUser = actorEmail ? await this.userRepo.findOne({ where: { email: actorEmail } }) : null;
 
     const isActorOwner =
@@ -409,7 +413,7 @@ export class AdminService {
 
   async promoteAdministrator(actorId: string, targetUserId: string, targetAdminRole: string): Promise<UserEntity> {
     const actorUser = await this.userRepo.findOne({ where: { id: actorId } });
-    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+    const ownerEmail = (process.env.OWNER_EMAIL || "fanuelgoitom79@gmail.com").toLowerCase().trim();
 
     const isActorOwner =
       actorUser?.role === "owner" ||

@@ -224,7 +224,7 @@ export class AdminController {
   @Post("admin/administrators")
   @Roles("super_admin")
   async createAdministrator(@Body() body: CreateAdminDto, @Req() req: any) {
-    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+    const ownerEmail = (process.env.OWNER_EMAIL || "fanuelgoitom79@gmail.com").toLowerCase().trim();
     const isOwner =
       req.user?.role === "owner" ||
       req.user?.adminRole === "owner" ||
@@ -246,7 +246,7 @@ export class AdminController {
   @Delete("admin/administrators/:id")
   @Roles("super_admin")
   async deleteAdministrator(@Param("id") id: string, @Req() req: any) {
-    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+    const ownerEmail = (process.env.OWNER_EMAIL || "fanuelgoitom79@gmail.com").toLowerCase().trim();
     const isOwner =
       req.user?.role === "owner" ||
       req.user?.adminRole === "owner" ||
@@ -277,7 +277,7 @@ export class AdminController {
   @Post("admin/administrators/:id/reset-password")
   @Roles("super_admin")
   async resetAdminPassword(@Param("id") id: string, @Body() body: ResetAdminPasswordDto, @Req() req: any) {
-    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+    const ownerEmail = (process.env.OWNER_EMAIL || "fanuelgoitom79@gmail.com").toLowerCase().trim();
     const isOwner =
       req.user?.role === "owner" ||
       req.user?.adminRole === "owner" ||
@@ -315,7 +315,7 @@ export class AdminController {
     @Body() body: PromoteAdminDto,
     @Req() req: any
   ) {
-    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+    const ownerEmail = (process.env.OWNER_EMAIL || "fanuelgoitom79@gmail.com").toLowerCase().trim();
     const isOwner =
       req.user?.role === "owner" ||
       req.user?.adminRole === "owner" ||

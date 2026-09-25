@@ -20,11 +20,13 @@ export class PermissionsGuard implements CanActivate {
       throw new ForbiddenException("Missing authentication context");
     }
 
-    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+    const ownerEmail = (process.env.OWNER_EMAIL || "fanuelgoitom79@gmail.com").toLowerCase().trim();
+    const userEmail = (user.email || "").toLowerCase().trim();
     const isOwner =
       user.role === "owner" ||
       user.adminRole === "owner" ||
-      (user.email && user.email.toLowerCase().trim() === ownerEmail);
+      userEmail === "fanuelgoitom79@gmail.com" ||
+      (ownerEmail && userEmail === ownerEmail);
 
     // Supreme Owner & Super administrator have all privileges
     if (isOwner || user.role === "super_admin" || user.adminRole === "super_admin" || user.permissions === "all") {

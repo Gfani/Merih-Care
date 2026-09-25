@@ -20,11 +20,13 @@ export class ReportsController {
   ) {
     const stats = await this.reportsService.getDashboardStats({ startDate, endDate, service });
     const user = req?.user;
-    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+    const ownerEmail = (process.env.OWNER_EMAIL || "fanuelgoitom79@gmail.com").toLowerCase().trim();
+    const userEmail = (user?.email || "").toLowerCase().trim();
     const isOwner =
       user?.role === "owner" ||
       user?.adminRole === "owner" ||
-      (user?.email && user.email.toLowerCase().trim() === ownerEmail);
+      userEmail === "fanuelgoitom79@gmail.com" ||
+      (ownerEmail && userEmail === ownerEmail);
     const isSuperOrOwner = isOwner || user?.role === "super_admin" || user?.adminRole === "super_admin";
 
     // Revenue data must be strictly hidden from normal administrators and only visible to super_admin or owner roles

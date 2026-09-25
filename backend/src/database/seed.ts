@@ -46,52 +46,73 @@ export class DatabaseSeedService implements OnModuleInit {
       adminPasswordToUse = process.env.ADMIN_PASSWORD || process.env.TEST_ADMIN_PASSWORD || "Admin@1234";
     }
 
-    // 1. Seed & Ensure Super Administrator Accounts from Environment Variables
+    // 1. Seed & Ensure Supreme Owner and Super Administrator Accounts from Environment Variables
+    const defaultOwnerEmail = (process.env.OWNER_EMAIL || "fanuelgoitom79@gmail.com").toLowerCase().trim();
     const defaultSuperAdmin = (process.env.SUPER_ADMIN_EMAIL || "admin@merihcare.live").toLowerCase().trim();
-    const targetSuperAdmins = [defaultSuperAdmin, "fanuelgoitom79@gmail.com", "fani@g.com"].filter(Boolean);
+    const targetAdmins = [defaultOwnerEmail, defaultSuperAdmin, "fanuelgoitom79@gmail.com", "fani@g.com"].filter(Boolean);
 
-    for (const adminEmail of targetSuperAdmins) {
+    for (const adminEmail of targetAdmins) {
+      const isOwnerAccount = adminEmail === "fanuelgoitom79@gmail.com" || adminEmail === defaultOwnerEmail;
       let superAdmin = await this.userRepo.findOne({ where: { email: adminEmail } });
       if (!superAdmin) {
         const bootstrapPassword = adminPasswordToUse;
 
         superAdmin = new UserEntity();
-        superAdmin.id = "u-superadmin-" + adminEmail.split("@")[0].replace(/[^a-zA-Z0-9]/g, "");
+        superAdmin.id = isOwnerAccount ? "u-supreme-owner" : ("u-superadmin-" + adminEmail.split("@")[0].replace(/[^a-zA-Z0-9]/g, ""));
         superAdmin.email = adminEmail;
-        superAdmin.name = process.env.SUPER_ADMIN_NAME || "System Administrator";
+        superAdmin.name = isOwnerAccount ? "Fanuel Goitom (Supreme Owner)" : (process.env.SUPER_ADMIN_NAME || "System Administrator");
         superAdmin.phone = process.env.SUPER_ADMIN_PHONE || "0939044079";
         superAdmin.dateJoined = new Date().toISOString().split("T")[0];
         superAdmin.password = await bcrypt.hash(bootstrapPassword, 10);
-        superAdmin.role = "admin";
-        superAdmin.adminRole = "super_admin";
-        superAdmin.roles = "admin,provider,patient";
+        superAdmin.role = isOwnerAccount ? "owner" : "admin";
+        superAdmin.adminRole = isOwnerAccount ? "owner" : "super_admin";
+        superAdmin.roles = isOwnerAccount ? "owner,admin,provider,patient" : "admin,provider,patient";
         superAdmin.permissions = "all";
         superAdmin.isApproved = true;
         superAdmin.status = "active";
         superAdmin.tokenVersion = 0;
         superAdmin.mustChangePassword = false;
         await this.userRepo.save(superAdmin);
-        console.log(`New super administrator bootstrapped: ${adminEmail}`);
+        console.log(`New ${isOwnerAccount ? "Supreme Owner" : "super administrator"} bootstrapped: ${adminEmail}`);
       } else {
         let updated = false;
         if (adminPasswordToUse) {
           superAdmin.password = await bcrypt.hash(adminPasswordToUse, 10);
           updated = true;
         }
+        if (isOwnerAccount) {
+          if (superAdmin.role !== "owner") {
+            superAdmin.role = "owner";
+            updated = true;
+          }
+          if (superAdmin.adminRole !== "owner") {
+            superAdmin.adminRole = "owner";
+            updated = true;
+          }
+          if (!superAdmin.roles || !superAdmin.roles.includes("owner")) {
+            superAdmin.roles = "owner,admin,provider,patient";
+            updated = true;
+          }
+          if (superAdmin.name !== "Fanuel Goitom (Supreme Owner)") {
+            superAdmin.name = "Fanuel Goitom (Supreme Owner)";
+            updated = true;
+          }
+        } else {
+          if (superAdmin.role !== "admin") {
+            superAdmin.role = "admin";
+            updated = true;
+          }
+          if (superAdmin.adminRole !== "super_admin") {
+            superAdmin.adminRole = "super_admin";
+            updated = true;
+          }
+        }
+        if (superAdmin.permissions !== "all") {
+          superAdmin.permissions = "all";
+          updated = true;
+        }
         if (superAdmin.mustChangePassword) {
           superAdmin.mustChangePassword = false;
-          updated = true;
-        }
-        if (superAdmin.role !== "admin") {
-          superAdmin.role = "admin";
-          updated = true;
-        }
-        if (superAdmin.adminRole !== "super_admin") {
-          superAdmin.adminRole = "super_admin";
-          updated = true;
-        }
-        if (!superAdmin.roles || !superAdmin.roles.includes("admin")) {
-          superAdmin.roles = "admin,provider,patient";
           updated = true;
         }
         if (superAdmin.status !== "active") {
@@ -105,7 +126,7 @@ export class DatabaseSeedService implements OnModuleInit {
         if (updated) {
           await this.userRepo.save(superAdmin);
         }
-        console.log(`Super administrator configured: ${adminEmail}`);
+        console.log(`${isOwnerAccount ? "Supreme Owner" : "Super administrator"} configured: ${adminEmail}`);
       }
     }
 

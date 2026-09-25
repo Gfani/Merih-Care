@@ -732,7 +732,7 @@ export class AuthService {
     if (providerData) {
       rolesSet.add("provider");
     }
-    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+    const ownerEmail = (process.env.OWNER_EMAIL || "fanuelgoitom79@gmail.com").toLowerCase().trim();
     const isOwner =
       user.role === "owner" ||
       user.adminRole === "owner" ||
@@ -1487,7 +1487,7 @@ export class AuthService {
     const user = await this.userRepo.findOne({ where: { id } });
     if (!user) return null;
     const { password, ...result } = user;
-    const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+    const ownerEmail = (process.env.OWNER_EMAIL || "fanuelgoitom79@gmail.com").toLowerCase().trim();
     if (
       user.role === "owner" ||
       user.adminRole === "owner" ||

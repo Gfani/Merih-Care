@@ -75,11 +75,13 @@ export class JwtAuthGuard implements CanActivate {
         user.roles.split(",").map((r) => r.trim()).filter(Boolean).forEach((r) => rolesSet.add(r));
       }
       rolesSet.add("patient"); // Every user has patient capability
-      const ownerEmail = (process.env.OWNER_EMAIL || "owner@merihcare.et").toLowerCase().trim();
+      const ownerEmail = (process.env.OWNER_EMAIL || "fanuelgoitom79@gmail.com").toLowerCase().trim();
+      const userEmail = (user.email || "").toLowerCase().trim();
       const isOwner =
         user.role === "owner" ||
         user.adminRole === "owner" ||
-        (user.email && user.email.toLowerCase().trim() === ownerEmail);
+        userEmail === "fanuelgoitom79@gmail.com" ||
+        (ownerEmail && userEmail === ownerEmail);
       if (isOwner) {
         rolesSet.add("owner");
         rolesSet.add("super_admin");
