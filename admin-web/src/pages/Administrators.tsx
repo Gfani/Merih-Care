@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   ShieldCheck, ShieldAlert, UserPlus, Trash2, KeyRound, Check, X,
   Search, RefreshCw, UserCheck, Phone, Building2, Calendar, AlertCircle,
-  CheckCircle2, Clock, Crown
+  CheckCircle2, Clock, Crown, ArrowUpCircle
 } from "lucide-react";
 import { api } from "../services/api";
 import { Avatar, toast } from "../components/ui";
@@ -34,6 +34,11 @@ export default function AdministratorsSection() {
   // Reset password state
   const [newPassword, setNewPassword] = useState("");
   const [resettingPass, setResettingPass] = useState(false);
+
+  // Promote role state
+  const [promoteModal, setPromoteModal] = useState(false);
+  const [promoteRole, setPromoteRole] = useState("super_admin");
+  const [promotingAdmin, setPromotingAdmin] = useState(false);
 
   // Pending action state
   const [processingId, setProcessingId] = useState<string | null>(null);
@@ -148,6 +153,24 @@ export default function AdministratorsSection() {
       toast(err.response?.data?.message || err.message || "Failed to reset password", "error");
     } finally {
       setResettingPass(false);
+    }
+  };
+
+  const handlePromoteRole = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminToModify || !promoteRole) return;
+    setPromotingAdmin(true);
+    try {
+      await api.promoteAdministrator(adminToModify.id, promoteRole);
+      const roleLabel = promoteRole.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      toast(`${adminToModify.name} promoted to ${roleLabel} successfully`, "success");
+      setPromoteModal(false);
+      setAdminToModify(null);
+      loadData();
+    } catch (err: any) {
+      toast(err.response?.data?.message || err.message || "Failed to update role", "error");
+    } finally {
+      setPromotingAdmin(false);
     }
   };
 
@@ -380,6 +403,7 @@ export default function AdministratorsSection() {
                     const isRowOwner =
                       admin.adminRole === "owner" ||
                       admin.role === "owner" ||
+                      targetEmail === "fanuelgoitom79@gmail.com" ||
                       targetEmail === "owner@merihcare.et" ||
                       targetEmail === "owner@merihcare.live";
                     const isRowSuperAdmin =
@@ -467,7 +491,23 @@ export default function AdministratorsSection() {
                         {isSuperAdmin && (
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              {/* Reset password button: allowed if caller is Owner, or if caller is super_admin and target is not Owner */}
+                              {/* Promote Role button: visible for non-owner, non-self admins */}
+                              {!isRowOwner && !isSelf && (
+                                <button
+                                  onClick={() => {
+                                    setAdminToModify(admin);
+                                    setPromoteRole(isRowSuperAdmin ? "operations_admin" : "super_admin");
+                                    setPromoteModal(true);
+                                  }}
+                                  title="Change Role"
+                                  className="px-2.5 py-1 rounded-lg border border-purple-200 dark:border-purple-800/60 bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 text-purple-700 dark:text-purple-300 font-semibold text-[11px] flex items-center gap-1 cursor-pointer"
+                                >
+                                  <ArrowUpCircle size={12} />
+                                  Role
+                                </button>
+                              )}
+
+                              {/* Reset password button */}
                               {(!isRowOwner || isOwner || isSelf) && (
                                 <button
                                   onClick={() => {
@@ -503,8 +543,8 @@ export default function AdministratorsSection() {
                                       Delete
                                     </button>
                                   ) : (
-                                    <span className="px-2 py-1 rounded-lg text-[10px] font-bold bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800/40" title="Super Admin accounts can only be deleted by the platform Owner">
-                                      Protected (Super Admin)
+                                    <span className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600" title="Super Admin accounts can only be deleted by the platform Owner">
+                                      Protected
                                     </span>
                                   )
                                 ) : (
@@ -850,6 +890,85 @@ export default function AdministratorsSection() {
                 >
                   {resettingPass ? <RefreshCw size={13} className="animate-spin" /> : <KeyRound size={13} />}
                   Update Password
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Promote Role Modal */}
+      {promoteModal && adminToModify && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-purple-200 dark:border-purple-900/40 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#e2e8ee] dark:border-slate-700">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                  <ArrowUpCircle size={18} />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-[#18232e] dark:text-white">Change Administrative Role</h2>
+                  <p className="text-[11px] text-[#8a9aaa]">Reassign role for {adminToModify.name}</p>
+                </div>
+              </div>
+              <button onClick={() => { setPromoteModal(false); setAdminToModify(null); }} className="text-[#8a9aaa] hover:text-[#18232e]">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handlePromoteRole} className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-semibold text-[#4a5a6a] dark:text-slate-300 mb-1">
+                  Current Role
+                </label>
+                <div className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 text-xs font-bold text-[#4a5a6a] dark:text-slate-300">
+                  {(adminToModify.adminRole || adminToModify.role || "admin").replace(/_/g, " ").toUpperCase()}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-[#4a5a6a] dark:text-slate-300 mb-1">
+                  New Role <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={promoteRole}
+                  onChange={(e) => setPromoteRole(e.target.value)}
+                  className="w-full text-xs p-2.5 rounded-lg border border-[#e2e8ee] dark:border-slate-700 bg-white dark:bg-slate-900 text-[#18232e] dark:text-white focus:outline-none focus:border-purple-500"
+                >
+                  <option value="operations_admin">Operations Admin</option>
+                  <option value="medical_admin">Medical Director</option>
+                  <option value="support_admin">Support Specialist</option>
+                  <option value="verification_admin">Verification Admin</option>
+                  <option value="finance_admin">Finance Admin</option>
+                  <option value="super_admin">⭐ Super Administrator</option>
+                  {isOwner && <option value="owner">👑 Platform Owner (Root Authority)</option>}
+                </select>
+                {promoteRole === "super_admin" && (
+                  <p className="text-[10px] text-purple-600 dark:text-purple-400 mt-1 font-semibold">
+                    ⚠ Super Admins have broad platform authority. Only the Owner can remove this level.
+                  </p>
+                )}
+                {promoteRole === "owner" && (
+                  <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-semibold">
+                    ⚠ Owner role grants absolute root authority. This action cannot be undone by anyone except the current Owner.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 pt-2 border-t border-[#e2e8ee] dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => { setPromoteModal(false); setAdminToModify(null); }}
+                  className="flex-1 py-2 text-xs font-semibold text-[#4a5a6a] dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={promotingAdmin}
+                  className="flex-1 py-2 text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow-sm flex items-center justify-center gap-1.5 transition-all"
+                >
+                  {promotingAdmin ? <RefreshCw size={13} className="animate-spin" /> : <ArrowUpCircle size={13} />}
+                  Confirm Role Change
                 </button>
               </div>
             </form>

@@ -1112,6 +1112,16 @@ export const api = {
     }
   },
 
+  async promoteAdministrator(id: string, adminRole: string): Promise<any> {
+    try {
+      const res = await axios.put(`${API_URL}/admin/administrators/${id}/role`, { adminRole }, { headers: getHeaders() });
+      return res.data;
+    } catch (error) {
+      if (isDemoMode()) return { success: true, id, adminRole };
+      throw error;
+    }
+  },
+
   async contactProvider(id: string, payload: { title: string; message: string; priority?: "normal" | "urgent" }): Promise<any> {
     try {
       const res = await axios.post(`${API_URL}/providers/${id}/contact`, payload, { headers: getHeaders() });
