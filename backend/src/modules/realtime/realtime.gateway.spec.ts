@@ -134,6 +134,7 @@ describe("Realtime Socket Gateway Tests", () => {
         9.0054,
         38.7845,
         expect.any(String),
+        "patient-1",
       );
     });
 

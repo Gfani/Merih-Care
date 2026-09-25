@@ -295,7 +295,11 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
       setActiveTrips(prev => {
         let changed = false;
         const next = prev.map(trip => {
-          if (trip.providerId === targetId || trip.providerUserId === targetId) {
+          const isMatch =
+            (trip.providerId && (trip.providerId === targetId || trip.providerId === provId || trip.providerId === uId)) ||
+            (trip.providerUserId && (trip.providerUserId === targetId || trip.providerUserId === provId || trip.providerUserId === uId)) ||
+            (updated.appointmentId && (trip.appointmentId === updated.appointmentId || trip.id === updated.appointmentId));
+          if (isMatch) {
             changed = true;
             const updatedPts: Array<[number, number]> = trip.routePoints && trip.routePoints.length >= 2
               ? [[lat, lng], ...trip.routePoints.slice(1)]
@@ -310,6 +314,61 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
           return trip;
         });
         return changed ? next : prev;
+      });
+
+      // Update active dispatch live coordinates and route polyline
+      setActiveDispatch(prev => {
+        if (!prev) return null;
+        const matchesDispatch =
+          (updated.appointmentId && prev.appointmentId === updated.appointmentId) ||
+          (prev.providerName && updated.name && prev.providerName === updated.name) ||
+          (provId && prev.providerName && prev.providerName.includes(provId));
+        if (matchesDispatch) {
+          const updatedPts: Array<[number, number]> = prev.routePoints && prev.routePoints.length >= 2
+            ? [[lat, lng], ...prev.routePoints.slice(1)]
+            : [[lat, lng], prev.routePoints ? prev.routePoints[prev.routePoints.length - 1] : [lat, lng]];
+          return {
+            ...prev,
+            providerLat: lat,
+            providerLng: lng,
+            routePoints: updatedPts,
+          };
+        }
+        return prev;
+      });
+
+      // Update selected trip live position
+      setSelectedTrip(prev => {
+        if (!prev) return null;
+        const isMatch =
+          (prev.providerId && (prev.providerId === targetId || prev.providerId === provId || prev.providerId === uId)) ||
+          (prev.providerUserId && (prev.providerUserId === targetId || prev.providerUserId === provId || prev.providerUserId === uId)) ||
+          (updated.appointmentId && (prev.appointmentId === updated.appointmentId || prev.id === updated.appointmentId));
+        if (isMatch) {
+          return {
+            ...prev,
+            providerLat: lat,
+            providerLng: lng,
+          };
+        }
+        return prev;
+      });
+
+      // Update selected pin live position
+      setSelectedPin(prev => {
+        if (!prev) return null;
+        const isMatch =
+          (prev.userId && (prev.userId === targetId || prev.userId === provId || prev.userId === uId)) ||
+          (prev.id && (prev.id === targetId || prev.id === provId || prev.id === uId || prev.id === `loc-${canonicalUserId}`));
+        if (isMatch) {
+          return {
+            ...prev,
+            x: lng,
+            y: lat,
+            locationTimestamp: updated.lastUpdated || updated.timestamp || new Date().toISOString(),
+          };
+        }
+        return prev;
       });
     };
 
@@ -949,6 +1008,11 @@ export function AdminMapView({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className={`flex gap-4 ${compact ? "flex-col md:flex-row" : "flex-col lg:flex-row"}`}>
+      <style>{`
+        .leaflet-marker-icon, .custom-marker-icon, .custom-task-provider-icon, .custom-task-dest-icon {
+          transition: transform 0.4s ease-out !important;
+        }
+      `}</style>
       {/* Map canvas */}
       <div
         className="flex-1 relative rounded-[14px] overflow-hidden border border-[#c8d6e2] dark:border-slate-700 bg-[#dde6ef] shadow-sm"

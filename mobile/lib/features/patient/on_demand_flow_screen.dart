@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -151,6 +152,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
 
       if (widget.initialAppointmentId != null && widget.initialAppointmentId!.isNotEmpty) {
         _createdAppointmentId = widget.initialAppointmentId;
+        ref.read(realtimeServiceProvider).joinAppointment(widget.initialAppointmentId!);
         _loadExistingAppointment(widget.initialAppointmentId!);
       }
     });
@@ -241,6 +243,9 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
     _dispatchSub = realtime.dispatchUpdatesStream.listen((data) {
       if (!mounted) return;
       final aptId = data['appointmentId']?.toString();
+      if (aptId != null) {
+        ref.read(realtimeServiceProvider).joinAppointment(aptId);
+      }
       if (_createdAppointmentId != null && aptId != null && aptId != _createdAppointmentId) return;
 
       final status = data['status']?.toString();
@@ -316,19 +321,75 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
       }
     });
 
-    // 2. Real-Time Telemetry Coordinates Streaming
+    // 2. Real-Time Telemetry Coordinates Streaming (moves provider marker and camera live)
     _locationSub = realtime.locationUpdatesStream.listen((data) {
       if (!mounted) return;
-      final lat = (data['lat'] as num?)?.toDouble() ?? (data['latitude'] as num?)?.toDouble();
-      final lng = (data['lng'] as num?)?.toDouble() ?? (data['longitude'] as num?)?.toDouble();
-      if (lat != null && lng != null) {
-        setState(() {
+      final lat = (data['lat'] as num?)?.toDouble() ??
+          (data['latitude'] as num?)?.toDouble() ??
+          (data['y'] as num?)?.toDouble();
+      final lng = (data['lng'] as num?)?.toDouble() ??
+          (data['longitude'] as num?)?.toDouble() ??
+          (data['x'] as num?)?.toDouble();
+      if (lat == null || lng == null || (lat == 0 && lng == 0)) return;
+
+      final provId = data['providerId']?.toString() ??
+          data['userId']?.toString() ??
+          data['id']?.toString();
+
+      setState(() {
+        // A) Update any matching clinician in nearby clinicians list so their pin moves
+        if (provId != null && _nearbyProviders.isNotEmpty) {
+          final idx = _nearbyProviders.indexWhere((p) =>
+              p['id']?.toString() == provId ||
+              p['providerId']?.toString() == provId ||
+              p['userId']?.toString() == provId);
+          if (idx != -1) {
+            _nearbyProviders[idx] = {
+              ..._nearbyProviders[idx],
+              'latitude': lat,
+              'longitude': lng,
+              'y': lat,
+              'x': lng,
+            };
+          }
+        }
+
+        // B) Update active candidate / matched clinician tracking
+        final matchedId = _matchedProvider['id']?.toString();
+        final isMatch = (provId != null && matchedId != null && (provId == matchedId || provId.contains(matchedId) || matchedId.contains(provId))) ||
+            _currentStep == OnDemandStep.liveTracking ||
+            _currentStep == OnDemandStep.providerMatched;
+
+        if (isMatch) {
           _candidateLat = lat;
           _candidateLon = lng;
+
           if (_routePoints.isNotEmpty) {
             _routePoints[0] = LatLng(lat, lng);
+          } else {
+            _routePoints = [LatLng(lat, lng), LatLng(_patientLat, _patientLon)];
           }
-        });
+
+          // Recalculate genuine distance and arrival ETA as clinician moves
+          final meter = const Distance().as(
+            LengthUnit.Meter,
+            LatLng(lat, lng),
+            LatLng(_patientLat, _patientLon),
+          );
+          _candidateDistanceKm = meter / 1000.0;
+          _candidateEtaMinutes = max(1, (_candidateDistanceKm * 3.0).round());
+          _matchedProvider['distanceKm'] = _candidateDistanceKm;
+          _matchedProvider['etaMinutes'] = _candidateEtaMinutes;
+        }
+      });
+
+      // Smoothly adjust camera to follow the moving provider and keep destination in view
+      if (_currentStep == OnDemandStep.liveTracking || _currentStep == OnDemandStep.providerMatched) {
+        final midLat = (_patientLat + lat) / 2;
+        final midLng = (_patientLon + lng) / 2;
+        try {
+          _mapController.move(LatLng(midLat, midLng), _mapController.camera.zoom);
+        } catch (_) {}
       }
     });
 
@@ -360,6 +421,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
 
   Future<void> _loadExistingAppointment(String aptId) async {
     try {
+      ref.read(realtimeServiceProvider).joinAppointment(aptId);
       final client = ref.read(apiClientProvider);
       final check = await client.dio.get('/appointments/$aptId', cancelToken: _cancelToken);
       final dynamic checkData = check.data;
@@ -461,6 +523,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
 
       if (data != null && data['id'] != null) {
         _createdAppointmentId = data['id'].toString();
+        ref.read(realtimeServiceProvider).joinAppointment(_createdAppointmentId!);
       }
     } catch (e) {
       print('[DISPATCH] Error creating real appointment: $e');

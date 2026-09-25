@@ -293,6 +293,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
             }
           }).catch(() => {});
         }
+      } else if (!isAdmin) {
+        socket.join("patients");
+        roomsSet.add("patients");
       }
 
       socketUserMap.set(socket.id, {
@@ -603,7 +606,12 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     try {
       const apt = await this.appointmentRepo.findOne({ where: { id: appointmentId } });
       if (!apt) return false;
-      return apt.patientId === userId || apt.providerId === userId;
+      if (apt.patientId === userId || apt.providerId === userId) return true;
+      if (this.dataSource && this.dataSource.isInitialized) {
+        const prov = await this.dataSource.getRepository(ProviderEntity).findOne({ where: [{ userId }, { id: userId }] });
+        if (prov && (apt.providerId === prov.id || apt.providerId === prov.userId)) return true;
+      }
+      return false;
     } catch {
       return false;
     }
@@ -1149,19 +1157,40 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       if (isProvider) {
         this.realtimeService.emitToRoom("admin_room", "provider_location_update", broadcastData);
         this.realtimeService.emitToRoom("admin", "provider_location_update", broadcastData);
+        this.realtimeService.emitToRoom("patients", "provider_location_update", broadcastData);
       }
     }
 
-    // 4. If tied to an active appointment, relay to appointment room
-    if (data?.appointmentId) {
-      this.realtimeService.emitLocationUpdate(data.appointmentId, userId, lat, lng, ts);
+    // 4. If tied to an active appointment (or provider is actively in-flight), relay to appointment room and patient
+    let appointmentId = data?.appointmentId;
+    if (!appointmentId && isProvider && this.appointmentRepo) {
+      try {
+        const activeApt = await this.appointmentRepo.findOne({
+          where: [
+            { providerId: userId, status: "on_the_way" },
+            { providerId: userId, status: "accepted" },
+            { providerId: userId, status: "in_progress" },
+          ],
+        });
+        if (activeApt) appointmentId = activeApt.id;
+      } catch (_) {}
+    }
+
+    if (appointmentId) {
+      let patientId: string | undefined;
+      try {
+        const apt = await this.appointmentRepo.findOne({ where: { id: appointmentId } });
+        if (apt?.patientId) patientId = apt.patientId;
+      } catch (_) {}
+
+      this.realtimeService.emitLocationUpdate(appointmentId, userId, lat, lng, ts, patientId);
 
       // Schedule stale detection after 90 s
       const staleTimer = setTimeout(() => {
         const current = socketUserMap.get(socket.id);
-        const lastAt = current?.lastLocationAt.get(data.appointmentId!) ?? 0;
+        const lastAt = current?.lastLocationAt.get(appointmentId!) ?? 0;
         if (Date.now() - lastAt >= 90000) {
-          this.realtimeService.emitLocationStale(data.appointmentId!, userId);
+          this.realtimeService.emitLocationStale(appointmentId!, userId);
         }
       }, 90000);
       staleTimer.unref();

@@ -79,6 +79,9 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
             authUser?['id']?.toString() ??
             '';
 
+        service.setAppointmentId(widget.appointmentId);
+        realtime.joinAppointment(widget.appointmentId);
+
         if (socket != null) {
           service.startTracking(
             provId,

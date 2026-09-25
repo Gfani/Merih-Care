@@ -3,6 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:merihcare/core/connectivity/offline_queue_service.dart';
 import 'package:merihcare/core/location/location_tracking_service.dart';
 import 'package:merihcare/core/location/location_service.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
@@ -96,6 +97,28 @@ void main() {
       expect(service.isTracking, true);
       expect(service.isOnline, true);
 
+      service.stopTracking();
+    });
+
+    test('Should emit updated coordinates and move position when provider moves', () async {
+      final container = ProviderContainer();
+      final service = container.read(locationTrackingProvider);
+
+      final positions = <Position>[];
+      final sub = service.locationStream.listen(positions.add);
+
+      await service.emitDirectCoordinates(9.0300, 38.7400);
+      expect(service.latestPosition, isNotNull);
+      expect(service.latestPosition!.latitude, 9.0300);
+      expect(service.latestPosition!.longitude, 38.7400);
+
+      // Simulate provider moving
+      await service.emitDirectCoordinates(9.0350, 38.7450);
+      expect(service.latestPosition!.latitude, 9.0350);
+      expect(service.latestPosition!.longitude, 38.7450);
+      expect(positions.length, 2);
+
+      await sub.cancel();
       service.stopTracking();
     });
   });

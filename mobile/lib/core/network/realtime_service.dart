@@ -107,12 +107,14 @@ class MobileRealtimeService {
       _restoreSession();
       _realtimeSocket?.emit('join_provider');
       _realtimeSocket?.emit('join_providers');
+      _realtimeSocket?.emit('join_patients');
     });
 
     _realtimeSocket!.on('connection_established', (data) {
       _updateState(RealtimeConnectionState.connected);
       _realtimeSocket?.emit('join_provider');
       _realtimeSocket?.emit('join_providers');
+      _realtimeSocket?.emit('join_patients');
     });
 
     _realtimeSocket!.onDisconnect((_) {
@@ -161,6 +163,16 @@ class MobileRealtimeService {
     });
 
     _realtimeSocket!.on('location_update', (data) {
+      final payload = unwrap(data);
+      if (payload.isNotEmpty) _locationUpdatesController.add(payload);
+    });
+
+    _realtimeSocket!.on('provider_location_update', (data) {
+      final payload = unwrap(data);
+      if (payload.isNotEmpty) _locationUpdatesController.add(payload);
+    });
+
+    _realtimeSocket!.on('provider_location', (data) {
       final payload = unwrap(data);
       if (payload.isNotEmpty) _locationUpdatesController.add(payload);
     });
@@ -291,6 +303,7 @@ class MobileRealtimeService {
     }
 
     _realtimeSocket?.emit('location_update', payload);
+    _realtimeSocket?.emit('provider_location_update', payload);
     _realtimeSocket?.emit('update_location', payload);
     return true;
   }

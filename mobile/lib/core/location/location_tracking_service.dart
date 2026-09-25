@@ -24,6 +24,9 @@ class LocationTrackingService with WidgetsBindingObserver {
   DateTime? _lastEmittedAt;
   DateTime? get lastEmittedAt => _lastEmittedAt;
   Position? _latestPosition;
+  Position? get latestPosition => _latestPosition;
+  double get lat => _lat;
+  double get lon => _lon;
 
   String? _providerId;
   ApiClient? _client;
@@ -36,6 +39,15 @@ class LocationTrackingService with WidgetsBindingObserver {
 
   void setProviderId(String id) {
     if (id.isNotEmpty) _providerId = id;
+  }
+
+  void setAppointmentId(String id) {
+    if (id.isNotEmpty) {
+      _appointmentId = id;
+      if (_isTracking && _latestPosition != null) {
+        emitDirectCoordinates(_latestPosition!.latitude, _latestPosition!.longitude, accuracy: _latestPosition!.accuracy);
+      }
+    }
   }
 
   LocationTrackingService([this._ref]) {
@@ -179,6 +191,7 @@ class LocationTrackingService with WidgetsBindingObserver {
       final payload = {
         if (idToSend.isNotEmpty) 'providerId': idToSend,
         'userId': idToSend,
+        if (_appointmentId != null && _appointmentId!.isNotEmpty) 'appointmentId': _appointmentId,
         'role': 'provider',
         'lat': position.latitude,
         'lng': position.longitude,
@@ -409,6 +422,7 @@ class LocationTrackingService with WidgetsBindingObserver {
     final payload = {
       if (idToSend.isNotEmpty) 'providerId': idToSend,
       'userId': idToSend,
+      if (_appointmentId != null && _appointmentId!.isNotEmpty) 'appointmentId': _appointmentId,
       'role': 'provider',
       'lat': latitude,
       'lng': longitude,

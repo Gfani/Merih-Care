@@ -92,15 +92,24 @@ export class RealtimeService {
   }
 
   /** Provider location update for active appointment */
-  emitLocationUpdate(appointmentId: string, providerId: string, lat: number, lng: number, ts: string) {
+  emitLocationUpdate(appointmentId: string, providerId: string, lat: number, lng: number, ts: string, patientId?: string) {
     const payload = {
       appointmentId,
       providerId,
       lat,
       lng,
+      latitude: lat,
+      longitude: lng,
       ts,
     };
     this.emitToRoom(`appointment:${appointmentId}`, "location_update", payload);
+    this.emitToRoom(`appointment:${appointmentId}`, "provider_location_update", payload);
+    this.emitToRoom(`appointment:${appointmentId}`, "provider_location", payload);
+    if (patientId) {
+      this.emitToRoom(`patient:${patientId}`, "location_update", payload);
+      this.emitToRoom(`patient:${patientId}`, "provider_location_update", payload);
+      this.emitToRoom(`patient:${patientId}`, "provider_location", payload);
+    }
     this.emitToRoom("admin", "location_update", payload);
     this.emitToRoom("admin_room", "location_update", payload);
     this.emitToRoom("admin", "provider_location_update", payload);
