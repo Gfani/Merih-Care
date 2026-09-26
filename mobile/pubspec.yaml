@@ -58,6 +58,9 @@ dependencies:
   cupertino_icons: ^1.0.6
   geolocator: ^12.0.0
 
+  # Background foreground service — keeps GPS alive when app is minimized/screen locked
+  flutter_foreground_task: ^8.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

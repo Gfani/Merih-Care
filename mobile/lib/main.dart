@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app.dart';
 import 'core/notifications/notification_service.dart';
+import 'core/location/background_gps_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,6 +17,9 @@ void main() async {
   } catch (_) {
     // Silently skip push-notification init in environments without Firebase config.
   }
+
+  // Configure background GPS foreground service (must be called before any provider goes online)
+  BackgroundGpsService.configure();
 
   runApp(
     const ProviderScope(

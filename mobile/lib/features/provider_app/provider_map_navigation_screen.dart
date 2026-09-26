@@ -15,36 +15,139 @@ import '../auth/auth_provider.dart';
 class ProviderMapNavigationScreen extends ConsumerStatefulWidget {
   final String appointmentId;
 
-  const ProviderMapNavigationScreen({super.key, required this.appointmentId});
+  // Optional pre-resolved patient coordinates (passed from caller when available)
+  final double? patientLat;
+  final double? patientLon;
+  final String? patientName;
+
+  const ProviderMapNavigationScreen({
+    super.key,
+    required this.appointmentId,
+    this.patientLat,
+    this.patientLon,
+    this.patientName,
+  });
 
   @override
-  ConsumerState<ProviderMapNavigationScreen> createState() => _ProviderMapNavigationScreenState();
+  ConsumerState<ProviderMapNavigationScreen> createState() =>
+      _ProviderMapNavigationScreenState();
 }
 
-class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigationScreen> {
+class _ProviderMapNavigationScreenState
+    extends ConsumerState<ProviderMapNavigationScreen> {
   final MapController _mapController = MapController();
   final Distance _distanceCalculator = const Distance();
 
   bool _permissionGranted = false;
   bool _loading = true;
+  bool _patientLocationResolved = false;
 
   // Real GPS Coordinates (Default Addis Ababa center)
   double _providerLat = 9.0192;
   double _providerLon = 38.7578;
 
-  // Patient Destination (Bole Sub City)
-  final double _patientLat = 9.0054;
-  final double _patientLon = 38.7845;
+  // Patient Destination — resolved from appointment data
+  double _patientLat = 9.0054;
+  double _patientLon = 38.7845;
+  String _patientName = 'Patient';
 
-  double _distance = 2.4; // KM
-  int _eta = 8; // Mins
+  double _distance = 2.4;
+  int _eta = 8;
 
   StreamSubscription? _locationSub;
 
   @override
   void initState() {
     super.initState();
+    // Apply immediately if coordinates were passed in by the caller
+    if (widget.patientLat != null && widget.patientLon != null) {
+      _patientLat = widget.patientLat!;
+      _patientLon = widget.patientLon!;
+      _patientName = widget.patientName ?? 'Patient';
+      _patientLocationResolved = true;
+    }
     _initTracking();
+  }
+
+  static double? _toDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is double) return v;
+    if (v is int) return v.toDouble();
+    if (v is String) return double.tryParse(v);
+    return null;
+  }
+
+  /// Fetch real patient location from the appointment record.
+  Future<void> _fetchPatientLocation() async {
+    if (_patientLocationResolved) return;
+    try {
+      final client = ref.read(apiClientProvider);
+      final res = await client.dio.get('/appointments/${widget.appointmentId}');
+      final raw = res.data;
+      final data = (raw is Map && raw.containsKey('data')) ? raw['data'] : raw;
+      if (data == null) return;
+
+      final pName = (data['patient'] is Map ? data['patient']['name'] : null) ??
+          data['patientName'] ??
+          'Patient';
+
+      // Priority 1: direct coordinates on appointment
+      double? lat = _toDouble(data['latitude']) ??
+          _toDouble(data['patientLatitude']);
+      double? lng = _toDouble(data['longitude']) ??
+          _toDouble(data['patientLongitude']);
+
+      // Priority 2: nested location object
+      if ((lat == null || lng == null) && data['location'] is Map) {
+        final loc = data['location'] as Map;
+        lat = _toDouble(loc['latitude']) ?? _toDouble(loc['lat']) ?? lat;
+        lng = _toDouble(loc['longitude']) ?? _toDouble(loc['lng']) ?? lng;
+      }
+
+      // Priority 3: patient's last known location via /locations/:id
+      if (lat == null || lng == null) {
+        final patientId = (data['patient'] is Map
+                ? data['patient']['id']?.toString()
+                : null) ??
+            data['patientId']?.toString();
+        if (patientId != null && patientId.isNotEmpty) {
+          try {
+            final locRes = await client.dio.get('/locations/$patientId');
+            final locData = locRes.data is Map
+                ? (locRes.data['data'] ?? locRes.data)
+                : {};
+            lat = _toDouble(locData['latitude']) ??
+                _toDouble(locData['lat']) ??
+                lat;
+            lng = _toDouble(locData['longitude']) ??
+                _toDouble(locData['lng']) ??
+                lng;
+          } catch (_) {}
+        }
+      }
+
+      if (mounted && lat != null && lng != null) {
+        setState(() {
+          _patientLat = lat!;
+          _patientLon = lng!;
+          _patientName = pName.toString();
+          _patientLocationResolved = true;
+          _calculateDistanceAndEta();
+        });
+        // Zoom to show both markers
+        try {
+          _mapController.fitCamera(
+            CameraFit.bounds(
+              bounds: LatLngBounds(
+                LatLng(_providerLat, _providerLon),
+                LatLng(_patientLat, _patientLon),
+              ),
+              padding: const EdgeInsets.all(60),
+            ),
+          );
+        } catch (_) {}
+      }
+    } catch (_) {}
   }
 
   Future<void> _initTracking() async {
@@ -59,7 +162,8 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
 
       if (granted) {
         // Auto-detect current hardware GPS location
-        final detected = await ref.read(locationProvider.notifier).autoDetectCurrentLocation();
+        final detected =
+            await ref.read(locationProvider.notifier).autoDetectCurrentLocation();
         if (detected != null && mounted) {
           setState(() {
             _providerLat = detected.latitude;
@@ -67,6 +171,9 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
             _calculateDistanceAndEta();
           });
         }
+
+        // Fetch the real patient location from the appointment record
+        await _fetchPatientLocation();
 
         // Start streaming hardware GPS coordinates
         final client = ref.read(apiClientProvider);
@@ -92,7 +199,7 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
           );
         }
 
-        // Listen to live GPS stream
+        // Listen to live GPS stream and update provider marker
         _locationSub = service.locationStream.listen((position) {
           if (!mounted) return;
           setState(() {
@@ -128,7 +235,9 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
       if (!serviceEnabled) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location services are disabled. Please enable GPS.')),
+            const SnackBar(
+                content:
+                    Text('Location services are disabled. Please enable GPS.')),
           );
         }
         return;
@@ -137,7 +246,8 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Location permissions are denied.')),
@@ -195,6 +305,20 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
     }
   }
 
+  void _fitBothMarkers() {
+    try {
+      _mapController.fitCamera(
+        CameraFit.bounds(
+          bounds: LatLngBounds(
+            LatLng(_providerLat, _providerLon),
+            LatLng(_patientLat, _patientLon),
+          ),
+          padding: const EdgeInsets.all(60),
+        ),
+      );
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     _locationSub?.cancel();
@@ -208,8 +332,13 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Live Navigation to Patient'),
+        title: Text('Navigating to $_patientName'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.fit_screen),
+            tooltip: 'Fit both markers in view',
+            onPressed: _fitBothMarkers,
+          ),
           IconButton(
             icon: const Icon(Icons.my_location),
             tooltip: 'Re-center GPS',
@@ -230,16 +359,19 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.location_off_outlined, size: 64, color: Colors.red),
+                              const Icon(Icons.location_off_outlined,
+                                  size: 64, color: Colors.red),
                               const SizedBox(height: 16),
                               const Text(
                                 'Location Permission Required',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 16),
                               ),
                               const SizedBox(height: 8),
                               const Text(
                                 'Please enable location permissions in settings to navigate and stream your arrival ETA to the patient.',
-                                style: TextStyle(color: Color(0xFF64748B), height: 1.4),
+                                style: TextStyle(
+                                    color: Color(0xFF64748B), height: 1.4),
                                 textAlign: TextAlign.center,
                               ),
                               const SizedBox(height: 24),
@@ -262,7 +394,8 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
                             ),
                             children: [
                               TileLayer(
-                                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                urlTemplate:
+                                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                                 userAgentPackageName: 'com.merihcare.mobile',
                               ),
                               PolylineLayer(
@@ -279,7 +412,7 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
                               ),
                               MarkerLayer(
                                 markers: [
-                                  // Provider Marker (Live GPS Position)
+                                  // Provider Marker (Live GPS)
                                   Marker(
                                     point: LatLng(_providerLat, _providerLon),
                                     width: 44,
@@ -288,7 +421,8 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
                                       decoration: BoxDecoration(
                                         color: Colors.blue.shade600,
                                         shape: BoxShape.circle,
-                                        border: Border.all(color: Colors.white, width: 2.5),
+                                        border: Border.all(
+                                            color: Colors.white, width: 2.5),
                                         boxShadow: const [
                                           BoxShadow(
                                             color: Colors.black26,
@@ -297,28 +431,54 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
                                           ),
                                         ],
                                       ),
-                                      child: const Icon(Icons.navigation, color: Colors.white, size: 22),
+                                      child: const Icon(Icons.navigation,
+                                          color: Colors.white, size: 22),
                                     ),
                                   ),
-                                  // Patient Marker (Destination)
+                                  // Patient Marker (Real Location)
                                   Marker(
                                     point: LatLng(_patientLat, _patientLon),
-                                    width: 44,
-                                    height: 44,
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: Colors.red.shade600,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: Colors.white, width: 2.5),
-                                        boxShadow: const [
-                                          BoxShadow(
-                                            color: Colors.black26,
-                                            blurRadius: 6,
-                                            offset: Offset(0, 3),
+                                    width: 60,
+                                    height: 60,
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.red.shade700,
+                                            borderRadius:
+                                                BorderRadius.circular(6),
                                           ),
-                                        ],
-                                      ),
-                                      child: const Icon(Icons.location_on, color: Colors.white, size: 24),
+                                          child: Text(
+                                            _patientName.split(' ').first,
+                                            style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                        Container(
+                                          width: 36,
+                                          height: 36,
+                                          decoration: BoxDecoration(
+                                            color: Colors.red.shade600,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                                color: Colors.white, width: 2.5),
+                                            boxShadow: const [
+                                              BoxShadow(
+                                                color: Colors.black26,
+                                                blurRadius: 6,
+                                                offset: Offset(0, 3),
+                                              ),
+                                            ],
+                                          ),
+                                          child: const Icon(Icons.home,
+                                              color: Colors.white, size: 20),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
@@ -326,17 +486,65 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
                             ],
                           ),
 
-                          // Live GPS Status Indicator
+                          // Patient location resolving indicator
+                          if (!_patientLocationResolved)
+                            Positioned(
+                              top: 16,
+                              left: 16,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.shade50,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                      color: Colors.amber.shade300),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                        color: Colors.black12,
+                                        blurRadius: 4,
+                                        offset: Offset(0, 2)),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    SizedBox(
+                                      width: 12,
+                                      height: 12,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.amber.shade700,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Locating patient…',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 11,
+                                          color: Colors.amber.shade800),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+
+                          // Live GPS badge
                           Positioned(
                             top: 16,
                             right: 16,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
                               decoration: BoxDecoration(
                                 color: Colors.white.withOpacity(0.95),
                                 borderRadius: BorderRadius.circular(20),
                                 boxShadow: const [
-                                  BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
+                                  BoxShadow(
+                                      color: Colors.black12,
+                                      blurRadius: 4,
+                                      offset: Offset(0, 2)),
                                 ],
                               ),
                               child: Row(
@@ -353,10 +561,27 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
                                   const SizedBox(width: 6),
                                   const Text(
                                     'LIVE GPS',
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF1E293B)),
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 11,
+                                        color: Color(0xFF1E293B)),
                                   ),
                                 ],
                               ),
+                            ),
+                          ),
+
+                          // Fit-both-markers Button
+                          Positioned(
+                            bottom: 170,
+                            right: 20,
+                            child: FloatingActionButton.small(
+                              heroTag: 'nav_fit_both',
+                              backgroundColor: Colors.white,
+                              foregroundColor: const Color(0xFF0D7C6A),
+                              tooltip: 'Fit both markers in view',
+                              onPressed: _fitBothMarkers,
+                              child: const Icon(Icons.fit_screen, size: 20),
                             ),
                           ),
 
@@ -396,24 +621,36 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
                                 children: [
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        const Text(
-                                          'APPROACHING PATIENT (LIVE ROUTE)',
-                                          style: TextStyle(color: Color(0xFF8A9AAA), fontSize: 10, fontWeight: FontWeight.bold),
+                                        Text(
+                                          'APPROACHING ${_patientName.toUpperCase()}',
+                                          style: const TextStyle(
+                                              color: Color(0xFF8A9AAA),
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                         const SizedBox(height: 6),
                                         Row(
                                           children: [
                                             Text(
                                               '$_eta min',
-                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24, color: Color(0xFF0D7C6A)),
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 24,
+                                                  color: Color(0xFF0D7C6A)),
                                             ),
                                             const SizedBox(width: 12),
                                             Text(
                                               '•  ${_distance.toStringAsFixed(1)} km',
-                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF4A5A6A)),
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 16,
+                                                  color: Color(0xFF4A5A6A)),
                                             ),
                                           ],
                                         ),
@@ -422,9 +659,11 @@ class _ProviderMapNavigationScreenState extends ConsumerState<ProviderMapNavigat
                                   ),
                                   CircleAvatar(
                                     radius: 24,
-                                    backgroundColor: const Color(0xFFF1F5F9),
+                                    backgroundColor:
+                                        const Color(0xFFF1F5F9),
                                     child: IconButton(
-                                      icon: const Icon(Icons.close, color: Color(0xFF64748B)),
+                                      icon: const Icon(Icons.close,
+                                          color: Color(0xFF64748B)),
                                       onPressed: () => context.pop(),
                                     ),
                                   ),

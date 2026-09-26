@@ -8,6 +8,7 @@ import '../network/io_client_base.dart';
 import '../network/realtime_service.dart';
 import '../storage/secure_storage.dart';
 import '../../features/auth/auth_provider.dart';
+import 'background_gps_service.dart';
 import 'location_service.dart';
 
 /// Riverpod provider to observe and manage the provider's online/offline availability toggle
@@ -36,6 +37,9 @@ class LocationTrackingService with WidgetsBindingObserver {
 
   final _locationStreamController = StreamController<Position>.broadcast();
   Stream<Position> get locationStream => _locationStreamController.stream;
+
+  // Background GPS foreground service subscription
+  StreamSubscription<Map<String, dynamic>>? _bgPositionSub;
 
   void setProviderId(String id) {
     if (id.isNotEmpty) _providerId = id;
@@ -225,6 +229,50 @@ class LocationTrackingService with WidgetsBindingObserver {
         }();
       }
     }
+
+    // Start background foreground service so GPS survives screen lock / minimization
+    () async {
+      try {
+        final started = await BackgroundGpsService.start();
+        if (started) {
+          // Pipe positions from the background isolate into the existing emit pipeline
+          _bgPositionSub?.cancel();
+          _bgPositionSub = BackgroundGpsService.positionStream?.listen((data) {
+            if (!_isTracking || !_isOnline) return;
+            final lat = (data['lat'] as num?)?.toDouble();
+            final lng = (data['lng'] as num?)?.toDouble();
+            final accuracy = (data['accuracy'] as num?)?.toDouble() ?? 5.0;
+            if (lat == null || lng == null) return;
+            final bgPos = Position(
+              latitude: lat,
+              longitude: lng,
+              timestamp: DateTime.fromMillisecondsSinceEpoch(
+                (data['timestamp'] as int?) ?? DateTime.now().millisecondsSinceEpoch,
+              ),
+              accuracy: accuracy,
+              altitude: 0.0,
+              altitudeAccuracy: 0.0,
+              heading: 0.0,
+              headingAccuracy: 0.0,
+              speed: 0.0,
+              speedAccuracy: 0.0,
+            );
+            _latestPosition = bgPos;
+            _lat = lat;
+            _lon = lng;
+            _locationStreamController.add(bgPos);
+            emitLocation(bgPos);
+          });
+          // Update the foreground notification with appointment context
+          if (_appointmentId != null && _appointmentId!.isNotEmpty) {
+            BackgroundGpsService.updateNotification(
+              title: '📍 Merihcare — On Duty (GPS Active)',
+              body: 'Appointment #${_appointmentId!.substring(0, 8)}… — sharing live location.',
+            );
+          }
+        }
+      } catch (_) {}
+    }();
 
     // If socket is still connecting, ensure it immediately emits upon connection
     if (!socket.connected) {
@@ -468,6 +516,9 @@ class LocationTrackingService with WidgetsBindingObserver {
 
   /// Stop tracking: pause/cancel position stream and timer, and emit provider_offline
   void stopTracking({MobileRealtimeService? realtimeService}) {
+    _bgPositionSub?.cancel();
+    _bgPositionSub = null;
+    BackgroundGpsService.stop();
     _positionSubscription?.cancel();
     _positionSubscription = null;
     _gpsTimer?.cancel();
