@@ -302,6 +302,119 @@ export class ProvidersService {
     return this.providerRepo.save(provider);
   }
 
+  async approveProvider(id: string, actorId: string = "admin"): Promise<ProviderEntity | null> {
+    const cleanId = String(id || "").trim();
+    const strippedId = cleanId.startsWith("prov-") ? cleanId.replace(/^prov-/, "") : cleanId;
+    const prefixedId = cleanId.startsWith("prov-") ? cleanId : `prov-${cleanId}`;
+
+    let provider = await this.providerRepo.findOne({
+      where: [
+        { id: cleanId },
+        { id: prefixedId },
+        { id: strippedId },
+        { userId: cleanId },
+        { userId: strippedId },
+      ],
+    });
+
+    let user: UserEntity | null = null;
+    if (this.userRepo) {
+      try {
+        user = await this.userRepo.findOne({
+          where: [
+            { id: cleanId },
+            { id: strippedId },
+          ],
+        });
+
+        if (user && !provider) {
+          provider = await this.providerRepo.findOne({
+            where: [{ userId: user.id }, { email: user.email }],
+          });
+          if (!provider) {
+            provider = new ProviderEntity();
+            provider.id = `prov-${user.id}`;
+            provider.userId = user.id;
+            provider.name = user.name || "Healthcare Specialist";
+            provider.email = user.email || "";
+            provider.phone = user.phone || "";
+            provider.title = "Healthcare Specialist";
+            provider.specialty = "General Medicine";
+            provider.pricePerVisit = 800;
+            provider.rating = 5.0;
+            provider.reviewCount = 0;
+            provider.experience = 3;
+            provider.services = ["Doctor Visit", "Home Nursing"];
+          }
+        }
+      } catch (e) {
+        console.error("[PROVIDERS] Error resolving user during approveProvider:", e);
+      }
+    }
+
+    if (!provider && !user) return null;
+
+    if (provider) {
+      provider.verified = true;
+      provider.status = "verified";
+      provider.available = true;
+      if (!provider.providerCode) {
+        provider.providerCode = `MCH-${Math.floor(1000 + Math.random() * 9000)}`;
+      }
+    } else {
+      provider = new ProviderEntity();
+      provider.id = `prov-${user!.id}`;
+      provider.userId = user!.id;
+      provider.name = user!.name || "Healthcare Specialist";
+      provider.email = user!.email || "";
+      provider.phone = user!.phone || "";
+      provider.title = "Healthcare Specialist";
+      provider.specialty = "General Medicine";
+      provider.pricePerVisit = 800;
+      provider.verified = true;
+      provider.status = "verified";
+      provider.available = true;
+      provider.providerCode = `MCH-${Math.floor(1000 + Math.random() * 9000)}`;
+    }
+    const saved = await this.providerRepo.save(provider);
+
+    // Synchronize underlying user status
+    if (this.userRepo) {
+      try {
+        if (!user && saved.userId) {
+          user = await this.userRepo.findOne({ where: { id: saved.userId } });
+        }
+        if (!user && saved.email) {
+          user = await this.userRepo.findOne({ where: { email: saved.email } });
+        }
+        if (user) {
+          user.isApproved = true;
+          user.status = "active";
+          user.emailVerified = true;
+          await this.userRepo.save(user);
+        }
+      } catch (e) {
+        console.error("[PROVIDERS] Error activating user in approveProvider:", e);
+      }
+    }
+
+    const targetUserId = user?.id || saved.userId || strippedId;
+    if (this.realtimeService && targetUserId) {
+      try {
+        this.realtimeService.emitUserStatusChanged(targetUserId, "active");
+        this.realtimeService.emitToRoom(`provider:${targetUserId}`, "verification_status", {
+          status: "verified",
+          isApproved: true,
+          message: "Your provider credentials have been approved!",
+        });
+      } catch (e) {
+        console.error("[PROVIDERS] Realtime error:", e);
+      }
+    }
+
+    return saved;
+  }
+
   async deleteProvider(id: string): Promise<{ success: boolean; message: string }> {
     const provider = await this.providerRepo.findOne({ where: { id } });
     if (!provider) {

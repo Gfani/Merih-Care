@@ -169,136 +169,213 @@ export class VerificationService {
     return results;
   }
 
-  async approveProvider(id: string, actorId: string): Promise<ProviderEntity> {
-    let provider = await this.providerRepo.findOne({ where: { id } });
-    if (!provider) {
-      provider = await this.providerRepo.findOne({ where: { userId: id } });
+  async approveProvider(id: string, actorId: string): Promise<ProviderEntity | null> {
+    if (!id) return null;
+
+    const cleanId = String(id).trim();
+    const strippedId = cleanId.startsWith("prov-") ? cleanId.replace(/^prov-/, "") : cleanId;
+    const prefixedId = cleanId.startsWith("prov-") ? cleanId : `prov-${cleanId}`;
+
+    // 1. Search provider repository by direct id, prefixed id, stripped id, or linked userId
+    let provider: ProviderEntity | null = await this.providerRepo.findOne({
+      where: [
+        { id: cleanId },
+        { id: prefixedId },
+        { id: strippedId },
+        { userId: cleanId },
+        { userId: strippedId },
+      ],
+    });
+
+    // 2. If no provider entity was found, search user repository
+    let user: UserEntity | null = null;
+    if (this.userRepo) {
+      try {
+        user = await this.userRepo.findOne({
+          where: [
+            { id: cleanId },
+            { id: strippedId },
+          ],
+        });
+
+        if (user && !provider) {
+          // See if provider exists under user's actual ID or email
+          provider = await this.providerRepo.findOne({
+            where: [
+              { userId: user.id },
+              { email: user.email },
+            ],
+          });
+
+          // Auto-create linked provider record if missing
+          if (!provider) {
+            provider = new ProviderEntity();
+            provider.id = `prov-${user.id}`;
+            provider.userId = user.id;
+            provider.name = user.name || "Healthcare Specialist";
+            provider.email = user.email || "";
+            provider.phone = user.phone || "";
+            provider.title = "Healthcare Specialist";
+            provider.specialty = "General Medicine";
+            provider.pricePerVisit = 800;
+            provider.rating = 5.0;
+            provider.reviewCount = 0;
+            provider.experience = 3;
+            provider.services = ["Doctor Visit", "Home Nursing"];
+          }
+        }
+      } catch (e) {
+        console.error("[VERIFICATION] Error finding user in approveProvider:", e);
+      }
     }
 
+    if (!provider && !user) {
+      return null;
+    }
+
+    // 3. Mark provider approved & verified
+    let savedProvider: ProviderEntity;
     if (provider) {
       provider.verified = true;
       provider.status = "verified";
       provider.available = true;
-      const savedProvider = await this.providerRepo.save(provider);
+      if (!provider.providerCode) {
+        provider.providerCode = `MCH-${Math.floor(1000 + Math.random() * 9000)}`;
+      }
+      savedProvider = await this.providerRepo.save(provider);
+    } else {
+      savedProvider = new ProviderEntity();
+      savedProvider.id = `prov-${user!.id}`;
+      savedProvider.userId = user!.id;
+      savedProvider.name = user!.name || "Healthcare Specialist";
+      savedProvider.email = user!.email || "";
+      savedProvider.phone = user!.phone || "";
+      savedProvider.title = "Healthcare Specialist";
+      savedProvider.specialty = "General Medicine";
+      savedProvider.pricePerVisit = 800;
+      savedProvider.verified = true;
+      savedProvider.status = "verified";
+      savedProvider.available = true;
+      savedProvider.providerCode = `MCH-${Math.floor(1000 + Math.random() * 9000)}`;
+      savedProvider = await this.providerRepo.save(savedProvider);
+    }
 
-      // Unlock associated user account
-      if (this.userRepo) {
-        try {
-          let user: UserEntity | null = null;
-          if (provider.userId) {
-            user = await this.userRepo.findOne({ where: { id: provider.userId } });
-          }
-          if (!user && provider.name) {
-            user = await this.userRepo.findOne({ where: { name: provider.name, role: "provider" } });
-          }
-          if (!user) {
-            user = await this.userRepo.findOne({ where: { id } });
-          }
-          if (user) {
-            user.isApproved = true;
-            user.status = "active";
-            user.emailVerified = true;
-            await this.userRepo.save(user);
-            console.log(`[VERIFICATION] Approved and activated provider user: ${user.id} (${user.email})`);
-          }
-        } catch (e) {
-          console.error("[VERIFICATION] Error approving user account:", e);
+    // 4. Unlock and activate associated user account
+    if (this.userRepo) {
+      try {
+        if (!user && savedProvider.userId) {
+          user = await this.userRepo.findOne({ where: { id: savedProvider.userId } });
         }
+        if (!user && savedProvider.email) {
+          user = await this.userRepo.findOne({ where: { email: savedProvider.email } });
+        }
+        if (user) {
+          user.isApproved = true;
+          user.status = "active";
+          user.emailVerified = true;
+          await this.userRepo.save(user);
+          console.log(`[VERIFICATION] Approved and activated provider user: ${user.id} (${user.email})`);
+        }
+      } catch (e) {
+        console.error("[VERIFICATION] Error approving user account:", e);
       }
+    }
 
-      // Save Review Audit
+    const providerId = savedProvider.id;
+    const targetUserId = user?.id || savedProvider.userId || strippedId;
+
+    // 5. Save Review Audit
+    try {
+      const review = new VerificationReviewEntity();
+      review.id = `rev-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      review.providerId = providerId;
+      review.reviewerId = actorId || "admin";
+      review.decision = "approved";
+      review.notes = "Credentials approved and verified.";
+      await this.reviewRepo.save(review);
+    } catch (err) {
+      console.error("[VERIFICATION] Error saving review audit:", err);
+    }
+
+    // 6. Save History Audit
+    try {
+      const history = new VerificationHistoryEntity();
+      history.id = `hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      history.providerId = providerId;
+      history.status = "verified";
+      history.changedBy = actorId || "admin";
+      history.notes = "Provider credentials approved and verified.";
+      history.createdAt = new Date().toISOString();
+      await this.historyRepo.save(history);
+    } catch (err) {
+      console.error("[VERIFICATION] Error saving history audit:", err);
+    }
+
+    // 7. Dispatch approval notification to provider
+    if (this.notificationsService && (savedProvider.userId || savedProvider.email || savedProvider.phone || user)) {
+      const notifTarget = targetUserId || savedProvider.id;
+      this.notificationsService.sendNotification(notifTarget, {
+        type: "verification_update",
+        title: "Healthcare Provider Verification Approved! 🎉",
+        body: `Congratulations ${savedProvider.name}, your credentials have been verified and approved by the MerihCare Clinical Administration! Your provider account is now fully active.`,
+        priority: "critical",
+        recipientEmail: savedProvider.email || user?.email,
+        recipientPhone: savedProvider.phone || user?.phone,
+        data: { providerId: savedProvider.id, status: "verified", approved: true },
+      }).catch((err) => console.error("[VERIFICATION] Notification error:", err));
+    }
+
+    // 8. Realtime websocket notifications
+    if (this.realtimeService && targetUserId) {
       try {
-        const review = new VerificationReviewEntity();
-        review.id = `rev-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-        review.providerId = provider.id;
-        review.reviewerId = actorId;
-        review.decision = "approved";
-        review.notes = "Credentials approved and verified.";
-        await this.reviewRepo.save(review);
-      } catch (err) {
-        console.error("[VERIFICATION] Error saving review audit:", err);
-      }
-
-      // Save History Audit
-      try {
-        const history = new VerificationHistoryEntity();
-        history.id = `hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-        history.providerId = provider.id;
-        history.status = "verified";
-        history.changedBy = actorId;
-        history.notes = "Provider credentials approved and verified.";
-        history.createdAt = new Date().toISOString();
-        await this.historyRepo.save(history);
-      } catch (err) {
-        console.error("[VERIFICATION] Error saving history audit:", err);
-      }
-
-      // Dispatch approval notification to provider
-      if (this.notificationsService && (provider.userId || provider.email || provider.phone)) {
-        const targetId = provider.userId || provider.id;
-        this.notificationsService.sendNotification(targetId, {
-          type: "verification_update",
-          title: "Healthcare Provider Verification Approved! 🎉",
-          body: `Congratulations ${provider.name}, your credentials have been verified and approved by the MerihCare Clinical Administration! Your provider account is now fully active.`,
-          priority: "critical",
-          recipientEmail: provider.email,
-          recipientPhone: provider.phone,
-          data: { providerId: provider.id, status: "verified", approved: true },
-        }).catch((err) => console.error("[VERIFICATION] Notification error:", err));
-      }
-
-      // Realtime websocket notifications
-      if (this.realtimeService) {
-        const targetUserId = provider.userId || provider.id;
         this.realtimeService.emitUserStatusChanged(targetUserId, "active");
         this.realtimeService.emitToRoom(`provider:${targetUserId}`, "verification_status", {
           status: "verified",
           isApproved: true,
           message: "Your provider credentials have been approved!",
         });
-      }
-
-      return savedProvider;
-    }
-
-    // Fallback: If id corresponds directly to a user with role === 'provider'
-    if (this.userRepo) {
-      const user = await this.userRepo.findOne({ where: { id } });
-      if (user && user.role === "provider") {
-        user.isApproved = true;
-        user.status = "active";
-        user.emailVerified = true;
-        await this.userRepo.save(user);
-
-        let linkedProvider = await this.providerRepo.findOne({ where: { userId: user.id } });
-        if (!linkedProvider) {
-          linkedProvider = new ProviderEntity();
-          linkedProvider.id = "prov-" + Date.now();
-          linkedProvider.userId = user.id;
-          linkedProvider.name = user.name;
-          linkedProvider.title = "Healthcare Specialist";
-          linkedProvider.pricePerVisit = 800;
-          linkedProvider.services = ["Doctor Visit", "Home Nursing"];
-        }
-        linkedProvider.verified = true;
-        linkedProvider.status = "verified";
-        linkedProvider.available = true;
-        const saved = await this.providerRepo.save(linkedProvider);
-
-        if (this.realtimeService) {
-          this.realtimeService.emitUserStatusChanged(user.id, "active");
-        }
-        return saved;
+      } catch (err) {
+        console.error("[VERIFICATION] Realtime notification error:", err);
       }
     }
 
-    return null;
+    return savedProvider;
   }
 
-  async rejectProvider(id: string, reason: string, actorId: string): Promise<ProviderEntity> {
-    let provider = await this.providerRepo.findOne({ where: { id } });
-    if (!provider) {
-      provider = await this.providerRepo.findOne({ where: { userId: id } });
+  async rejectProvider(id: string, reason: string, actorId: string): Promise<ProviderEntity | null> {
+    if (!id) return null;
+
+    const cleanId = String(id).trim();
+    const strippedId = cleanId.startsWith("prov-") ? cleanId.replace(/^prov-/, "") : cleanId;
+    const prefixedId = cleanId.startsWith("prov-") ? cleanId : `prov-${cleanId}`;
+
+    let provider: ProviderEntity | null = await this.providerRepo.findOne({
+      where: [
+        { id: cleanId },
+        { id: prefixedId },
+        { id: strippedId },
+        { userId: cleanId },
+        { userId: strippedId },
+      ],
+    });
+
+    let user: UserEntity | null = null;
+    if (this.userRepo) {
+      try {
+        user = await this.userRepo.findOne({
+          where: [
+            { id: cleanId },
+            { id: strippedId },
+          ],
+        });
+        if (user && !provider) {
+          provider = await this.providerRepo.findOne({
+            where: [{ userId: user.id }, { email: user.email }],
+          });
+        }
+      } catch (e) {
+        console.error("[VERIFICATION] Error finding user in rejectProvider:", e);
+      }
     }
 
     if (provider) {
@@ -310,15 +387,8 @@ export class VerificationService {
       // Update associated user account
       if (this.userRepo) {
         try {
-          let user: UserEntity | null = null;
-          if (provider.userId) {
+          if (!user && provider.userId) {
             user = await this.userRepo.findOne({ where: { id: provider.userId } });
-          }
-          if (!user && provider.name) {
-            user = await this.userRepo.findOne({ where: { name: provider.name, role: "provider" } });
-          }
-          if (!user) {
-            user = await this.userRepo.findOne({ where: { id } });
           }
           if (user) {
             user.isApproved = false;
@@ -330,31 +400,36 @@ export class VerificationService {
         }
       }
 
+      const providerId = provider.id;
+      const targetUserId = user?.id || provider.userId || strippedId;
+
       // Dispatch rejection notification to provider
-      if (this.notificationsService && (provider.userId || provider.email || provider.phone)) {
-        const targetId = provider.userId || provider.id;
-        this.notificationsService.sendNotification(targetId, {
+      if (this.notificationsService && targetUserId) {
+        this.notificationsService.sendNotification(targetUserId, {
           type: "verification_update",
           title: "Provider Verification Update",
           body: `Your provider verification application was not approved: ${reason}. Please update your credentials or contact clinical administration support.`,
           priority: "critical",
-          recipientEmail: provider.email,
-          recipientPhone: provider.phone,
+          recipientEmail: provider.email || user?.email,
+          recipientPhone: provider.phone || user?.phone,
           data: { providerId: provider.id, status: "rejected", reason },
         }).catch((err) => console.error("[VERIFICATION] Notification error:", err));
       }
 
-      if (this.realtimeService) {
-        const targetUserId = provider.userId || provider.id;
-        this.realtimeService.emitUserStatusChanged(targetUserId, "rejected");
+      if (this.realtimeService && targetUserId) {
+        try {
+          this.realtimeService.emitUserStatusChanged(targetUserId, "rejected");
+        } catch (err) {
+          console.error("[VERIFICATION] Realtime error on reject:", err);
+        }
       }
 
       // Save Review Audit
       try {
         const review = new VerificationReviewEntity();
         review.id = `rev-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-        review.providerId = provider.id;
-        review.reviewerId = actorId;
+        review.providerId = providerId;
+        review.reviewerId = actorId || "admin";
         review.decision = "rejected";
         review.notes = reason;
         await this.reviewRepo.save(review);
@@ -366,9 +441,9 @@ export class VerificationService {
       try {
         const history = new VerificationHistoryEntity();
         history.id = `hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-        history.providerId = provider.id;
+        history.providerId = providerId;
         history.status = "rejected";
-        history.changedBy = actorId;
+        history.changedBy = actorId || "admin";
         history.notes = `Application rejected: ${reason}`;
         history.createdAt = new Date().toISOString();
         await this.historyRepo.save(history);
@@ -377,35 +452,62 @@ export class VerificationService {
       }
 
       return savedProvider;
+    } else if (user) {
+      user.isApproved = false;
+      user.status = "rejected";
+      await this.userRepo.save(user);
     }
     return null;
   }
 
-  async requestCorrections(id: string, comments: string, actorId: string): Promise<ProviderEntity> {
-    const provider = await this.providerRepo.findOne({ where: { id } });
+  async requestCorrections(id: string, comments: string, actorId: string): Promise<ProviderEntity | null> {
+    if (!id) return null;
+
+    const cleanId = String(id).trim();
+    const strippedId = cleanId.startsWith("prov-") ? cleanId.replace(/^prov-/, "") : cleanId;
+    const prefixedId = cleanId.startsWith("prov-") ? cleanId : `prov-${cleanId}`;
+
+    let provider: ProviderEntity | null = await this.providerRepo.findOne({
+      where: [
+        { id: cleanId },
+        { id: prefixedId },
+        { id: strippedId },
+        { userId: cleanId },
+        { userId: strippedId },
+      ],
+    });
+
     if (provider) {
       provider.verified = false;
       provider.status = "needs_fix";
       const savedProvider = await this.providerRepo.save(provider);
 
       // Save Review Audit
-      const review = new VerificationReviewEntity();
-      review.id = `rev-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      review.providerId = id;
-      review.reviewerId = actorId;
-      review.decision = "corrections_requested";
-      review.notes = comments;
-      await this.reviewRepo.save(review);
+      try {
+        const review = new VerificationReviewEntity();
+        review.id = `rev-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        review.providerId = provider.id;
+        review.reviewerId = actorId || "admin";
+        review.decision = "corrections_requested";
+        review.notes = comments;
+        await this.reviewRepo.save(review);
+      } catch (err) {
+        console.error("[VERIFICATION] Error saving review audit on corrections:", err);
+      }
 
       // Save History Audit
-      const history = new VerificationHistoryEntity();
-      history.id = `hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      history.providerId = id;
-      history.status = "needs_fix";
-      history.changedBy = actorId;
-      history.notes = `Correction requested. Notes: ${comments}`;
-      history.createdAt = new Date().toISOString();
-      await this.historyRepo.save(history);
+      try {
+        const history = new VerificationHistoryEntity();
+        history.id = `hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        history.providerId = provider.id;
+        history.status = "needs_fix";
+        history.changedBy = actorId || "admin";
+        history.notes = `Correction requested. Notes: ${comments}`;
+        history.createdAt = new Date().toISOString();
+        await this.historyRepo.save(history);
+      } catch (err) {
+        console.error("[VERIFICATION] Error saving history audit on corrections:", err);
+      }
 
       return savedProvider;
     }

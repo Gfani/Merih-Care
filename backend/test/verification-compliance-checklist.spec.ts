@@ -175,6 +175,63 @@ describe("Verification & Provider Compliance Checklist Tests", () => {
       expect(mockNotifications.sendNotification).toHaveBeenCalled();
       expect(mockRealtime.emitUserStatusChanged).toHaveBeenCalledWith("u-doc-to-approve", "active");
     });
+
+    it("should approve provider by prov-<userId> when provider only exists as user in queue", async () => {
+      const pendingUser = {
+        id: "u-fresh-provider-99",
+        name: "Dr. Selamawit",
+        email: "selam@merihcare.et",
+        phone: "0911000000",
+        role: "provider",
+        emailVerified: false,
+        isApproved: false,
+        status: "pending_verification",
+      };
+
+      const mockProviderRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+        save: jest.fn().mockImplementation((p) => Promise.resolve(p)),
+      };
+
+      const mockUserRepo = {
+        findOne: jest.fn().mockImplementation((query) => {
+          return Promise.resolve(pendingUser);
+        }),
+        save: jest.fn().mockImplementation((u) => Promise.resolve(u)),
+      };
+
+      const verificationService = new VerificationService(
+        mockProviderRepo as any,
+        mockReviewRepo,
+        mockHistoryRepo,
+        mockUserRepo as any,
+        { sendNotification: jest.fn().mockResolvedValue({}) } as any,
+        { emitUserStatusChanged: jest.fn(), emitToRoom: jest.fn() } as any
+      );
+
+      const approved = await verificationService.approveProvider("prov-u-fresh-provider-99", "u-admin");
+      expect(approved).not.toBeNull();
+      expect(approved.verified).toBe(true);
+      expect(approved.status).toBe("verified");
+      expect(approved.available).toBe(true);
+      expect(pendingUser.isApproved).toBe(true);
+      expect(pendingUser.status).toBe("active");
+      expect(pendingUser.emailVerified).toBe(true);
+    });
+
+    it("should grant credentials:review and credentials:approve to admin and operations_admin roles", () => {
+      const { getEffectivePermissions, Permission } = require("../src/shared/constants/permissions");
+
+      const adminUser = { role: "admin", adminRole: "operations_admin" };
+      const perms = getEffectivePermissions(adminUser);
+      expect(perms).toContain(Permission.CREDENTIALS_REVIEW);
+      expect(perms).toContain(Permission.CREDENTIALS_APPROVE);
+
+      const plainAdmin = { role: "admin" };
+      const plainPerms = getEffectivePermissions(plainAdmin);
+      expect(plainPerms).toContain(Permission.CREDENTIALS_REVIEW);
+      expect(plainPerms).toContain(Permission.CREDENTIALS_APPROVE);
+    });
   });
 
   describe("Textbee Phone Number Domestic Formatting for Ethiopian SIMs", () => {

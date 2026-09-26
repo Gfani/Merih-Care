@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   # ────────────────────────────────────────────────────────────────────────────
-  backend-ci:
+  backend-test:
     name: 🔧 Backend — Test, Lint & Build
     runs-on: ubuntu-latest
     defaults:
@@ -48,7 +48,7 @@ jobs:
         run: npm run typeorm -- --help
 
   # ────────────────────────────────────────────────────────────────────────────
-  admin-web-ci:
+  admin-web-test:
     name: 🌐 Admin Web — Test & Build
     runs-on: ubuntu-latest
     defaults:
@@ -82,7 +82,7 @@ jobs:
           retention-days: 7
 
   # ────────────────────────────────────────────────────────────────────────────
-  mobile-ci:
+  mobile-test:
     name: 📱 Flutter — Analyze, Test & Build APK
     runs-on: ubuntu-latest
     defaults:

@@ -24,6 +24,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   operations_admin: [
     Permission.USERS_READ,
     Permission.USERS_WRITE,
+    Permission.CREDENTIALS_REVIEW,
+    Permission.CREDENTIALS_APPROVE,
     Permission.REPORTS_READ,
     Permission.COMPLAINTS_READ,
     Permission.COMPLAINTS_WRITE,
@@ -53,9 +55,14 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   ],
   admin: [
     Permission.USERS_READ,
+    Permission.USERS_WRITE,
+    Permission.CREDENTIALS_REVIEW,
+    Permission.CREDENTIALS_APPROVE,
     Permission.REPORTS_READ,
     Permission.COMPLAINTS_READ,
+    Permission.COMPLAINTS_WRITE,
     Permission.AUDIT_READ,
+    Permission.SETTINGS_READ,
   ],
 };
 
@@ -73,18 +80,21 @@ export function getEffectivePermissions(user: any): string[] {
     return Object.values(Permission);
   }
 
+  // If super admin or explicitly marked 'all'
+  if (
+    user.role === "super_admin" ||
+    user.adminRole === "super_admin" ||
+    user.permissions === "all"
+  ) {
+    return Object.values(Permission);
+  }
+
   const permissionsSet = new Set<string>();
 
   // Explicit user.permissions
   if (user.permissions) {
     if (typeof user.permissions === "string") {
-      if (user.permissions === "all") {
-        if (user.adminRole === "super_admin" || user.role === "super_admin" || isOwner) {
-          return Object.values(Permission);
-        }
-      } else {
-        user.permissions.split(",").map((p: string) => p.trim()).filter(Boolean).forEach((p: string) => permissionsSet.add(p));
-      }
+      user.permissions.split(",").map((p: string) => p.trim()).filter(Boolean).forEach((p: string) => permissionsSet.add(p));
     } else if (Array.isArray(user.permissions)) {
       user.permissions.forEach((p: string) => permissionsSet.add(p));
     }

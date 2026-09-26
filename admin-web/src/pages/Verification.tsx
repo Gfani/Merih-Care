@@ -446,14 +446,15 @@ export default function VerificationSection() {
 
   const handleApprove = async () => {
     if (!selectedProvider) return;
-    const targetId = selectedProvider.id;
+    const targetId = selectedProvider.id || selectedProvider.userId;
     // Optimistic removal from queue immediately without waiting or refreshing
     setProviders((prev) => prev.filter((p) => p.id !== targetId && p.userId !== targetId));
     try {
       await api.approveProvider(targetId);
       toast(`${selectedProvider?.name} has been verified!`, "success");
-    } catch {
-      toast("Failed to approve provider", "error");
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.message || err?.message || "Failed to approve provider";
+      toast(errMsg, "error");
       loadData();
     } finally {
       setApproveModal(false);
@@ -462,14 +463,15 @@ export default function VerificationSection() {
 
   const handleReject = async () => {
     if (!selectedProvider) return;
-    const targetId = selectedProvider.id;
+    const targetId = selectedProvider.id || selectedProvider.userId;
     // Optimistic removal from queue immediately without waiting or refreshing
     setProviders((prev) => prev.filter((p) => p.id !== targetId && p.userId !== targetId));
     try {
       await api.rejectProvider(targetId, rejectReason || "Documents did not pass checks");
       toast(`Verification rejected for ${selectedProvider?.name}`, "warning");
-    } catch {
-      toast("Failed to reject provider", "error");
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.message || err?.message || "Failed to reject provider";
+      toast(errMsg, "error");
       loadData();
     } finally {
       setRejectModal(false);
@@ -479,11 +481,12 @@ export default function VerificationSection() {
   const handleRequestCorrections = async () => {
     if (!selectedFixProvider || !fixComment) return;
     try {
-      await api.requestCorrections(selectedFixProvider.id, fixComment);
+      await api.requestCorrections(selectedFixProvider.id || selectedFixProvider.userId, fixComment);
       toast(`Correction request sent to ${selectedFixProvider?.name}`, "info");
       loadData();
-    } catch {
-      toast("Failed to request corrections", "error");
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.message || err?.message || "Failed to request corrections";
+      toast(errMsg, "error");
     } finally {
       setFixModal(false);
     }

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards, Query, Req } from "@nestjs/common";
+import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards, Query, Req, NotFoundException } from "@nestjs/common";
 import { ProvidersService } from "./providers.service";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 import { RolesGuard } from "../../shared/guards/roles.guard";
@@ -139,6 +139,26 @@ export class ProvidersController {
   @Roles("admin")
   async deleteProvider(@Param("id") id: string) {
     return this.providersService.deleteProvider(id);
+  }
+
+  @Put([":id/approve", ":id/verify"])
+  @UseGuards(RolesGuard)
+  @Roles("owner", "admin", "super_admin")
+  async approveProviderPut(@Param("id") id: string, @Req() req: any) {
+    const actorId = req.user?.id || req.user?.sub || "admin";
+    const res = await this.providersService.approveProvider(id, actorId);
+    if (!res) throw new NotFoundException(`Provider '${id}' not found`);
+    return res;
+  }
+
+  @Post([":id/approve", ":id/verify"])
+  @UseGuards(RolesGuard)
+  @Roles("owner", "admin", "super_admin")
+  async approveProviderPost(@Param("id") id: string, @Req() req: any) {
+    const actorId = req.user?.id || req.user?.sub || "admin";
+    const res = await this.providersService.approveProvider(id, actorId);
+    if (!res) throw new NotFoundException(`Provider '${id}' not found`);
+    return res;
   }
 
   @Post(":id/contact")

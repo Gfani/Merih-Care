@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Param, UseGuards, Body, Req } from "@nestjs/common";
+import { Controller, Get, Post, Put, Param, UseGuards, Body, Req, NotFoundException } from "@nestjs/common";
 import { VerificationService } from "./verification.service";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 import { RolesGuard } from "../../shared/guards/roles.guard";
@@ -47,7 +47,7 @@ export class SanctionProviderDto {
 
 @Controller("verification")
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
-@Roles("admin", "super_admin", "verification_admin", "verifier")
+@Roles("owner", "admin", "super_admin", "verification_admin", "verifier")
 export class VerificationController {
   constructor(private readonly verificationService: VerificationService) {}
 
@@ -70,11 +70,11 @@ export class VerificationController {
     @Body() body: AssignReviewerDto,
     @Req() req: any
   ) {
-    const actorId = req.user?.id || "u-admin";
+    const actorId = req.user?.id || req.user?.sub || "u-admin";
     return this.verificationService.assignReviewer(id, body.reviewerId, actorId);
   }
 
-  @Put(":id")
+  @Put([":id", ":id/approve", ":id/verify"])
   @Permissions(Permission.CREDENTIALS_APPROVE)
   async updateVerificationDecision(
     @Param("id") id: string,
@@ -82,19 +82,43 @@ export class VerificationController {
     @Req() req: any
   ) {
     const actorId = req.user?.id || req.user?.sub || "u-admin";
-    if (body.status === "verified" || body.status === "approved") {
-      return this.verificationService.approveProvider(id, actorId);
-    } else if (body.status === "rejected") {
-      return this.verificationService.rejectProvider(id, body.notes || "Application rejected", actorId);
+    const status = body?.status;
+    if (!status || status === "verified" || status === "approved") {
+      const res = await this.verificationService.approveProvider(id, actorId);
+      if (!res) {
+        throw new NotFoundException(`Provider '${id}' not found for verification approval`);
+      }
+      return res;
+    } else if (status === "rejected") {
+      const res = await this.verificationService.rejectProvider(id, body.notes || body.reason || "Application rejected", actorId);
+      if (!res) {
+        throw new NotFoundException(`Provider '${id}' not found for rejection`);
+      }
+      return res;
     }
-    return this.verificationService.requestCorrections(id, body.notes || "Corrections required", actorId);
+    const res = await this.verificationService.requestCorrections(id, body.notes || body.comments || "Corrections required", actorId);
+    if (!res) {
+      throw new NotFoundException(`Provider '${id}' not found for corrections request`);
+    }
+    return res;
   }
 
-  @Post(":id/approve")
+  @Post([":id/approve", ":id/verify"])
   @Permissions(Permission.CREDENTIALS_APPROVE)
-  async approve(@Param("id") id: string, @Req() req: any) {
-    const actorId = req.user?.id || "u-admin";
-    return this.verificationService.approveProvider(id, actorId);
+  async approve(@Param("id") id: string, @Body() body: any, @Req() req: any) {
+    const actorId = req.user?.id || req.user?.sub || "u-admin";
+    if (body?.status === "rejected") {
+      const res = await this.verificationService.rejectProvider(id, body.reason || body.notes || "Application rejected", actorId);
+      if (!res) {
+        throw new NotFoundException(`Provider '${id}' not found for rejection`);
+      }
+      return res;
+    }
+    const res = await this.verificationService.approveProvider(id, actorId);
+    if (!res) {
+      throw new NotFoundException(`Provider '${id}' not found for approval`);
+    }
+    return res;
   }
 
   @Post(":id/reject")

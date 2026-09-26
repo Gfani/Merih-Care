@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { SearchBar, Button, Card, DataTable, Avatar, StatusBadge, Rating, ConfirmDialog, Modal, toast, SkeletonCard, Input } from "../components/ui";
 import { api } from "../services/api";
-import { AlertTriangle, MessageSquare, Phone, Mail, Send, Trash2 } from "lucide-react";
+import { AlertTriangle, MessageSquare, Phone, Mail, Send, Trash2, CheckCircle } from "lucide-react";
 import { useRealtimeSocket } from "../hooks/useRealtimeSocket";
 
 interface ProvidersSectionProps {
@@ -28,6 +28,8 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
   const [selectedProvider, setSelectedProvider] = useState<any>(null);
   const [deleteModal, setDeleteModal] = useState(false);
   const [providerToDelete, setProviderToDelete] = useState<any>(null);
+  const [quickApproveModal, setQuickApproveModal] = useState(false);
+  const [providerToApprove, setProviderToApprove] = useState<any>(null);
   const [detailsModal, setDetailsModal] = useState(false);
   const [selectedDetails, setSelectedDetails] = useState<any>(null);
 
@@ -138,6 +140,33 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
     } finally {
       setDeleteModal(false);
       setProviderToDelete(null);
+    }
+  };
+
+  const handleQuickApprove = (provider: any) => {
+    setProviderToApprove(provider);
+    setQuickApproveModal(true);
+  };
+
+  const confirmQuickApprove = async () => {
+    if (!providerToApprove) return;
+    const targetId = providerToApprove.id || providerToApprove.userId;
+    setProviders((prev) =>
+      prev.map((p) =>
+        p.id === targetId || p.userId === targetId
+          ? { ...p, status: "verified", verified: true }
+          : p
+      )
+    );
+    try {
+      await api.approveProvider(targetId);
+      toast(`${providerToApprove.name} approved & verified!`, "success");
+    } catch (err: any) {
+      toast(err.response?.data?.message || err.message || "Failed to approve provider", "error");
+      loadProviders();
+    } finally {
+      setQuickApproveModal(false);
+      setProviderToApprove(null);
     }
   };
 
@@ -386,6 +415,19 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
                 { key: "completedServices", header: "Services", render: (row) => <span className="font-semibold text-[#0d7c6a] dark:text-cyan-400">{row.completedServices as number || 0}</span> },
                 { key: "actions", header: "Actions", render: (row) => (
                   <div className="flex gap-1 items-center">
+                    {(!row.verified || row.status === "pending" || row.status === "pending_verification" || row.status === "needs_fix") && (
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        disabled={!canModifyProviders}
+                        className="text-xs !py-1 !px-2 text-emerald-600 dark:text-emerald-400 hover:!bg-emerald-50 dark:hover:!bg-emerald-950/30 disabled:opacity-50 cursor-pointer flex items-center gap-1 font-semibold" 
+                        onClick={() => handleQuickApprove(row)}
+                        title="Approve and verify provider credentials"
+                      >
+                        <CheckCircle size={12} />
+                        <span>Approve</span>
+                      </Button>
+                    )}
                     <Button size="sm" variant="ghost" className="text-xs !py-1 !px-2 cursor-pointer" onClick={() => { setSelectedDetails(row); setDetailsModal(true); }}>View</Button>
                     <Button 
                       size="sm" 
@@ -435,6 +477,16 @@ export default function ProvidersSection({ onVerification }: ProvidersSectionPro
           </div>
         )}
       </Card>
+
+      <ConfirmDialog
+        open={quickApproveModal}
+        onClose={() => { setQuickApproveModal(false); setProviderToApprove(null); }}
+        onConfirm={confirmQuickApprove}
+        title="Approve Provider Credentials"
+        message={`Are you sure you want to approve ${providerToApprove?.name || "this provider"}? They will be immediately activated to accept patient bookings and deliver clinical services.`}
+        confirmLabel="Approve"
+        confirmVariant="success"
+      />
 
       <ConfirmDialog
         open={suspendModal}

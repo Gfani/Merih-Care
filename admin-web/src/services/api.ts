@@ -502,7 +502,27 @@ export const api = {
     try {
       const res = await axios.put(`${API_URL}/verification/${id}`, { status: decision, notes }, { headers: getHeaders() });
       return res.data;
-    } catch (error) {
+    } catch (error: any) {
+      if (decision === "verified") {
+        try {
+          const res2 = await axios.post(`${API_URL}/verification/${id}/approve`, { status: "verified" }, { headers: getHeaders() });
+          return res2.data;
+        } catch {
+          try {
+            const res3 = await axios.put(`${API_URL}/providers/${id}/approve`, {}, { headers: getHeaders() });
+            return res3.data;
+          } catch {
+            // fallback failed, continue to throw original
+          }
+        }
+      } else if (decision === "rejected") {
+        try {
+          const res2 = await axios.post(`${API_URL}/verification/${id}/reject`, { reason: notes || "Application rejected" }, { headers: getHeaders() });
+          return res2.data;
+        } catch {
+          // ignore fallback
+        }
+      }
       if (isDemoMode()) return { id, status: decision, verified: decision === "verified", notes };
       throw error;
     }
