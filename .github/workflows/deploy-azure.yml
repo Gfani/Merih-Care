@@ -1,25 +1,64 @@
-name: Deploy to Microsoft Azure
+name: Deploy to Azure + GitHub Release
 
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: 'Skip CI gate (emergency deploy)'
+        required: false
+        default: 'false'
+        type: boolean
 
 permissions:
-  contents: write
+  contents: write   # needed for GitHub Release creation
+  packages: write
 
 env:
   AZURE_RESOURCE_GROUP: rg-merihcare-uae
   CONTAINER_APP_NAME: app-merihcare-prod-backend
   ADMIN_CONTAINER_APP_NAME: app-merihcare-prod-admin
 
+# ─── Reusable credential sanitizer ────────────────────────────────────────────
+# Inlined as a composite step below (GitHub doesn't support true reusable steps
+# inline, so we duplicate the small node snippet — it is 8 lines of logic).
+
 jobs:
-  deploy-backend:
-    name: Deploy Backend to Azure Container Apps
+  # ────────────────────────────────────────────────────────────────────────────
+  # Gate: wait for CI to be green before deploying
+  # ────────────────────────────────────────────────────────────────────────────
+  ci-gate:
+    name: ✅ CI Gate
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - name: Wait for CI workflow to complete
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: '🔧 Backend — Test, Lint & Build'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 20
+          allowed-conclusions: success,skipped
+        continue-on-error: ${{ inputs.skip_tests == 'true' || false }}
+
+      - name: Wait for Flutter CI
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: '📱 Flutter — Analyze, Test & Build APK'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 20
+          allowed-conclusions: success,skipped
+        continue-on-error: ${{ inputs.skip_tests == 'true' || false }}
+
+  # ────────────────────────────────────────────────────────────────────────────
+  deploy-backend:
+    name: 🚀 Backend → Azure Container Apps
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Sanitize Azure Credentials
         id: sanitize-creds
@@ -29,26 +68,16 @@ jobs:
           node -e '
             let str = (process.env.RAW_CREDS || "").trim();
             if (!str) {
-              console.error("::error::The secret AZURE_CREDENTIALS is not set in GitHub Secrets. Please configure AZURE_CREDENTIALS before deploying.");
+              console.error("::error::AZURE_CREDENTIALS secret is not set. Configure it in GitHub → Settings → Secrets.");
               process.exit(1);
             }
             if (!str.startsWith("{")) {
               const braceIdx = str.indexOf("{");
-              if (braceIdx !== -1) {
-                str = str.substring(braceIdx);
-              } else {
-                str = "{\n" + str;
-              }
+              str = braceIdx !== -1 ? str.substring(braceIdx) : "{\n" + str;
             }
             const lastBrace = str.lastIndexOf("}");
-            if (lastBrace !== -1) {
-              str = str.substring(0, lastBrace + 1);
-            } else {
-              str = str + "\n}";
-            }
-            try {
-              JSON.parse(str);
-            } catch (err) {
+            str = lastBrace !== -1 ? str.substring(0, lastBrace + 1) : str + "\n}";
+            try { JSON.parse(str); } catch (err) {
               console.error("::error::AZURE_CREDENTIALS is not valid JSON: " + err.message);
               process.exit(1);
             }
@@ -64,11 +93,10 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Azure Container Registry (ACR)
-        run: |
-          az acr login --name ${{ secrets.ACR_NAME }}
+      - name: Log in to Azure Container Registry
+        run: az acr login --name ${{ secrets.ACR_NAME }}
 
-      - name: Configure ACR Access on Backend Container App
+      - name: Get ACR credentials & configure Container App registry
         uses: azure/cli@v2
         with:
           inlineScript: |
@@ -84,17 +112,19 @@ jobs:
               --username ${{ secrets.ACR_NAME }} \
               --password "$ACR_PASS" || true
 
-      - name: Build and Push Backend Image
+      - name: Build & push backend image
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           file: ./backend/Dockerfile
           push: true
-          tags: ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-backend:${{ github.sha }},${{ secrets.ACR_LOGIN_SERVER }}/merihcare-backend:latest
+          tags: |
+            ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-backend:${{ github.sha }}
+            ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-backend:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Deploy Image to Azure Container Apps
+      - name: Deploy to Azure Container Apps
         uses: azure/container-apps-deploy-action@v1
         with:
           acrName: ${{ secrets.ACR_NAME }}
@@ -104,63 +134,37 @@ jobs:
           resourceGroup: ${{ env.AZURE_RESOURCE_GROUP }}
           imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-backend:${{ github.sha }}
 
-      - name: Verify Backend Revision Status
+      - name: Verify backend revision
         uses: azure/cli@v2
         with:
           inlineScript: |
             az config set extension.use_dynamic_install=yes_without_prompt
             az extension add --name containerapp --upgrade || true
-            echo "=== BACKEND APP DETAILS ==="
+            echo "=== Backend revision ===" 
             az containerapp show \
               --name ${{ env.CONTAINER_APP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              --query "{name:name,latestRevision:properties.latestRevisionName,readyRevision:properties.latestReadyRevisionName,traffic:properties.configuration.ingress.traffic,image:properties.template.containers[0].image}" \
+              --query "{name:name,latestRevision:properties.latestRevisionName,readyRevision:properties.latestReadyRevisionName,image:properties.template.containers[0].image}" \
               -o json
-            echo "=== REVISION LIST ==="
-            az containerapp revision list \
-              --name ${{ env.CONTAINER_APP_NAME }} \
-              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              --query "[].{Name:name,Active:properties.active,Health:properties.healthState,State:properties.runningState,Traffic:properties.trafficWeight}" \
-              -o table
 
+  # ────────────────────────────────────────────────────────────────────────────
   deploy-admin-web:
-    name: Deploy Admin Web to Azure Container Apps
+    name: 🌐 Admin Web → Azure Container Apps
+    needs: ci-gate
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Sanitize Azure Credentials
-        id: sanitize-creds-admin
         env:
           RAW_CREDS: ${{ secrets.AZURE_CREDENTIALS }}
         run: |
           node -e '
             let str = (process.env.RAW_CREDS || "").trim();
-            if (!str) {
-              console.error("::error::The secret AZURE_CREDENTIALS is not set in GitHub Secrets. Please configure AZURE_CREDENTIALS before deploying.");
-              process.exit(1);
-            }
-            if (!str.startsWith("{")) {
-              const braceIdx = str.indexOf("{");
-              if (braceIdx !== -1) {
-                str = str.substring(braceIdx);
-              } else {
-                str = "{\n" + str;
-              }
-            }
-            const lastBrace = str.lastIndexOf("}");
-            if (lastBrace !== -1) {
-              str = str.substring(0, lastBrace + 1);
-            } else {
-              str = str + "\n}";
-            }
-            try {
-              JSON.parse(str);
-            } catch (err) {
-              console.error("::error::AZURE_CREDENTIALS is not valid JSON: " + err.message);
-              process.exit(1);
-            }
+            if (!str) { console.error("::error::AZURE_CREDENTIALS secret is not set."); process.exit(1); }
+            if (!str.startsWith("{")) { const i = str.indexOf("{"); str = i !== -1 ? str.substring(i) : "{\n" + str; }
+            const lb = str.lastIndexOf("}"); str = lb !== -1 ? str.substring(0, lb + 1) : str + "\n}";
+            try { JSON.parse(str); } catch (e) { console.error("::error::AZURE_CREDENTIALS invalid JSON: " + e.message); process.exit(1); }
             const fs = require("fs");
             fs.writeFileSync(process.env.GITHUB_ENV, `CLEANED_AZURE_CREDENTIALS<<EOF\n${str}\nEOF\n`, { flag: "a" });
           '
@@ -173,11 +177,10 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Azure Container Registry (ACR)
-        run: |
-          az acr login --name ${{ secrets.ACR_NAME }}
+      - name: Log in to Azure Container Registry
+        run: az acr login --name ${{ secrets.ACR_NAME }}
 
-      - name: Configure ACR Access on Admin Container App
+      - name: Get ACR credentials & configure Container App registry
         uses: azure/cli@v2
         with:
           inlineScript: |
@@ -193,7 +196,7 @@ jobs:
               --username ${{ secrets.ACR_NAME }} \
               --password "$ACR_PASS" || true
 
-      - name: Build and Push Admin Web Image
+      - name: Build & push admin-web image
         uses: docker/build-push-action@v5
         with:
           context: ./admin-web
@@ -201,11 +204,13 @@ jobs:
           push: true
           build-args: |
             VITE_API_URL=https://api.merihcare.live/api/v1
-          tags: ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-admin-web:${{ github.sha }},${{ secrets.ACR_LOGIN_SERVER }}/merihcare-admin-web:latest
+          tags: |
+            ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-admin-web:${{ github.sha }}
+            ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-admin-web:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Deploy Admin Web Image to Azure Container Apps
+      - name: Deploy Admin Web to Azure Container Apps
         uses: azure/container-apps-deploy-action@v1
         with:
           acrName: ${{ secrets.ACR_NAME }}
@@ -215,21 +220,157 @@ jobs:
           resourceGroup: ${{ env.AZURE_RESOURCE_GROUP }}
           imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/merihcare-admin-web:${{ github.sha }}
 
-      - name: Verify Admin Web Revision Status
+      - name: Verify admin-web revision
         uses: azure/cli@v2
         with:
           inlineScript: |
             az config set extension.use_dynamic_install=yes_without_prompt
             az extension add --name containerapp --upgrade || true
-            echo "=== ADMIN WEB DETAILS ==="
+            echo "=== Admin Web revision ==="
             az containerapp show \
               --name ${{ env.ADMIN_CONTAINER_APP_NAME }} \
               --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              --query "{name:name,latestRevision:properties.latestRevisionName,readyRevision:properties.latestReadyRevisionName,traffic:properties.configuration.ingress.traffic}" \
+              --query "{name:name,latestRevision:properties.latestRevisionName,readyRevision:properties.latestReadyRevisionName}" \
               -o json
-            echo "=== REVISION LIST ==="
-            az containerapp revision list \
-              --name ${{ env.ADMIN_CONTAINER_APP_NAME }} \
-              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-              --query "[].{Name:name,Active:properties.active,Health:properties.healthState,State:properties.runningState,Traffic:properties.trafficWeight}" \
-              -o table
+
+  # ────────────────────────────────────────────────────────────────────────────
+  release-mobile:
+    name: 📦 Mobile Release — APK + GitHub Release
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate localizations
+        run: flutter gen-l10n
+
+      # ── Signing ────────────────────────────────────────────────────────────
+      - name: Decode keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > android/app/merihcare-release.jks
+            echo "Keystore decoded successfully"
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 not set — building with debug signing"
+          fi
+
+      - name: Write key.properties
+        env:
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+        run: |
+          if [ -n "$KEY_ALIAS" ]; then
+            cat > android/key.properties <<EOF
+          storePassword=$STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=merihcare-release.jks
+          EOF
+            echo "key.properties written"
+          else
+            echo "::warning::Android signing secrets not configured — APK will use debug signing"
+          fi
+
+      # ── Build ──────────────────────────────────────────────────────────────
+      - name: Determine version
+        id: version
+        run: |
+          # Extract version from pubspec.yaml e.g. "1.0.0+1"
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          BUILD_NUM=${{ github.run_number }}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v${VERSION}-build.${BUILD_NUM}" >> $GITHUB_OUTPUT
+          echo "Building $VERSION (build $BUILD_NUM)"
+
+      - name: Build split APKs (arm64, armeabi, x86_64)
+        run: |
+          flutter build apk --release --split-per-abi \
+            --build-number=${{ github.run_number }}
+
+      - name: Build App Bundle (AAB)
+        run: |
+          flutter build appbundle --release \
+            --build-number=${{ github.run_number }}
+
+      - name: Rename APKs with version tag
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          mkdir -p release-artifacts
+          for f in build/app/outputs/flutter-apk/app-*-release.apk; do
+            ARCH=$(echo "$f" | grep -oP '(?<=app-)[^-]+(?=-release\.apk)')
+            cp "$f" "release-artifacts/merihcare-${TAG}-${ARCH}.apk"
+          done
+          cp build/app/outputs/bundle/release/app-release.aab \
+             "release-artifacts/merihcare-${TAG}.aab"
+          ls -lh release-artifacts/
+
+      # ── GitHub Release ─────────────────────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Merihcare ${{ steps.version.outputs.version }} (Build #${{ github.run_number }})"
+          body: |
+            ## 🚀 Merihcare Mobile Release
+
+            **Version:** `${{ steps.version.outputs.version }}`
+            **Build:** `#${{ github.run_number }}`
+            **Commit:** [`${{ github.sha }}`](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+
+            ### What's included
+            - `merihcare-*-arm64-v8a.apk` — 64-bit ARM (most modern Android phones)
+            - `merihcare-*-armeabi-v7a.apk` — 32-bit ARM (older devices)
+            - `merihcare-*-x86_64.apk` — x86_64 (emulators / Chromebooks)
+            - `merihcare-*.aab` — Android App Bundle (Google Play submission)
+
+            ### Installation (sideload)
+            1. Download the APK matching your device architecture
+            2. Enable **Install from unknown sources** in Android settings
+            3. Open the downloaded APK and install
+
+            ### Changes in this release
+            See [commit history](https://github.com/${{ github.repository }}/commits/main) for full changelog.
+          files: mobile/release-artifacts/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ────────────────────────────────────────────────────────────────────────────
+  notify-deploy:
+    name: 📣 Deployment Summary
+    needs: [deploy-backend, deploy-admin-web, release-mobile]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print deployment summary
+        run: |
+          echo "### Merihcare Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend (Azure) | ${{ needs.deploy-backend.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Admin Web (Azure) | ${{ needs.deploy-admin-web.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Mobile APK Release | ${{ needs.release-mobile.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
