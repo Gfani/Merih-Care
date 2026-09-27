@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import '../../../core/location/road_routing_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/create_design_widgets.dart';
 import '../../../shared/widgets/custom_map_markers.dart';
@@ -86,6 +87,9 @@ class _ProviderIncomingRequestsMapState
   final Distance _distanceCalculator = const Distance();
 
   int _selectedRequestIndex = 0;
+  List<LatLng> _roadRoutePoints = [];
+  double? _roadDistanceKm;
+  int? _roadEtaMinutes;
 
   LatLng _resolvePatientLocation(dynamic req) =>
       ProviderIncomingRequestsMap.resolveLocation(
@@ -103,6 +107,7 @@ class _ProviderIncomingRequestsMapState
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _fitProviderAndSelected();
+        _fetchRoadRoute();
       });
     }
   }
@@ -112,7 +117,29 @@ class _ProviderIncomingRequestsMapState
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fitProviderAndSelected();
+      _fetchRoadRoute();
     });
+  }
+
+  Future<void> _fetchRoadRoute() async {
+    if (widget.incomingRequests.isEmpty) return;
+    final selectedReq = widget.incomingRequests[
+        _selectedRequestIndex.clamp(0, widget.incomingRequests.length - 1)];
+    final patientPoint = _resolvePatientLocation(selectedReq);
+    final providerPoint = LatLng(widget.providerLat, widget.providerLon);
+    try {
+      final res = await RoadRoutingService.getRoute(
+        start: providerPoint,
+        destination: patientPoint,
+      );
+      if (mounted) {
+        setState(() {
+          _roadRoutePoints = res.points;
+          _roadDistanceKm = res.distanceKm;
+          _roadEtaMinutes = res.etaMinutes;
+        });
+      }
+    } catch (_) {}
   }
 
   void _fitProviderAndSelected() {
@@ -159,21 +186,27 @@ class _ProviderIncomingRequestsMapState
         : null;
 
     // Distance & ETA calculation for selected request
-    double distanceKm = 2.4;
-    int etaMinutes = 8;
+    double distanceKm = _roadDistanceKm ?? 2.4;
+    int etaMinutes = _roadEtaMinutes ?? 8;
     LatLng? midPoint;
     if (patientPoint != null) {
-      final double meters = _distanceCalculator.as(
-        LengthUnit.Meter,
-        providerPoint,
-        patientPoint,
-      );
-      distanceKm = meters / 1000.0;
-      etaMinutes = max(1, (distanceKm * 3.0).round());
-      midPoint = LatLng(
-        (providerPoint.latitude + patientPoint.latitude) / 2,
-        (providerPoint.longitude + patientPoint.longitude) / 2,
-      );
+      if (_roadDistanceKm == null) {
+        final double meters = _distanceCalculator.as(
+          LengthUnit.Meter,
+          providerPoint,
+          patientPoint,
+        );
+        distanceKm = meters / 1000.0;
+        etaMinutes = max(1, (distanceKm * 3.0).round());
+      }
+      if (_roadRoutePoints.length > 2) {
+        midPoint = _roadRoutePoints[_roadRoutePoints.length ~/ 2];
+      } else {
+        midPoint = LatLng(
+          (providerPoint.latitude + patientPoint.latitude) / 2,
+          (providerPoint.longitude + patientPoint.longitude) / 2,
+        );
+      }
     }
 
     return Container(
@@ -209,12 +242,20 @@ class _ProviderIncomingRequestsMapState
                 userAgentPackageName: 'com.merihcare.mobile',
               ),
 
-              // Route line connecting provider to selected request
+              // Route line connecting provider to selected request along real roads
               if (patientPoint != null)
                 PolylineLayer(
                   polylines: [
+                    if (_roadRoutePoints.isNotEmpty)
+                      Polyline(
+                        points: _roadRoutePoints,
+                        color: const Color(0xFF042F2E).withOpacity(0.35),
+                        strokeWidth: 6.5,
+                      ),
                     Polyline(
-                      points: [providerPoint, patientPoint],
+                      points: _roadRoutePoints.isNotEmpty
+                          ? _roadRoutePoints
+                          : [providerPoint, patientPoint],
                       color: const Color(0xFF0D7C6A),
                       strokeWidth: 4.0,
                     ),
@@ -284,6 +325,7 @@ class _ProviderIncomingRequestsMapState
                               widget.onSelect!(req);
                             }
                             _fitProviderAndSelected();
+                            _fetchRoadRoute();
                           },
                           child: Column(
                             mainAxisSize: MainAxisSize.min,

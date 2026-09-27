@@ -346,12 +346,13 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
         ),
       );
       _loadDashboardData();
-      context.push('/provider/map/$aptId');
+      context.push('/provider/map/$aptId', extra: req);
     } catch (_) {
       if (!mounted) return;
-      context.push('/provider/map/$aptId');
+      context.push('/provider/map/$aptId', extra: req);
     }
   }
+
 
   Future<void> _declineIncomingRequest(dynamic req) async {
     try {
@@ -451,8 +452,9 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
             ),
           );
           _loadDashboardData();
-          context.push('/provider/map/$aptId');
+          context.push('/provider/map/$aptId', extra: offer);
         },
+
         onDecline: () {
           Navigator.of(dialogCtx, rootNavigator: true).pop();
           _currentOfferAptId = null;

@@ -143,8 +143,44 @@ final appRouter = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/provider/map/:id',
-        builder: (ctx, state) => ProviderMapNavigationScreen(appointmentId: state.pathParameters['id']!),
+        builder: (ctx, state) {
+          final extra = state.extra is Map ? state.extra as Map : null;
+          final query = state.uri.queryParameters;
+
+          double? pLat = double.tryParse(query['lat'] ?? query['patientLat'] ?? '');
+          double? pLon = double.tryParse(query['lng'] ?? query['lon'] ?? query['patientLon'] ?? query['patientLng'] ?? '');
+          String? pName = query['name'] ?? query['patientName'];
+
+          if (extra != null) {
+            final rawLat = extra['patientLat'] ?? extra['latitude'] ?? extra['lat'];
+            if (rawLat is num) pLat ??= rawLat.toDouble();
+            if (rawLat is String) pLat ??= double.tryParse(rawLat);
+
+            final rawLon = extra['patientLng'] ?? extra['longitude'] ?? extra['lng'];
+            if (rawLon is num) pLon ??= rawLon.toDouble();
+            if (rawLon is String) pLon ??= double.tryParse(rawLon);
+
+            if ((pLat == null || pLon == null) && extra['location'] is Map) {
+              final loc = extra['location'] as Map;
+              final locLat = loc['latitude'] ?? loc['lat'];
+              final locLng = loc['longitude'] ?? loc['lng'];
+              if (locLat is num) pLat ??= locLat.toDouble();
+              if (locLng is num) pLon ??= locLng.toDouble();
+            }
+
+            pName ??= extra['patientName']?.toString() ??
+                (extra['patient'] is Map ? extra['patient']['name']?.toString() : null);
+          }
+
+          return ProviderMapNavigationScreen(
+            appointmentId: state.pathParameters['id']!,
+            patientLat: pLat,
+            patientLon: pLon,
+            patientName: pName,
+          );
+        },
       ),
+
       GoRoute(path: '/provider/earnings', builder: (ctx, _) => const ProviderEarningsScreen()),
 
       // Provider Profile (Patient view & alias)

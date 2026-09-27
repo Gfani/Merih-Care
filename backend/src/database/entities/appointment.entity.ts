@@ -67,6 +67,12 @@ export class AppointmentEntity {
   @Column({ nullable: true })
   location: string;
 
+  @Column({ type: "float", nullable: true })
+  latitude: number;
+
+  @Column({ type: "float", nullable: true })
+  longitude: number;
+
   @Column({ default: 0 })
   amount: number;
 

@@ -297,7 +297,7 @@ class _ProviderAppointmentDetailsScreenState extends ConsumerState<ProviderAppoi
             ElevatedButton(
               onPressed: () {
                 _changeStatus('on_the_way');
-                context.push('/provider/map/${widget.appointmentId}');
+                context.push('/provider/map/${widget.appointmentId}', extra: _appointment);
               },
               child: const Text('Start Travel / Head to Patient'),
             ),
@@ -312,7 +312,7 @@ class _ProviderAppointmentDetailsScreenState extends ConsumerState<ProviderAppoi
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: () => context.push('/provider/map/${widget.appointmentId}'),
+              onPressed: () => context.push('/provider/map/${widget.appointmentId}', extra: _appointment),
               icon: const Icon(Icons.map_outlined),
               label: const Text('Open Map Navigation'),
             ),

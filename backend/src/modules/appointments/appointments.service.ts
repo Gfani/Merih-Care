@@ -244,6 +244,12 @@ export class AppointmentsService {
       apt.date = data.date;
       apt.time = data.time;
       apt.location = data.location || "Addis Ababa";
+      apt.latitude = (data.latitude !== undefined && data.latitude !== null)
+        ? Number(data.latitude)
+        : (data.coordinates?.latitude ? Number(data.coordinates.latitude) : null);
+      apt.longitude = (data.longitude !== undefined && data.longitude !== null)
+        ? Number(data.longitude)
+        : (data.coordinates?.longitude ? Number(data.coordinates.longitude) : null);
       apt.amount = data.amount || data.price || 0;
       apt.status = data.status || "requested";
       apt.visitNotes = data.visitNotes || data.notes || null;
@@ -280,6 +286,10 @@ export class AppointmentsService {
         date: result.date,
         time: result.time,
         location: result.location,
+        latitude: result.latitude,
+        longitude: result.longitude,
+        patientLat: result.latitude,
+        patientLng: result.longitude,
         notes: result.visitNotes,
         visitNotes: result.visitNotes,
         amount: result.amount,
@@ -387,6 +397,10 @@ export class AppointmentsService {
                 patientName: result.patientName,
                 service: result.service,
                 location: result.location,
+                latitude: result.latitude,
+                longitude: result.longitude,
+                patientLat: result.latitude,
+                patientLng: result.longitude,
                 amount: result.amount,
               },
             }).catch(() => {});
@@ -420,6 +434,10 @@ export class AppointmentsService {
                 patientName: result.patientName,
                 service: result.service,
                 location: result.location,
+                latitude: result.latitude,
+                longitude: result.longitude,
+                patientLat: result.latitude,
+                patientLng: result.longitude,
                 amount: result.amount,
                 broadcast: true,
               },

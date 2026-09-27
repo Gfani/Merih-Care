@@ -383,6 +383,10 @@ export class DispatchCascadeService {
         patientPhone: appointment.patientPhone,
         service: appointment.service,
         location: appointment.location,
+        latitude: lat,
+        longitude: lng,
+        patientLat: lat,
+        patientLng: lng,
         amount: appointment.amount,
         status: appointment.status,
       };
@@ -442,6 +446,10 @@ export class DispatchCascadeService {
         patientName: session.patientName,
         service: session.service,
         location: session.address,
+        latitude: session.patientLat,
+        longitude: session.patientLng,
+        patientLat: session.patientLat,
+        patientLng: session.patientLng,
         amount: session.amount,
         status: "requested",
       };
