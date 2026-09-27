@@ -145,22 +145,13 @@ jobs:
 
       # ── APK build ─────────────────────────────────────────────────────────
       - name: Build release APK
-        run: flutter build apk --release --split-per-abi
-        env:
-          FLUTTER_BUILD_NAME: ${{ github.run_number }}
-
-      - name: Build release App Bundle (AAB)
-        run: flutter build appbundle --release
-        env:
-          FLUTTER_BUILD_NAME: ${{ github.run_number }}
+        run: flutter build apk --release --split-per-abi --build-number=${{ github.run_number }}
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
           name: merihcare-apk-${{ github.sha }}
-          path: |
-            mobile/build/app/outputs/flutter-apk/*.apk
-            mobile/build/app/outputs/bundle/release/*.aab
+          path: mobile/build/app/outputs/flutter-apk/*.apk
           retention-days: 30
 
   # ────────────────────────────────────────────────────────────────────────────
