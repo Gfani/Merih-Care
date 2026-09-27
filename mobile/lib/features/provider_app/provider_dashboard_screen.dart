@@ -10,6 +10,8 @@ import '../../core/location/location_tracking_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/create_design_widgets.dart';
 import '../../shared/widgets/offline_banner.dart';
+import 'package:latlong2/latlong.dart';
+import 'widgets/provider_incoming_requests_map.dart';
 
 class ProviderDashboardScreen extends ConsumerStatefulWidget {
   const ProviderDashboardScreen({super.key});
@@ -35,6 +37,7 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
   StreamSubscription? _serviceOfferSub;
   StreamSubscription? _connSub;
   String? _currentOfferAptId;
+  bool _showMapForIncomingRequests = true;
 
   @override
   void initState() {
@@ -148,6 +151,19 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
             (myProvAuthId.isNotEmpty && targetProviderId.toString() == myProvAuthId) ||
             (_myProviderId != null && targetProviderId.toString() == _myProviderId);
         if (!matches) return; // Not for this provider — ignore entirely
+      }
+
+      // Add to incoming requests list if not already present & auto-display live map
+      final reqId = data['id']?.toString() ?? data['appointmentId']?.toString();
+      if (reqId != null && reqId.isNotEmpty) {
+        final existingIdx = _incomingRequests.indexWhere((r) =>
+            (r['id']?.toString() == reqId) || (r['appointmentId']?.toString() == reqId));
+        if (existingIdx == -1) {
+          setState(() {
+            _incomingRequests.insert(0, data);
+            _showMapForIncomingRequests = true;
+          });
+        }
       }
 
       _loadDashboardData();
@@ -316,9 +332,9 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
   }
 
   Future<void> _acceptIncomingRequest(dynamic req) async {
+    final aptId = req['id']?.toString() ?? req['appointmentId']?.toString() ?? 'apt-1';
     try {
       final client = ref.read(apiClientProvider);
-      final aptId = req['id']?.toString() ?? req['appointmentId']?.toString() ?? 'apt-1';
       await client.dio.put('/appointments/$aptId/status', data: {
         'status': 'accepted',
       });
@@ -330,10 +346,10 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
         ),
       );
       _loadDashboardData();
-      context.push('/provider/active-request', extra: req);
+      context.push('/provider/map/$aptId');
     } catch (_) {
       if (!mounted) return;
-      context.push('/provider/active-request', extra: req);
+      context.push('/provider/map/$aptId');
     }
   }
 
@@ -412,11 +428,18 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
     if (_currentOfferAptId == aptId) return; // already displaying this offer
     _currentOfferAptId = aptId;
 
+    final tracker = ref.read(locationTrackingProvider);
+    final locState = ref.read(locationProvider);
+    final double pLat = tracker.lat != 0.0 ? tracker.lat : (locState.location?.latitude ?? 9.02497);
+    final double pLon = tracker.lon != 0.0 ? tracker.lon : (locState.location?.longitude ?? 38.74689);
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (dialogCtx) => ServiceOfferModal(
         offer: offer,
+        providerLat: pLat,
+        providerLon: pLon,
         onAccept: () {
           Navigator.of(dialogCtx, rootNavigator: true).pop();
           _currentOfferAptId = null;
@@ -428,6 +451,7 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
             ),
           );
           _loadDashboardData();
+          context.push('/provider/map/$aptId');
         },
         onDecline: () {
           Navigator.of(dialogCtx, rootNavigator: true).pop();
@@ -462,6 +486,9 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
     final locationState = ref.watch(locationProvider);
+    final tracker = ref.watch(locationTrackingProvider);
+    final double providerLat = tracker.lat != 0.0 ? tracker.lat : (locationState.location?.latitude ?? 9.02497);
+    final double providerLon = tracker.lon != 0.0 ? tracker.lon : (locationState.location?.longitude ?? 38.74689);
     final user = auth.user;
     final rawName = user?['name']?.toString().trim();
     final fullName = (rawName != null && rawName.isNotEmpty)
@@ -778,16 +805,127 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
 
                     const SizedBox(height: 8),
 
-                    // ─── Incoming Requests List ───────────────────────────────────────────
-                    SectionHeaderWidget(
-                      title: 'Incoming Requests (${_incomingRequests.length})',
+                    // ─── Incoming Requests (Live Map / List Toggle) ────────────────────────
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'Incoming Requests (${_incomingRequests.length})',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                                color: AppTheme.textPrimary,
+                              ),
+                            ),
+                            if (_incomingRequests.isNotEmpty) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFDC2626),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        // Segmented View Toggle: [ 🗺️ Live Map ]  [ 📋 List ]
+                        Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              InkWell(
+                                onTap: () => setState(() => _showMapForIncomingRequests = true),
+                                borderRadius: BorderRadius.circular(9),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: _showMapForIncomingRequests ? const Color(0xFF0D7C6A) : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(9),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.map_rounded,
+                                        size: 13,
+                                        color: _showMapForIncomingRequests ? Colors.white : AppTheme.textSecondary,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Live Map',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: _showMapForIncomingRequests ? Colors.white : AppTheme.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              InkWell(
+                                onTap: () => setState(() => _showMapForIncomingRequests = false),
+                                borderRadius: BorderRadius.circular(9),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: !_showMapForIncomingRequests ? const Color(0xFF0D7C6A) : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(9),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.list_alt_rounded,
+                                        size: 13,
+                                        color: !_showMapForIncomingRequests ? Colors.white : AppTheme.textSecondary,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'List',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: !_showMapForIncomingRequests ? Colors.white : AppTheme.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 10),
-                    if (_incomingRequests.isEmpty)
+                    const SizedBox(height: 12),
+
+                    if (_showMapForIncomingRequests)
+                      ProviderIncomingRequestsMap(
+                        incomingRequests: _incomingRequests,
+                        providerLat: providerLat,
+                        providerLon: providerLon,
+                        onAccept: _acceptIncomingRequest,
+                        onDecline: _declineIncomingRequest,
+                      )
+                    else if (_incomingRequests.isEmpty)
                       const CardWidget(
                         padding: EdgeInsets.all(24),
                         child: Center(
-                          child: Text('No active dispatches waiting. Keep status Online.', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                          child: Text(
+                            'No active dispatches waiting. Keep status Online.',
+                            style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                          ),
                         ),
                       )
                     else
@@ -917,6 +1055,8 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
 
 class ServiceOfferModal extends StatefulWidget {
   final Map<String, dynamic> offer;
+  final double providerLat;
+  final double providerLon;
   final VoidCallback onAccept;
   final VoidCallback onDecline;
   final VoidCallback onTimeout;
@@ -924,6 +1064,8 @@ class ServiceOfferModal extends StatefulWidget {
   const ServiceOfferModal({
     super.key,
     required this.offer,
+    this.providerLat = 9.02497,
+    this.providerLon = 38.74689,
     required this.onAccept,
     required this.onDecline,
     required this.onTimeout,
@@ -1130,6 +1272,19 @@ class _ServiceOfferModalState extends State<ServiceOfferModal> {
             ),
             const SizedBox(height: 12),
 
+            // Mini Map Preview with Pickup Pin & Route
+            PatientLocationMiniPreview(
+              patientPoint: ProviderIncomingRequestsMap.resolveLocation(
+                offer,
+                providerLat: widget.providerLat,
+                providerLon: widget.providerLon,
+              ),
+              providerPoint: LatLng(widget.providerLat, widget.providerLon),
+              patientName: patientName,
+              height: 125,
+            ),
+            const SizedBox(height: 12),
+
             // Location
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1146,7 +1301,7 @@ class _ServiceOfferModalState extends State<ServiceOfferModal> {
                 ),
               ],
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: 20),
 
             // Accept & Decline Buttons
             Row(

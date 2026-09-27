@@ -133,48 +133,52 @@ class FloatingEtaBadge extends StatelessWidget {
             ),
           ],
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 6,
-              height: 6,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 5),
-            const Icon(
-              Icons.directions_car_rounded,
-              size: 13,
-              color: Colors.white,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              etaText,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 11.5,
-                letterSpacing: 0.2,
-              ),
-            ),
-            if (distanceText != null && distanceText!.isNotEmpty) ...[
-              const SizedBox(width: 4),
-              Text(
-                '($distanceText)',
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w500,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
                 ),
               ),
+              const SizedBox(width: 5),
+              const Icon(
+                Icons.directions_car_rounded,
+                size: 13,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                etaText,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11.5,
+                  letterSpacing: 0.2,
+                ),
+              ),
+              if (distanceText != null && distanceText!.isNotEmpty) ...[
+                const SizedBox(width: 4),
+                Text(
+                  '($distanceText)',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
+
   }
 }
 
