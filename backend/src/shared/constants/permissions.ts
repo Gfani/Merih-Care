@@ -24,8 +24,6 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   operations_admin: [
     Permission.USERS_READ,
     Permission.USERS_WRITE,
-    Permission.CREDENTIALS_REVIEW,
-    Permission.CREDENTIALS_APPROVE,
     Permission.REPORTS_READ,
     Permission.COMPLAINTS_READ,
     Permission.COMPLAINTS_WRITE,
@@ -55,14 +53,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   ],
   admin: [
     Permission.USERS_READ,
-    Permission.USERS_WRITE,
-    Permission.CREDENTIALS_REVIEW,
-    Permission.CREDENTIALS_APPROVE,
     Permission.REPORTS_READ,
     Permission.COMPLAINTS_READ,
-    Permission.COMPLAINTS_WRITE,
     Permission.AUDIT_READ,
-    Permission.SETTINGS_READ,
   ],
 };
 

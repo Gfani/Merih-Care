@@ -219,18 +219,23 @@ describe("Verification & Provider Compliance Checklist Tests", () => {
       expect(pendingUser.emailVerified).toBe(true);
     });
 
-    it("should grant credentials:review and credentials:approve to admin and operations_admin roles", () => {
+    it("should grant credentials:review and credentials:approve to verification_admin, verifier, super_admin, and owner", () => {
       const { getEffectivePermissions, Permission } = require("../src/shared/constants/permissions");
 
-      const adminUser = { role: "admin", adminRole: "operations_admin" };
-      const perms = getEffectivePermissions(adminUser);
+      const verifierUser = { role: "admin", adminRole: "verification_admin" };
+      const perms = getEffectivePermissions(verifierUser);
       expect(perms).toContain(Permission.CREDENTIALS_REVIEW);
       expect(perms).toContain(Permission.CREDENTIALS_APPROVE);
 
-      const plainAdmin = { role: "admin" };
-      const plainPerms = getEffectivePermissions(plainAdmin);
-      expect(plainPerms).toContain(Permission.CREDENTIALS_REVIEW);
-      expect(plainPerms).toContain(Permission.CREDENTIALS_APPROVE);
+      const superAdmin = { role: "admin", adminRole: "super_admin" };
+      const superPerms = getEffectivePermissions(superAdmin);
+      expect(superPerms).toContain(Permission.CREDENTIALS_REVIEW);
+      expect(superPerms).toContain(Permission.CREDENTIALS_APPROVE);
+
+      const ownerUser = { role: "admin", email: "fanuelgoitom79@gmail.com" };
+      const ownerPerms = getEffectivePermissions(ownerUser);
+      expect(ownerPerms).toContain(Permission.CREDENTIALS_REVIEW);
+      expect(ownerPerms).toContain(Permission.CREDENTIALS_APPROVE);
     });
   });
 
