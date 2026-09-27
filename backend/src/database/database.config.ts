@@ -48,7 +48,8 @@ import {
   PrivacyPolicyAcceptanceEntity,
   IncidentReportEntity,
   PayoutBatchEntity,
-  WebhookLogEntity
+  WebhookLogEntity,
+  DocumentEntity
 } from "./entities";
 
 export const getDatabaseConfig = (configService: any): TypeOrmModuleOptions => {
@@ -101,7 +102,8 @@ export const getDatabaseConfig = (configService: any): TypeOrmModuleOptions => {
     MedicalRecordEntity,
     PatientConsentEntity,
     PrivacyPolicyAcceptanceEntity,
-    IncidentReportEntity
+    IncidentReportEntity,
+    DocumentEntity
   ];
 
   const isDev = process.env.NODE_ENV === "development";

@@ -18,6 +18,35 @@ interface DocumentInfo {
   fileName: string;
 }
 
+function cleanDocumentKey(raw: string): string {
+  if (!raw || !raw.trim()) return "";
+  let clean = raw.trim().replace(/\\/g, "/");
+  if (clean.includes("?")) {
+    clean = clean.split("?")[0];
+  }
+  if (clean.startsWith("http://") || clean.startsWith("https://")) {
+    clean = clean.replace(/^https?:\/\/[^/]+/, "");
+  }
+  try {
+    clean = decodeURIComponent(clean);
+  } catch (_) {}
+
+  let prev = "";
+  while (prev !== clean) {
+    prev = clean;
+    clean = clean.replace(/^\/+/, "");
+    clean = clean.replace(/^api\/v1\//i, "");
+    clean = clean.replace(/^uploads\/view\//i, "");
+    clean = clean.replace(/^uploads\/download\//i, "");
+    clean = clean.replace(/^signed\//i, "");
+  }
+
+  if (clean.includes("credentials/")) {
+    clean = "credentials/" + clean.split("credentials/").pop();
+  }
+  return clean.replace(/^\/+/, "");
+}
+
 function resolveDocumentInfo(docTitle: string, provider: any): DocumentInfo {
   let rawUrl = "";
   const isLicenseField = docTitle.toLowerCase().includes("license");
@@ -38,34 +67,11 @@ function resolveDocumentInfo(docTitle: string, provider: any): DocumentInfo {
   let downloadUrl = rawUrl;
 
   if (hasPhysicalFile) {
-    let cleanKey = rawUrl.trim();
+    const cleanKey = cleanDocumentKey(rawUrl);
     let queryPart = "";
-    if (cleanKey.includes("?")) {
-      const parts = cleanKey.split("?");
-      cleanKey = parts[0];
-      queryPart = "?" + parts[1];
+    if (rawUrl.includes("?")) {
+      queryPart = "?" + rawUrl.split("?")[1];
     }
-    // Strip protocol & host from absolute URLs
-    if (cleanKey.startsWith("http://") || cleanKey.startsWith("https://")) {
-      cleanKey = cleanKey.replace(/^https?:\/\/[^/]+/, "");
-    }
-    // Strip API prefixes
-    if (cleanKey.includes("/api/v1/")) {
-      cleanKey = cleanKey.split("/api/v1/")[1];
-    }
-    if (cleanKey.includes("/uploads/view/")) {
-      cleanKey = cleanKey.split("/uploads/view/")[1];
-    }
-    if (cleanKey.includes("/uploads/download/")) {
-      cleanKey = cleanKey.split("/uploads/download/")[1];
-    }
-    if (cleanKey.includes("/signed/")) {
-      cleanKey = cleanKey.split("/signed/")[1];
-    }
-    if (cleanKey.includes("/credentials/")) {
-      cleanKey = "credentials/" + cleanKey.split("/credentials/")[1];
-    }
-    cleanKey = decodeURIComponent(cleanKey).replace(/^\/+/, "");
 
     const token = api.getStoredToken();
     let fullQuery = queryPart;

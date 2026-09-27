@@ -29,6 +29,9 @@ export class DocumentEntity {
   @Index()
   verifierId?: string;
 
+  @Column({ type: "text", nullable: true })
+  fileData?: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

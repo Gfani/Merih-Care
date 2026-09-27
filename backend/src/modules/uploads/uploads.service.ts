@@ -199,33 +199,42 @@ ${370 + streamLen}
   }
 
   /**
-   * Resolves physical disk path or fallback buffer for any requested document key or URL
+   * Cleans any URL prefixes, duplicated paths, and query strings down to the canonical storage key
    */
-  resolveFile(fileKey: string): { filePath?: string; buffer?: Buffer; fileName: string; mimeType: string } {
-    let cleanKey = decodeURIComponent(fileKey || "").replace(/\\/g, "/").trim();
+  cleanFileKey(fileKey: string): string {
+    if (!fileKey || !fileKey.trim()) return "";
+    let cleanKey = fileKey.trim().replace(/\\/g, "/");
     if (cleanKey.includes("?")) {
       cleanKey = cleanKey.split("?")[0];
     }
-    // Strip protocol & host if an absolute URL was provided
     if (cleanKey.startsWith("http://") || cleanKey.startsWith("https://")) {
       cleanKey = cleanKey.replace(/^https?:\/\/[^/]+/, "");
     }
-    if (cleanKey.includes("/api/v1/")) {
-      cleanKey = cleanKey.split("/api/v1/")[1];
+    try {
+      cleanKey = decodeURIComponent(cleanKey);
+    } catch (_) {}
+
+    let prev = "";
+    while (prev !== cleanKey) {
+      prev = cleanKey;
+      cleanKey = cleanKey.replace(/^\/+/, "");
+      cleanKey = cleanKey.replace(/^api\/v1\//i, "");
+      cleanKey = cleanKey.replace(/^uploads\/view\//i, "");
+      cleanKey = cleanKey.replace(/^uploads\/download\//i, "");
+      cleanKey = cleanKey.replace(/^signed\//i, "");
     }
-    if (cleanKey.includes("/signed/")) {
-      cleanKey = cleanKey.split("/signed/")[1];
+
+    if (cleanKey.includes("credentials/")) {
+      cleanKey = "credentials/" + cleanKey.split("credentials/").pop();
     }
-    if (cleanKey.includes("/uploads/view/")) {
-      cleanKey = cleanKey.split("/uploads/view/")[1];
-    }
-    if (cleanKey.includes("/uploads/download/")) {
-      cleanKey = cleanKey.split("/uploads/download/")[1];
-    }
-    if (cleanKey.includes("/credentials/")) {
-      cleanKey = "credentials/" + cleanKey.split("/credentials/")[1];
-    }
-    cleanKey = cleanKey.replace(/\.\./g, "").replace(/^\/+/, "");
+    return cleanKey.replace(/\.\./g, "").replace(/^\/+/, "");
+  }
+
+  /**
+   * Resolves physical disk path or fallback buffer for any requested document key or URL
+   */
+  resolveFile(fileKey: string): { filePath?: string; buffer?: Buffer; fileName: string; mimeType: string } {
+    const cleanKey = this.cleanFileKey(fileKey);
 
     const uploadsBaseDir = process.env.UPLOADS_DIR || path.join(process.cwd(), "uploads");
     const baseName = path.basename(cleanKey);
@@ -314,12 +323,50 @@ ${370 + streamLen}
     };
   }
 
+  /**
+   * Asynchronously resolves document file, checking disk first, then database fileData, then synthesized PDF
+   */
+  async resolveFileAsync(fileKey: string): Promise<{ filePath?: string; buffer?: Buffer; fileName: string; mimeType: string }> {
+    const directResult = this.resolveFile(fileKey);
+    // If physical disk file was found, return immediately
+    if (directResult.filePath) {
+      return directResult;
+    }
+
+    // Check database if binary payload was persisted
+    if (this.docRepo) {
+      try {
+        const cleanKey = this.cleanFileKey(fileKey);
+        const doc = await this.docRepo.findOne({
+          where: [{ fileKey: cleanKey }, { fileKey }]
+        });
+        if (doc && doc.fileData) {
+          const buffer = Buffer.from(doc.fileData, "base64");
+          return {
+            buffer,
+            fileName: doc.fileName || directResult.fileName,
+            mimeType: doc.mimeType || directResult.mimeType,
+          };
+        }
+      } catch (err: any) {
+        this.logger.warn(`Could not fetch document fileData from DB: ${err?.message}`);
+      }
+    }
+
+    return directResult;
+  }
+
   async getDocumentByFileKey(fileKey: string): Promise<DocumentEntity | null> {
     if (!this.docRepo) return null;
-    const cleanKey = decodeURIComponent(fileKey || "").replace(/\\/g, "/").trim().replace(/^\/+/, "");
-    return this.docRepo.findOne({
-      where: [{ fileKey: cleanKey }, { fileKey }]
-    });
+    try {
+      const cleanKey = this.cleanFileKey(fileKey);
+      return await this.docRepo.findOne({
+        where: [{ fileKey: cleanKey }, { fileKey }]
+      });
+    } catch (err: any) {
+      this.logger.warn(`Could not query document record: ${err?.message}`);
+      return null;
+    }
   }
 
   async handleUpload(
@@ -357,7 +404,7 @@ ${370 + streamLen}
       this.logger.error(`Failed to persist file ${targetFilePath}: ${err.message}`);
     }
 
-    // Record document metadata in database
+    // Record document metadata and binary payload in database
     if (this.docRepo) {
       try {
         const doc = new DocumentEntity();
@@ -368,6 +415,9 @@ ${370 + streamLen}
         doc.fileName = sanitized;
         doc.fileSize = fileBuffer.length;
         doc.mimeType = mimeType;
+        if (fileBuffer.length <= 10 * 1024 * 1024) {
+          doc.fileData = fileBuffer.toString("base64");
+        }
         await this.docRepo.save(doc);
       } catch (err: any) {
         this.logger.warn(`Could not save document record to DB: ${err.message}`);

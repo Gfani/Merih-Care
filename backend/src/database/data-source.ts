@@ -48,7 +48,8 @@ import {
   MedicalRecordEntity,
   PatientConsentEntity,
   PrivacyPolicyAcceptanceEntity,
-  IncidentReportEntity
+  IncidentReportEntity,
+  DocumentEntity
 } from "./entities";
 
 // Load configuration
@@ -103,7 +104,8 @@ const entities = [
   MedicalRecordEntity,
   PatientConsentEntity,
   PrivacyPolicyAcceptanceEntity,
-  IncidentReportEntity
+  IncidentReportEntity,
+  DocumentEntity
 ];
 
 export const AppDataSource = new DataSource(

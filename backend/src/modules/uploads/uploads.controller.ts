@@ -19,6 +19,7 @@ import { JwtService } from "@nestjs/jwt";
 import { UploadsService } from "./uploads.service";
 import { JwtAuthGuard } from "../../shared/guards/jwt-auth.guard";
 import { FileInterceptor } from "@nestjs/platform-express";
+import * as fs from "fs";
 
 @Controller("uploads")
 export class UploadsController {
@@ -142,7 +143,7 @@ export class UploadsController {
     @Res() res: Response
   ) {
     await this.assertAuthorizedFileAccess(fileKey, expires, signature, req);
-    return this.serveFile(fileKey, false, res);
+    return await this.serveFile(fileKey, false, res);
   }
 
   @Get("view")
@@ -156,7 +157,7 @@ export class UploadsController {
   ) {
     const key = fileKey || url || "";
     await this.assertAuthorizedFileAccess(key, expires, signature, req);
-    return this.serveFile(key, false, res);
+    return await this.serveFile(key, false, res);
   }
 
   @Get("download/:fileKey(*)")
@@ -168,7 +169,7 @@ export class UploadsController {
     @Res() res: Response
   ) {
     await this.assertAuthorizedFileAccess(fileKey, expires, signature, req);
-    return this.serveFile(fileKey, true, res);
+    return await this.serveFile(fileKey, true, res);
   }
 
   @Get("download")
@@ -182,7 +183,7 @@ export class UploadsController {
   ) {
     const key = fileKey || url || "";
     await this.assertAuthorizedFileAccess(key, expires, signature, req);
-    return this.serveFile(key, true, res);
+    return await this.serveFile(key, true, res);
   }
 
   private async assertAuthorizedFileAccess(
@@ -226,25 +227,34 @@ export class UploadsController {
     }
 
     if (user) {
-      const cleanKey = fileKey.replace(/^\/+/, "");
-      const doc = await this.uploadsService.getDocumentByFileKey(cleanKey);
-      const isOwner = doc ? doc.ownerId === user.id : cleanKey.startsWith(user.id + "/");
-      const isVerifier = doc && doc.verifierId === user.id;
       const isAuthorizedAdmin =
+        user.role === "owner" ||
         user.role === "super_admin" ||
         user.role === "admin" ||
+        user.adminRole === "owner" ||
         user.adminRole === "super_admin" ||
         user.adminRole === "verification_admin" ||
         user.adminRole === "verifier" ||
-        (Array.isArray(user.permissions) && user.permissions.includes("credentials:review")) ||
+        (Array.isArray(user.permissions) &&
+          (user.permissions.includes("credentials:review") || user.permissions.includes("all"))) ||
         user.permissions === "all";
 
-      if (isOwner || isVerifier || isAuthorizedAdmin) return;
+      if (isAuthorizedAdmin) return;
+
+      const cleanKey = this.uploadsService.cleanFileKey(fileKey);
+      if (cleanKey.startsWith(user.id + "/")) return;
+
+      try {
+        const doc = await this.uploadsService.getDocumentByFileKey(cleanKey);
+        if (doc && (doc.ownerId === user.id || doc.verifierId === user.id)) {
+          return;
+        }
+      } catch (_) {}
     }
 
     // 3. Demo credentials in development/testing only
     if (process.env.NODE_ENV !== "production") {
-      const cleanKey = fileKey.replace(/^\/+/, "");
+      const cleanKey = this.uploadsService.cleanFileKey(fileKey);
       if (cleanKey === "cv.pdf" || cleanKey === "credentials/cv.pdf" || cleanKey.includes("kassahun_")) {
         return;
       }
@@ -255,12 +265,12 @@ export class UploadsController {
     );
   }
 
-  private serveFile(fileKey: string, asAttachment: boolean, res: Response) {
+  private async serveFile(fileKey: string, asAttachment: boolean, res: Response) {
     if (!fileKey) {
       throw new BadRequestException("File key or URL is required");
     }
 
-    const { filePath, buffer, fileName, mimeType } = this.uploadsService.resolveFile(fileKey);
+    const { filePath, buffer, fileName, mimeType } = await this.uploadsService.resolveFileAsync(fileKey);
 
     const disposition = asAttachment ? "attachment" : "inline";
     res.removeHeader("X-Frame-Options");
@@ -278,12 +288,25 @@ export class UploadsController {
     );
     res.setHeader("Cache-Control", "private, no-cache, no-store, must-revalidate");
 
-    if (filePath) {
-      return res.sendFile(filePath);
+    if (filePath && fs.existsSync(filePath)) {
+      try {
+        const fileContent = fs.readFileSync(filePath);
+        return res.end(fileContent);
+      } catch (readErr) {
+        return res.sendFile(filePath, (err) => {
+          if (err && !res.headersSent) {
+            const fallback = this.uploadsService.generateFallbackPdf(fileName, `Reference: ${fileKey}`);
+            res.setHeader("Content-Type", "application/pdf");
+            res.end(fallback);
+          }
+        });
+      }
     } else if (buffer) {
       return res.end(buffer);
     } else {
-      throw new NotFoundException("Document could not be located");
+      const fallback = this.uploadsService.generateFallbackPdf(fileName || "Document", `Reference: ${fileKey}`);
+      res.setHeader("Content-Type", "application/pdf");
+      return res.end(fallback);
     }
   }
 }
