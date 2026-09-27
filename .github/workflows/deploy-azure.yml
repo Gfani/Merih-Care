@@ -294,8 +294,9 @@ jobs:
       - name: Determine version
         id: version
         run: |
-          # Extract version from pubspec.yaml e.g. "1.0.0+1"
-          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          # Extract version from pubspec.yaml e.g. "1.0.0+1" -> "1.0.0"
+          FULL_VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          VERSION=$(echo "$FULL_VERSION" | cut -d'+' -f1)
           BUILD_NUM=${{ github.run_number }}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag=v${VERSION}-build.${BUILD_NUM}" >> $GITHUB_OUTPUT
@@ -315,12 +316,21 @@ jobs:
         run: |
           TAG="${{ steps.version.outputs.tag }}"
           mkdir -p release-artifacts
-          for f in build/app/outputs/flutter-apk/app-*-release.apk; do
-            ARCH=$(echo "$f" | grep -oP '(?<=app-)[^-]+(?=-release\.apk)')
-            cp "$f" "release-artifacts/merihcare-${TAG}-${ARCH}.apk"
+          for f in build/app/outputs/flutter-apk/*.apk; do
+            if [ -f "$f" ]; then
+              fname=$(basename "$f")
+              if [ "$fname" = "app-release.apk" ]; then
+                cp "$f" "release-artifacts/merihcare-${TAG}-universal.apk"
+              else
+                ARCH="${fname#app-}"
+                ARCH="${ARCH%-release.apk}"
+                cp "$f" "release-artifacts/merihcare-${TAG}-${ARCH}.apk"
+              fi
+            fi
           done
-          cp build/app/outputs/bundle/release/app-release.aab \
-             "release-artifacts/merihcare-${TAG}.aab"
+          if [ -f "build/app/outputs/bundle/release/app-release.aab" ]; then
+            cp "build/app/outputs/bundle/release/app-release.aab" "release-artifacts/merihcare-${TAG}.aab"
+          fi
           ls -lh release-artifacts/
 
       # ── GitHub Release ─────────────────────────────────────────────────────
