@@ -53,6 +53,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
         _patientLat = loc.latitude;
         _patientLon = loc.longitude;
       }
+      _moveToMyLocation();
       _fetchOsrmRoute();
     });
   }
@@ -141,11 +142,21 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
+      final spotInfo = await LocationNotifier.resolveSpotInfo(position.latitude, position.longitude);
       if (!mounted) return;
+      final newAddr = spotInfo['address'] ?? 'Addis Ababa';
       setState(() {
         _patientLat = position.latitude;
         _patientLon = position.longitude;
+        _addressController.text = newAddr;
       });
+      ref.read(locationProvider.notifier).setCustomLocation(
+        newAddr,
+        position.latitude,
+        position.longitude,
+        spotInfo['subCity'] ?? 'Bole',
+        spotName: spotInfo['spotName'] ?? '',
+      );
       _mapController.move(LatLng(position.latitude, position.longitude), 15.0);
       _fetchOsrmRoute();
       if (mounted) {
@@ -345,12 +356,18 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                       options: MapOptions(
                         initialCenter: LatLng(_patientLat, _patientLon),
                         initialZoom: 14.0,
-                        onTap: (_, point) {
+                        onTap: (_, point) async {
                           setState(() {
                             _patientLat = point.latitude;
                             _patientLon = point.longitude;
                           });
                           _fetchOsrmRoute();
+                          final spotInfo = await LocationNotifier.resolveSpotInfo(point.latitude, point.longitude);
+                          if (mounted && spotInfo['address'] != null) {
+                            setState(() {
+                              _addressController.text = spotInfo['address']!;
+                            });
+                          }
                         },
                       ),
                       children: [

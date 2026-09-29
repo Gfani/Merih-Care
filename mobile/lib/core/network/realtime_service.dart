@@ -93,7 +93,7 @@ class MobileRealtimeService {
     _realtimeSocket = io.io(
       '$_baseUrl/realtime',
       io.OptionBuilder()
-          .setTransports(['websocket'])
+          .setTransports(['websocket', 'polling'])
           .setAuth({'token': _token})
           .enableReconnection()
           .setReconnectionAttempts(999)

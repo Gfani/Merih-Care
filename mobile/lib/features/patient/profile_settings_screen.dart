@@ -48,6 +48,12 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
         : (user['phone'] != null ? user['phone'].toString() : 'No email associated');
     final role = (user['role'] ?? 'patient').toString().toUpperCase();
     final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : 'U';
+    final bool isProviderAccount = user['role'] == 'provider' ||
+        user['hasProviderAccount'] == true ||
+        (user['roles'] is List && (user['roles'] as List).contains('provider')) ||
+        (user['roles'] is String && (user['roles'] as String).contains('provider')) ||
+        user['provider'] != null ||
+        user['providerId'] != null;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Account Settings')),
@@ -233,35 +239,37 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                 ),
               ),
             ],
-            const SizedBox(height: 24),
-            const Text('APP EXPERIENCE & ROLE SWITCHER', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF8A9AAA), fontSize: 11)),
-            const SizedBox(height: 8),
-            Card(
-              child: ListTile(
-                leading: Icon(
-                  user['role'] == 'provider' ? Icons.personal_injury_outlined : Icons.health_and_safety_outlined,
-                  color: theme.primaryColor,
+            if (isProviderAccount) ...[
+              const SizedBox(height: 24),
+              const Text('APP EXPERIENCE & ROLE SWITCHER', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF8A9AAA), fontSize: 11)),
+              const SizedBox(height: 8),
+              Card(
+                child: ListTile(
+                  leading: Icon(
+                    user['role'] == 'provider' ? Icons.personal_injury_outlined : Icons.health_and_safety_outlined,
+                    color: theme.primaryColor,
+                  ),
+                  title: Text(
+                    user['role'] == 'provider' ? 'Switch to Patient Mode' : 'Switch to Healthcare Provider Mode',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    user['role'] == 'provider'
+                        ? 'Browse providers and book home health care as a patient'
+                        : 'Accept patient dispatch calls and manage clinical schedule',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  trailing: const Icon(Icons.swap_horiz, color: Color(0xFF0D7C6A)),
+                  onTap: () {
+                    if (user['role'] == 'provider') {
+                      context.go('/dashboard');
+                    } else {
+                      context.go('/provider-dashboard');
+                    }
+                  },
                 ),
-                title: Text(
-                  user['role'] == 'provider' ? 'Switch to Patient Mode' : 'Switch to Healthcare Provider Mode',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                ),
-                subtitle: Text(
-                  user['role'] == 'provider'
-                      ? 'Browse providers and book home health care as a patient'
-                      : 'Accept patient dispatch calls and manage clinical schedule',
-                  style: const TextStyle(fontSize: 11),
-                ),
-                trailing: const Icon(Icons.swap_horiz, color: Color(0xFF0D7C6A)),
-                onTap: () {
-                  if (user['role'] == 'provider') {
-                    context.go('/dashboard');
-                  } else {
-                    context.go('/provider-dashboard');
-                  }
-                },
               ),
-            ),
+            ],
             const SizedBox(height: 24),
             const Text('ACCOUNT CONTROL', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF8A9AAA), fontSize: 11)),
             const SizedBox(height: 8),

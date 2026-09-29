@@ -155,6 +155,8 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
         _createdAppointmentId = widget.initialAppointmentId;
         ref.read(realtimeServiceProvider).joinAppointment(widget.initialAppointmentId!);
         _loadExistingAppointment(widget.initialAppointmentId!);
+      } else {
+        _moveToMyLocation();
       }
     });
   }
@@ -214,11 +216,22 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
         desiredAccuracy: LocationAccuracy.high,
       );
       if (!mounted) return;
+      final spotInfo = await LocationNotifier.resolveSpotInfo(position.latitude, position.longitude);
+      if (!mounted) return;
+      final newAddr = spotInfo['address'] ?? 'Addis Ababa';
       setState(() {
         _patientLat = position.latitude;
         _patientLon = position.longitude;
+        _locationAddress = newAddr;
       });
-      _mapController.move(LatLng(position.latitude, position.longitude), 15.0);
+      ref.read(locationProvider.notifier).setCustomLocation(
+        newAddr,
+        position.latitude,
+        position.longitude,
+        spotInfo['subCity'] ?? 'Bole',
+        spotName: spotInfo['spotName'] ?? '',
+      );
+      _mapController.move(LatLng(position.latitude, position.longitude), 15.5);
       _fetchNearbyProviders();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -235,6 +248,34 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
         );
       }
     }
+  }
+
+  Future<void> _setPatientPinLocation(LatLng point) async {
+    setState(() {
+      _patientLat = point.latitude;
+      _patientLon = point.longitude;
+    });
+    try {
+      final spotInfo = await LocationNotifier.resolveSpotInfo(point.latitude, point.longitude);
+      if (!mounted) return;
+      final newAddr = spotInfo['address'] ?? 'Addis Ababa';
+      setState(() {
+        _locationAddress = newAddr;
+      });
+      ref.read(locationProvider.notifier).setCustomLocation(
+        newAddr,
+        point.latitude,
+        point.longitude,
+        spotInfo['subCity'] ?? 'Bole',
+        spotName: spotInfo['spotName'] ?? '',
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('📍 Pin set to: $newAddr'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (_) {}
   }
 
   void _setupSocketListeners() {
@@ -671,7 +712,10 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
           mapController: _mapController,
           options: MapOptions(
             initialCenter: LatLng(_patientLat, _patientLon),
-            initialZoom: 14.5,
+            initialZoom: 15.0,
+            onTap: _currentStep == OnDemandStep.serviceSelect
+                ? (_, point) => _setPatientPinLocation(point)
+                : null,
           ),
           children: [
             TileLayer(
@@ -856,6 +900,21 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
 
         // 3. Draggable Bottom Sheet
         _buildDraggableBottomSheet(),
+
+        // 4. Floating GPS Re-Center Button
+        Positioned(
+          right: 16,
+          bottom: MediaQuery.of(context).size.height * 0.40,
+          child: FloatingActionButton.small(
+            heroTag: 'on_demand_gps_recenter_fab',
+            backgroundColor: Colors.white,
+            foregroundColor: const Color(0xFF0D7C6A),
+            elevation: 4,
+            onPressed: _moveToMyLocation,
+            tooltip: 'Re-center on My Location',
+            child: const Icon(Icons.my_location),
+          ),
+        ),
       ],
     );
   }

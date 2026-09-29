@@ -67,11 +67,26 @@ final appRouter = Provider<GoRouter>((ref) {
       }
 
       if (isAuth) {
+        final user = auth.user;
+        final bool isProviderAccount = user != null &&
+            (user['role'] == 'provider' ||
+                user['hasProviderAccount'] == true ||
+                (user['roles'] is List && (user['roles'] as List).contains('provider')) ||
+                (user['roles'] is String && (user['roles'] as String).contains('provider')) ||
+                user['provider'] != null ||
+                user['providerId'] != null);
+
         if (isAuthPage || isOnboarding || isSplash) {
-          final role = auth.user?['role'];
-          final target = role == 'provider' ? '/provider-dashboard' : '/dashboard';
+          final target = (isProviderAccount && user['role'] == 'provider') ? '/provider-dashboard' : '/dashboard';
           return target;
         }
+
+        // Pure patients must NEVER be able to access provider mode routes
+        if (!isProviderAccount &&
+            (location == '/provider-dashboard' || location.startsWith('/provider/'))) {
+          return '/dashboard';
+        }
+
         return null;
       } else {
         if (isSplash) {

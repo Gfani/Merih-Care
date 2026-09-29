@@ -673,16 +673,39 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   @SubscribeMessage("join_admin")
-  handleJoinAdmin(@ConnectedSocket() socket: Socket) {
+  async handleJoinAdmin(@ConnectedSocket() socket: Socket) {
     const role = (socket as any).role;
     const roles: string[] = (socket as any).roles || [];
-    const isAdmin =
+    const userId = (socket as any).userId;
+    let isAdmin =
       role === "admin" ||
       role === "super_admin" ||
+      role === "owner" ||
       roles.includes("admin") ||
+      roles.includes("super_admin") ||
+      roles.includes("owner") ||
       (socket as any).hasAdminAccount ||
       !!(socket as any).adminRole ||
       (typeof role === "string" && role.includes("admin"));
+
+    if (!isAdmin && this.dataSource && this.dataSource.isInitialized && userId) {
+      try {
+        const userRepo = this.dataSource.getRepository(UserEntity);
+        const user = await userRepo.findOne({ where: { id: userId } });
+        if (
+          user &&
+          (user.role === "admin" ||
+            user.role === "super_admin" ||
+            user.role === "owner" ||
+            user.adminRole != null ||
+            (user.roles && (user.roles.includes("admin") || user.roles.includes("super_admin") || user.roles.includes("owner"))))
+        ) {
+          isAdmin = true;
+          (socket as any).role = user.role;
+          (socket as any).hasAdminAccount = true;
+        }
+      } catch (_) {}
+    }
 
     if (!isAdmin) {
       socket.emit("error", { message: "Admin role required" });
@@ -726,13 +749,27 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     const isAdmin =
       role === "admin" ||
       role === "super_admin" ||
+      role === "owner" ||
       (roles as string[])?.includes("admin") ||
       (roles as string[])?.includes("super_admin") ||
+      (roles as string[])?.includes("owner") ||
       (socket as any).hasAdminAccount ||
       !!(socket as any).adminRole ||
       (typeof role === "string" && role.includes("admin"));
 
-    const isProvider = !isAdmin && (role === "provider" || (roles as string[])?.includes("provider") || (socket as any).hasProviderAccount);
+    let isProvider = !isAdmin && (role === "provider" || (roles as string[])?.includes("provider") || (socket as any).hasProviderAccount);
+
+    if (!isProvider && !isAdmin && this.dataSource && this.dataSource.isInitialized && userId) {
+      try {
+        const provRepo = this.dataSource.getRepository(ProviderEntity);
+        const prov = await provRepo.findOne({ where: [{ userId }, { id: userId }] });
+        if (prov) {
+          isProvider = true;
+          (socket as any).hasProviderAccount = true;
+          (socket as any).role = "provider";
+        }
+      } catch (_) {}
+    }
 
     if (!isProvider) {
       socket.emit("error", { message: "Provider role required" });

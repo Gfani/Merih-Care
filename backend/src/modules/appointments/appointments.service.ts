@@ -38,23 +38,66 @@ export class AppointmentsService {
     const isAdmin =
       caller?.role === "admin" ||
       caller?.role === "super_admin" ||
-      caller?.adminRole != null;
-    const isProvider =
+      caller?.role === "owner" ||
+      caller?.adminRole != null ||
+      caller?.hasAdminAccount === true ||
+      (Array.isArray(caller?.roles) && (
+        caller.roles.includes("admin") ||
+        caller.roles.includes("super_admin") ||
+        caller.roles.includes("owner")
+      )) ||
+      (typeof caller?.roles === "string" && (
+        caller.roles.includes("admin") ||
+        caller.roles.includes("super_admin") ||
+        caller.roles.includes("owner")
+      ));
+
+    let isProvider =
       !isAdmin &&
       (caller?.role === "provider" ||
-        caller?.roles?.includes("provider") ||
-        caller?.hasProviderAccount);
+        (Array.isArray(caller?.roles) && caller.roles.includes("provider")) ||
+        (typeof caller?.roles === "string" && caller.roles.includes("provider")) ||
+        caller?.hasProviderAccount === true ||
+        caller?.provider != null);
+
+    if (!isAdmin && !isProvider && (caller?.id || caller?.sub) && this.dataSource) {
+      try {
+        const provRepo = this.dataSource.getRepository(ProviderEntity);
+        const prov = await provRepo.findOne({
+          where: [{ userId: caller.id || caller.sub }, { id: caller.id || caller.sub }],
+        });
+        if (prov) {
+          isProvider = true;
+        }
+      } catch (_) {}
+    }
+
     const isPatient =
       !isAdmin &&
       !isProvider &&
       (caller?.role === "patient");
 
-    if (isProvider) {
-      let provId = caller?.providerId;
+    if (isAdmin) {
+      // Administrators see all appointments without restriction
+      const where: any = {};
+      if (patientId) {
+        where.patientId = patientId;
+      }
+      apts = await this.appointmentRepo.find({
+        where: Object.keys(where).length > 0 ? where : undefined,
+        relations: ["patient", "provider", "provider.user", "serviceRelation"],
+        take: limit,
+        skip: offset,
+        order: { createdAt: "DESC" as any, date: "DESC" as any, time: "DESC" as any },
+      });
+    } else if (isProvider) {
+      let provId = caller?.providerId || caller?.provider?.id;
       if (!provId && this.dataSource) {
         try {
           const provRepo = this.dataSource.getRepository(ProviderEntity);
-          const prov = await provRepo.findOne({ where: { userId: caller.id || caller.sub } });
+          const prov = await provRepo.findOne({
+            where: [{ userId: caller.id || caller.sub }, { id: caller.id || caller.sub }],
+          });
           if (prov) provId = prov.id;
         } catch (_) {}
       }
@@ -70,24 +113,14 @@ export class AppointmentsService {
         .leftJoinAndSelect("apt.serviceRelation", "serviceRelation");
 
       const userId = caller?.id || caller?.sub;
-      if (provId) {
-        qb.where(
-          "(apt.providerId = :provId OR provider.userId = :userId) OR ((apt.providerId IS NULL OR apt.providerId = '') AND apt.status IN (:...pendingStatuses))",
-          {
-            provId,
-            userId,
-            pendingStatuses: ["requested", "searching", "pending"],
-          }
-        );
-      } else {
-        qb.where(
-          "(provider.userId = :userId) OR ((apt.providerId IS NULL OR apt.providerId = '') AND apt.status IN (:...pendingStatuses))",
-          {
-            userId,
-            pendingStatuses: ["requested", "searching", "pending"],
-          }
-        );
-      }
+      qb.where(
+        "(apt.providerId = :provId OR apt.providerId = :userId OR provider.userId = :userId) OR ((apt.providerId IS NULL OR apt.providerId = '') AND apt.status IN (:...pendingStatuses))",
+        {
+          provId: provId || userId,
+          userId,
+          pendingStatuses: ["requested", "searching", "pending"],
+        }
+      );
 
       apts = await qb
         .orderBy("apt.createdAt", "DESC")
@@ -303,18 +336,22 @@ export class AppointmentsService {
       // 1. Real-time broadcast to admin room (all requests must reach admin dashboard)
       this.realtimeService.emitAppointmentUpdate(result.id, result.status, eventPayload);
       this.realtimeService.emitToRoom("admin", "new_service_request", eventPayload);
+      this.realtimeService.emitToRoom("admin_room", "new_service_request", eventPayload);
       this.realtimeService.emitToRoom("admin", "appointment_status_update", eventPayload);
+      this.realtimeService.emitToRoom("admin_room", "appointment_status_update", eventPayload);
 
       // If open / unassigned request without a specific doctor:
       if (!result.providerId) {
+        // Broadcast to ALL online providers so their live maps, radar, and requests list show the request immediately!
+        this.realtimeService.emitNewServiceRequest(eventPayload);
+        this.realtimeService.emitToRoom("providers", "new_service_request", eventPayload);
+        this.realtimeService.emitToRoom("providers", "appointment_status_update", eventPayload);
+
+        // Also initiate the sequential cascade offer for the closest candidate
         if (this.dispatchCascadeService) {
           const lat = data.latitude ?? data.lat;
           const lng = data.longitude ?? data.lng;
           this.dispatchCascadeService.startCascade(result, lat, lng).catch(() => {});
-        } else {
-          this.realtimeService.emitNewServiceRequest(eventPayload);
-          this.realtimeService.emitToRoom("providers", "new_service_request", eventPayload);
-          this.realtimeService.emitToRoom("providers", "appointment_status_update", eventPayload);
         }
       }
 
@@ -387,6 +424,8 @@ export class AppointmentsService {
             this.realtimeService.emitToRoom(`provider:${provUserId}`, "new_service_request", eventPayload);
             this.realtimeService.emitToRoom(`provider:${provUserId}`, "appointment_status_update", eventPayload);
           }
+          this.realtimeService.emitToRoom("providers", "new_service_request", eventPayload);
+          this.realtimeService.emitToRoom("providers", "appointment_status_update", eventPayload);
 
           if (this.notificationsService && provUserId) {
             this.notificationsService.sendNotification(provUserId, {
@@ -966,7 +1005,7 @@ export class AppointmentsService {
   }
 
   async getActiveDispatches(): Promise<any[]> {
-    const activeStatuses = ["searching", "accepted", "on_the_way", "in_progress"];
+    const activeStatuses = ["requested", "searching", "pending", "accepted", "on_the_way", "in_progress"];
     const apts = await this.appointmentRepo.find({
       where: { status: In(activeStatuses) },
       relations: ["patient", "provider", "provider.user", "serviceRelation"],
@@ -978,11 +1017,15 @@ export class AppointmentsService {
 
     const trips: any[] = [];
     for (const apt of apts) {
-      // 1. Resolve Patient destination coordinates
-      let patientLat = 9.02497;
-      let patientLng = 38.74689;
+      // 1. Resolve Patient destination coordinates (prefer explicit appointment coordinates)
+      let patientLat = (apt.latitude !== null && apt.latitude !== undefined && apt.latitude !== 0)
+        ? Number(apt.latitude)
+        : 9.02497;
+      let patientLng = (apt.longitude !== null && apt.longitude !== undefined && apt.longitude !== 0)
+        ? Number(apt.longitude)
+        : 38.74689;
 
-      if (locRepo && apt.patientId) {
+      if ((patientLat === 9.02497 || patientLng === 38.74689) && locRepo && apt.patientId) {
         try {
           const pLoc = await locRepo.findOne({ where: [{ userId: apt.patientId }, { id: apt.patientId }] });
           if (pLoc && typeof pLoc.y === "number" && typeof pLoc.x === "number" && (pLoc.x !== 0 || pLoc.y !== 0)) {

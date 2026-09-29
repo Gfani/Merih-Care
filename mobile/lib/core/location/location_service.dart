@@ -383,7 +383,7 @@ class LocationNotifier extends StateNotifier<LocationState> {
   /// Resolves the nearest human-readable spot and address for a coordinate.
   /// Never returns raw latitude/longitude strings.
   static Future<Map<String, String>> resolveSpotInfo(double lat, double lon) async {
-    // 1. Find the closest known landmark in Addis Ababa
+    // 1. Direct landmark match: Check if coordinate is directly at an exact known landmark (<= 150m)
     Map<String, dynamic>? closest;
     double minDistance = double.infinity;
 
@@ -397,34 +397,25 @@ class LocationNotifier extends StateNotifier<LocationState> {
       }
     }
 
-    // 2. If within 1.5 km of a known spot, use the local landmark name
-    if (closest != null && minDistance <= 1500) {
+    if (closest != null && minDistance <= 150) {
       final String name = closest['name'] as String;
       final String subCity = closest['subCity'] as String;
-      if (minDistance < 350) {
-        return {
-          'spotName': name,
-          'subCity': subCity,
-          'address': '$name, $subCity, Addis Ababa',
-        };
-      } else {
-        return {
-          'spotName': 'Near $name',
-          'subCity': subCity,
-          'address': 'Near $name, $subCity, Addis Ababa',
-        };
-      }
+      return {
+        'spotName': name,
+        'subCity': subCity,
+        'address': '$name, $subCity, Addis Ababa',
+      };
     }
 
-    // 3. For coordinates farther away, attempt fast reverse-geocoding via OpenStreetMap Nominatim
+    // 2. High-precision reverse-geocoding via OpenStreetMap Nominatim for exact street network
     try {
       final uri = Uri.parse(
         'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lon&format=json&addressdetails=1',
       );
-      final client = HttpClient()..connectionTimeout = const Duration(milliseconds: 2500);
+      final client = HttpClient()..connectionTimeout = const Duration(milliseconds: 3500);
       final request = await client.getUrl(uri);
       request.headers.set('User-Agent', 'MerihCare-Mobile/1.0 (contact@merihcare.com)');
-      final response = await request.close().timeout(const Duration(milliseconds: 2500));
+      final response = await request.close().timeout(const Duration(milliseconds: 3500));
 
       if (response.statusCode == 200) {
         final responseBody = await response.transform(utf8.decoder).join();
@@ -441,6 +432,7 @@ class LocationNotifier extends StateNotifier<LocationState> {
                   '');
           final String subCity = addressObj['suburb'] ??
               addressObj['city_district'] ??
+              addressObj['quarter'] ??
               closest?['subCity'] ??
               'Bole';
           final String road = addressObj['road'] ?? '';
@@ -462,25 +454,27 @@ class LocationNotifier extends StateNotifier<LocationState> {
             formattedAddress = '$subCity, $cityName';
           }
 
-          return {
-            'spotName': spot.isNotEmpty ? spot : subCity,
-            'subCity': subCity,
-            'address': formattedAddress,
-          };
+          if (formattedAddress.trim().isNotEmpty) {
+            return {
+              'spotName': spot.isNotEmpty ? spot : subCity,
+              'subCity': subCity,
+              'address': formattedAddress,
+            };
+          }
         }
       }
     } catch (_) {
-      // Network timeout or offline; proceed to regional landmark fallback
+      // Network timeout or offline; proceed to local landmark fallback
     }
 
-    // 4. Guaranteed clean regional fallback (never raw numbers)
+    // 3. Fallback: Local regional landmark
     if (closest != null && minDistance <= 25000) {
-      final String fallbackName = closest['name'] as String;
-      final String fallbackSubCity = closest['subCity'] as String;
+      final String name = closest['name'] as String;
+      final String subCity = closest['subCity'] as String;
       return {
-        'spotName': fallbackName,
-        'subCity': fallbackSubCity,
-        'address': 'Near $fallbackName, $fallbackSubCity, Addis Ababa',
+        'spotName': 'Near $name',
+        'subCity': subCity,
+        'address': 'Near $name, $subCity, Addis Ababa',
       };
     }
 
@@ -537,7 +531,7 @@ class LocationNotifier extends StateNotifier<LocationState> {
       final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       LocationPermission permission = await Geolocator.checkPermission();
 
-      if (permission == LocationPermission.denied && !quickMode) {
+      if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
 
@@ -554,45 +548,26 @@ class LocationNotifier extends StateNotifier<LocationState> {
               permission == LocationPermission.always)) {
         Position? position;
 
-        // Try fast cached position first if not forcing a hard refresh
-        if (!forceRefresh) {
+        // Try high accuracy GPS (satellite) with 5s timeout
+        try {
+          position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.high,
+            timeLimit: const Duration(seconds: 5),
+          );
+        } catch (_) {
+          // Fall back to balanced/medium with 3s timeout
           try {
+            position = await Geolocator.getCurrentPosition(
+              desiredAccuracy: LocationAccuracy.medium,
+              timeLimit: const Duration(seconds: 3),
+            );
+          } catch (_) {
             position = await Geolocator.getLastKnownPosition();
-          } catch (_) {}
-        }
-
-        if (position == null) {
-          if (quickMode) {
-            // Fast 2-second timeout for non-blocking startup
-            try {
-              position = await Geolocator.getCurrentPosition(
-                desiredAccuracy: LocationAccuracy.medium,
-                timeLimit: const Duration(seconds: 2),
-              );
-            } catch (_) {}
-          } else {
-            // 1. Try high accuracy GPS (satellite) with 4s timeout
-            try {
-              position = await Geolocator.getCurrentPosition(
-                desiredAccuracy: LocationAccuracy.high,
-                timeLimit: const Duration(seconds: 4),
-              );
-            } catch (_) {
-              // 2. Fall back to balanced/medium (Wi-Fi & cell tower) with 2s timeout
-              try {
-                position = await Geolocator.getCurrentPosition(
-                  desiredAccuracy: LocationAccuracy.medium,
-                  timeLimit: const Duration(seconds: 2),
-                );
-              } catch (_) {
-                position = await Geolocator.getLastKnownPosition();
-              }
-            }
           }
         }
 
         if (position != null) {
-          // Identify the spot name (Bole Medhanialem, Edna Mall, Sarbet, etc.)
+          // Identify the spot name via live reverse geocoding
           final spotInfo = await resolveSpotInfo(position.latitude, position.longitude);
 
           final detected = LocationDataModel(
@@ -620,32 +595,8 @@ class LocationNotifier extends StateNotifier<LocationState> {
       // Hardware GPS error
     }
 
-    // Preserve previously known location if already detected
-    if (state.location != null) {
-      state = state.copyWith(isDetecting: false);
-      return state.location;
-    }
-
-    // Fixed default fallback to Bole Medhanialem (Addis Ababa center) - NEVER random!
-    final detected = LocationDataModel(
-      latitude: 9.0004,
-      longitude: 38.7885,
-      address: 'Bole Medhanialem, Bole, Addis Ababa',
-      spotName: 'Bole Medhanialem',
-      subCity: 'Bole',
-      city: 'Addis Ababa',
-      accuracy: 10.0,
-      timestamp: DateTime.now(),
-    );
-
-    state = state.copyWith(
-      isDetecting: false,
-      permissionGranted: true,
-      location: detected,
-      error: null,
-    );
-
-    return detected;
+    state = state.copyWith(isDetecting: false);
+    return state.location;
   }
 
   /// Sets an explicitly chosen spot or custom address as active.

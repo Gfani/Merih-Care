@@ -554,10 +554,25 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
                             ),
                           ],
                         ),
-                        InkWell(
-                          onTap: () => context.push('/profile-settings'),
-                          borderRadius: BorderRadius.circular(22),
-                          child: AvatarWidget(name: fullName, radius: 22, verified: true),
+                        Row(
+                          children: [
+                            TextButton.icon(
+                              onPressed: () => context.go('/dashboard'),
+                              icon: const Icon(Icons.swap_horiz, size: 16, color: Color(0xFF0D7C6A)),
+                              label: const Text('Patient Mode', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0D7C6A))),
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                backgroundColor: const Color(0xFF0D7C6A).withValues(alpha: 0.08),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            InkWell(
+                              onTap: () => context.push('/profile-settings'),
+                              borderRadius: BorderRadius.circular(22),
+                              child: AvatarWidget(name: fullName, radius: 22, verified: true),
+                            ),
+                          ],
                         ),
                       ],
                     ),
