@@ -253,6 +253,8 @@ export class AppointmentsService {
       apt.amount = data.amount || data.price || 0;
       apt.status = data.status || "requested";
       apt.visitNotes = data.visitNotes || data.notes || null;
+      apt.verificationPin = data.verificationPin || Math.floor(1000 + Math.random() * 9000).toString();
+      apt.isPinVerified = false;
       apt.version = 1;
 
       const savedApt = await manager.save(apt);
@@ -293,6 +295,8 @@ export class AppointmentsService {
         notes: result.visitNotes,
         visitNotes: result.visitNotes,
         amount: result.amount,
+        verificationPin: result.verificationPin,
+        isPinVerified: result.isPinVerified,
         createdAt: result.createdAt,
       };
 
@@ -455,7 +459,8 @@ export class AppointmentsService {
     newStatus: string, 
     actorId: string, 
     visitNotes?: string, 
-    disputeReason?: string
+    disputeReason?: string,
+    pin?: string
   ): Promise<AppointmentEntity> {
     const apt = await this.appointmentRepo.findOne({ where: { id } });
     if (!apt) throw new BadRequestException("Appointment not found");
@@ -464,21 +469,39 @@ export class AppointmentsService {
       throw new BadRequestException(`Invalid status transition from ${apt.status} to ${newStatus}`);
     }
 
-    // Auto-assign accepting clinician if appointment was unassigned
-    if (newStatus === "accepted" && !apt.providerId && actorId && actorId !== "unknown" && actorId !== "patient") {
-      try {
-        const provRepo = this.dataSource.getRepository(ProviderEntity);
-        const prov = await provRepo.findOne({
-          where: [{ id: actorId }, { userId: actorId }],
-          relations: ["user"],
-        });
-        if (prov) {
-          apt.providerId = prov.id;
-          apt.providerName = prov.name;
-          apt.providerPhone = prov.phone || prov.user?.phone || apt.providerPhone;
-          apt.providerAvatar = prov.avatar || apt.providerAvatar;
+    // Mutual safety arrival verification check: Provider cannot commence treatment without verifying patient PIN
+    if (newStatus === "in_progress") {
+      if (pin) {
+        if (apt.verificationPin && apt.verificationPin !== pin.trim()) {
+          throw new BadRequestException("Invalid verification PIN. Please verify the 4-digit code with the patient.");
         }
-      } catch (_) {}
+        apt.isPinVerified = true;
+      } else if (apt.verificationPin && !apt.isPinVerified) {
+        throw new BadRequestException("Security verification PIN must be verified with the patient before commencing treatment.");
+      }
+    }
+
+    // Auto-assign accepting clinician if appointment was unassigned
+    if (newStatus === "accepted") {
+      if (!apt.verificationPin) {
+        apt.verificationPin = Math.floor(1000 + Math.random() * 9000).toString();
+        apt.isPinVerified = false;
+      }
+      if (!apt.providerId && actorId && actorId !== "unknown" && actorId !== "patient") {
+        try {
+          const provRepo = this.dataSource.getRepository(ProviderEntity);
+          const prov = await provRepo.findOne({
+            where: [{ id: actorId }, { userId: actorId }],
+            relations: ["user"],
+          });
+          if (prov) {
+            apt.providerId = prov.id;
+            apt.providerName = prov.name;
+            apt.providerPhone = prov.phone || prov.user?.phone || apt.providerPhone;
+            apt.providerAvatar = prov.avatar || apt.providerAvatar;
+          }
+        } catch (_) {}
+      }
     }
 
     apt.status = newStatus;
@@ -506,6 +529,8 @@ export class AppointmentsService {
       providerPhone: savedApt.providerPhone,
       status: newStatus,
       visitNotes,
+      verificationPin: savedApt.verificationPin,
+      isPinVerified: savedApt.isPinVerified,
     });
 
     // Notify patient in real-time
@@ -518,6 +543,8 @@ export class AppointmentsService {
           providerName: savedApt.providerName,
           providerPhone: savedApt.providerPhone,
           providerAvatar: savedApt.providerAvatar,
+          verificationPin: savedApt.verificationPin,
+          isPinVerified: savedApt.isPinVerified,
         });
       }
       if (typeof this.realtimeService?.emitToRoom === "function") {
@@ -527,6 +554,8 @@ export class AppointmentsService {
           providerId: savedApt.providerId,
           providerName: savedApt.providerName,
           providerPhone: savedApt.providerPhone,
+          verificationPin: savedApt.verificationPin,
+          isPinVerified: savedApt.isPinVerified,
         });
       }
 
@@ -782,6 +811,57 @@ export class AppointmentsService {
     } catch (_) {}
 
     return savedApt;
+  }
+
+  // Mutual Security PIN Verification (Patient-Provider matching on arrival)
+  async verifyPin(id: string, pin: string, actorId?: string): Promise<any> {
+    const apt = await this.appointmentRepo.findOne({ where: { id } });
+    if (!apt) throw new BadRequestException("Appointment not found");
+
+    if (!apt.verificationPin) {
+      apt.verificationPin = Math.floor(1000 + Math.random() * 9000).toString();
+    }
+
+    if (apt.verificationPin !== pin.trim()) {
+      throw new BadRequestException("Invalid verification PIN. Please verify the 4-digit security code with the patient.");
+    }
+
+    apt.isPinVerified = true;
+    const savedApt = await this.appointmentRepo.save(apt);
+
+    // Save status history record
+    const history = new AppointmentStatusHistoryEntity();
+    history.id = `apth-${crypto.randomUUID()}`;
+    history.appointmentId = id;
+    history.status = apt.status;
+    history.changedBy = actorId || "provider";
+    history.notes = "Patient security verification PIN verified successfully on arrival.";
+    history.createdAt = new Date().toISOString();
+    await this.historyRepo.save(history);
+
+    // Broadcast verification event to both patient and provider rooms
+    try {
+      this.realtimeService.emitAppointmentUpdate(id, apt.status, {
+        appointmentId: id,
+        patientId: apt.patientId,
+        providerId: apt.providerId,
+        isPinVerified: true,
+        verificationPin: apt.verificationPin,
+      });
+      if (apt.patientId) {
+        this.realtimeService.emitToRoom(`patient:${apt.patientId}`, "appointment_pin_verified", {
+          appointmentId: id,
+          isPinVerified: true,
+        });
+      }
+    } catch (_) {}
+
+    return {
+      success: true,
+      message: "Security PIN verified successfully. You may now commence treatment.",
+      isPinVerified: true,
+      appointment: savedApt,
+    };
   }
 
   // Provider Arrival Check-in

@@ -27,6 +27,7 @@ describe("Appointment Lifecycle Tests", () => {
   const mockRealtimeService = {
     emitAppointmentUpdate: jest.fn(),
     emitProviderResponse: jest.fn(),
+    emitToRoom: jest.fn(),
   };
 
   const mockDataSource = {
@@ -122,6 +123,79 @@ describe("Appointment Lifecycle Tests", () => {
       mockAppointmentRepo.findOne.mockResolvedValue(mockApt);
 
       await expect(service.updateStatus("apt-101", "completed", "prov-1"))
+        .rejects.toThrow(BadRequestException);
+    });
+
+    it("should prevent commencing treatment when patient PIN is unverified", async () => {
+      const mockApt = {
+        id: "apt-101",
+        status: "arrived",
+        verificationPin: "8492",
+        isPinVerified: false,
+      };
+      mockAppointmentRepo.findOne.mockResolvedValue(mockApt);
+
+      await expect(service.updateStatus("apt-101", "in_progress", "prov-1"))
+        .rejects.toThrow(BadRequestException);
+    });
+
+    it("should allow commencing treatment when valid PIN is supplied during updateStatus", async () => {
+      const mockApt = {
+        id: "apt-101",
+        status: "arrived",
+        verificationPin: "8492",
+        isPinVerified: false,
+      };
+      mockAppointmentRepo.findOne.mockResolvedValue(mockApt);
+      mockAppointmentRepo.save.mockImplementation((a) => Promise.resolve(a));
+
+      const updated = await service.updateStatus(
+        "apt-101",
+        "in_progress",
+        "prov-1",
+        "Started visit",
+        undefined,
+        "8492"
+      );
+
+      expect(updated.status).toBe("in_progress");
+      expect(updated.isPinVerified).toBe(true);
+    });
+  });
+
+  describe("verifyPin", () => {
+    it("should verify correct 4-digit PIN and mark isPinVerified true", async () => {
+      const mockApt = {
+        id: "apt-202",
+        status: "arrived",
+        verificationPin: "8492",
+        isPinVerified: false,
+        patientId: "patient-99",
+        providerId: "prov-99",
+      };
+      mockAppointmentRepo.findOne.mockResolvedValue(mockApt);
+      mockAppointmentRepo.save.mockImplementation((a) => Promise.resolve(a));
+
+      const result = await service.verifyPin("apt-202", "8492", "prov-99");
+      expect(result.success).toBe(true);
+      expect(result.isPinVerified).toBe(true);
+      expect(mockRealtimeService.emitToRoom).toHaveBeenCalledWith(
+        "patient:patient-99",
+        "appointment_pin_verified",
+        expect.objectContaining({ isPinVerified: true })
+      );
+    });
+
+    it("should reject incorrect 4-digit PIN with BadRequestException", async () => {
+      const mockApt = {
+        id: "apt-202",
+        status: "arrived",
+        verificationPin: "8492",
+        isPinVerified: false,
+      };
+      mockAppointmentRepo.findOne.mockResolvedValue(mockApt);
+
+      await expect(service.verifyPin("apt-202", "0000", "prov-99"))
         .rejects.toThrow(BadRequestException);
     });
   });

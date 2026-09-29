@@ -44,7 +44,7 @@ class NotificationService {
 
     // Pre-cache FCM token (actual registration occurs post-login)
     try {
-      _cachedFcmToken = await messaging.getToken();
+      _cachedFcmToken = await messaging.getToken().timeout(const Duration(seconds: 4));
     } catch (_) {}
 
     // Listen for FCM token refresh events

@@ -18,6 +18,7 @@ class _GpsTaskHandler extends TaskHandler {
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
+    // ignore: invalid_use_of_visible_for_testing_member
     _sendPort = FlutterForegroundTask.receivePort?.sendPort;
     await _startPositionStream();
     // Heartbeat every 10 s — re-polls GPS so stationary providers keep emitting
@@ -140,6 +141,7 @@ class BackgroundGpsService {
       }
 
       // Attach receive port for data from the isolate
+      // ignore: invalid_use_of_visible_for_testing_member
       _receivePort = FlutterForegroundTask.receivePort;
 
       // Start or restart the service
@@ -185,6 +187,7 @@ class BackgroundGpsService {
   /// Stream of raw position maps emitted by the background isolate.
   /// Each map contains: lat, lng, accuracy, timestamp (milliseconds since epoch).
   static Stream<Map<String, dynamic>>? get positionStream {
+    // ignore: invalid_use_of_visible_for_testing_member
     final port = _receivePort ?? FlutterForegroundTask.receivePort;
     return port?.asBroadcastStream().cast<Map<String, dynamic>>();
   }

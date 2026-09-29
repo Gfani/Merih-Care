@@ -52,7 +52,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   void initState() {
     super.initState();
     _loadDashboardData();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       if (mounted) _loadDashboardData();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -62,8 +62,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Future<void> _broadcastPatientLocation() async {
     try {
-      final notifier = ref.read(locationProvider.notifier);
-      final loc = await notifier.autoDetectCurrentLocation();
+      final loc = ref.read(locationProvider).location;
       if (loc != null && mounted) {
         final realtime = ref.read(realtimeServiceProvider);
         final client = ref.read(apiClientProvider);
@@ -87,6 +86,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           } catch (_) {}
         }
       }
+
+      // Fast non-blocking GPS detection in background
+      ref.read(locationProvider.notifier).autoDetectCurrentLocation(quickMode: true);
     } catch (_) {}
   }
 
@@ -102,8 +104,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Future<void> _loadDashboardData() async {
     try {
       final client = ref.read(apiClientProvider);
-      final response = await client.dio.get('/appointments');
-      final provRes = await client.dio.get('/providers', queryParameters: {'verified': 'true'});
+      
+      // Fetch appointments and verified providers concurrently in parallel
+      final results = await Future.wait([
+        client.dio.get('/appointments'),
+        client.dio.get('/providers', queryParameters: {'verified': 'true'}),
+      ]);
+
+      final response = results[0];
+      final provRes = results[1];
 
       final dynamic aptData = response.data;
       final List allApts = aptData is List ? aptData : (aptData is Map && aptData['data'] is List ? aptData['data'] : []);

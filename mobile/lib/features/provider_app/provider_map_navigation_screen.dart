@@ -559,7 +559,7 @@ class _ProviderMapNavigationScreenState
                               TileLayer(
                                 urlTemplate:
                                     'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                userAgentPackageName: 'com.merihcare.mobile',
+                                userAgentPackageName: 'com.merihcare.app',
                               ),
                               PolylineLayer(
                                 polylines: [

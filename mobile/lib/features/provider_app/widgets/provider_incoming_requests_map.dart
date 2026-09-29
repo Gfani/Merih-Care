@@ -43,7 +43,7 @@ class ProviderIncomingRequestsMap extends StatefulWidget {
     double providerLat = 9.02497,
     double providerLon = 38.74689,
   }) {
-    if (req == null) return LatLng(providerLat, providerLon);
+    if (req == null || req is! Map) return LatLng(providerLat, providerLon);
 
     double? lat = toDouble(req['patientLat']) ??
         toDouble(req['latitude']) ??
@@ -145,16 +145,25 @@ class _ProviderIncomingRequestsMapState
   void _fitProviderAndSelected() {
     if (!mounted) return;
     try {
-      final providerPoint = LatLng(widget.providerLat, widget.providerLon);
+      final pLat = (widget.providerLat != 0.0) ? widget.providerLat : 9.02497;
+      final pLon = (widget.providerLon != 0.0) ? widget.providerLon : 38.74689;
+      final providerPoint = LatLng(pLat, pLon);
       if (widget.incomingRequests.isEmpty) {
         _mapController.move(providerPoint, 15.0);
         return;
       }
 
-      final selectedReq = widget.incomingRequests[_selectedRequestIndex];
+      final int safeIdx = _selectedRequestIndex.clamp(0, widget.incomingRequests.length - 1);
+      final selectedReq = widget.incomingRequests[safeIdx];
       final patientPoint = _resolvePatientLocation(selectedReq);
 
       final bounds = LatLngBounds(providerPoint, patientPoint);
+      if (bounds.southWest == bounds.northEast ||
+          ((bounds.north - bounds.south).abs() < 0.0001 && (bounds.east - bounds.west).abs() < 0.0001)) {
+        _mapController.move(providerPoint, 15.0);
+        return;
+      }
+
       _mapController.fitCamera(
         CameraFit.bounds(
           bounds: bounds,
@@ -239,7 +248,7 @@ class _ProviderIncomingRequestsMapState
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.merihcare.mobile',
+                userAgentPackageName: 'com.merihcare.app',
               ),
 
               // Route line connecting provider to selected request along real roads
@@ -899,7 +908,7 @@ class PatientLocationMiniPreview extends StatelessWidget {
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.merihcare.mobile',
+                userAgentPackageName: 'com.merihcare.app',
               ),
               PolylineLayer(
                 polylines: [

@@ -154,6 +154,18 @@ export class UpdateStatusDto {
   @IsString()
   @MaxLength(2000)
   disputeReason?: string;
+
+  @ApiPropertyOptional({ description: "Patient 4-digit security verification PIN" })
+  @IsOptional()
+  @IsString()
+  pin?: string;
+}
+
+export class VerifyPinDto {
+  @ApiProperty({ description: "Patient 4-digit security PIN" })
+  @IsNotEmpty()
+  @IsString()
+  pin: string;
 }
 
 export class CancelAppointmentDto {
@@ -336,8 +348,19 @@ export class AppointmentsController {
       body.status,
       actorId,
       body.visitNotes,
-      body.disputeReason
+      body.disputeReason,
+      body.pin
     );
+  }
+
+  @Post(":id/verify-pin")
+  async verifyPin(
+    @Param("id") id: string,
+    @Body() body: VerifyPinDto,
+    @Req() req: any
+  ) {
+    const actorId = req.user?.id || "provider";
+    return this.appointmentsService.verifyPin(id, body.pin, actorId);
   }
 
   @Post(":id/check-in")

@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "256475797217",
+    "project_id": "merih-care",
+    "storage_bucket": "merih-care.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:256475797217:android:a1b2c3d4e5f67890",
+        "android_client_info": {
+          "package_name": "com.merihcare.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "256475797217-9h81ffre15hi7kdd4iu47rbdg6v50reo.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.merihcare.app",
+            "certificate_hash": "1c06fb3d3a9026276ae0a5b4ee68ac1151acff2f"
+          }
+        },
+        {
+          "client_id": "256475797217-o481d29fdaufp2fp6mmkide2u52ohpp7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyFakeKeyPlaceholderForGoogleServicesJsonMerihCare"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "256475797217-o481d29fdaufp2fp6mmkide2u52ohpp7.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "256475797217-78541v66iduupfrod43jlc4gh5cf7iun.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.merihcare.app"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

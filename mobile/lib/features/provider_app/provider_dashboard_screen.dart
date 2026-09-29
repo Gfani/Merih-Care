@@ -30,7 +30,7 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
   int _reviewCount = 0;
   List<dynamic> _incomingRequests = [];
   List<dynamic> _activeSchedule = [];
-  bool _loading = true;
+  bool _loading = false;
   Timer? _pollTimer;
   StreamSubscription? _serviceReqSub;
   StreamSubscription? _appointmentSub;
@@ -61,7 +61,7 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
         if (initialProvId.isNotEmpty) {
           tracker.setProviderId(initialProvId);
         }
-        final detected = await ref.read(locationProvider.notifier).autoDetectCurrentLocation();
+        final detected = await ref.read(locationProvider.notifier).autoDetectCurrentLocation(quickMode: true);
         if (detected != null && mounted) {
           await tracker.emitDirectCoordinates(
             detected.latitude,
@@ -221,7 +221,7 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
       _showIncomingOfferModal(data);
     });
 
-    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+    _pollTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       if (mounted && _isOnline) {
         _loadDashboardData();
       }
@@ -246,18 +246,24 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
       final now = DateTime.now();
       final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
-      final response = await client.dio.get('/appointments');
-      final dynamic raw = response.data;
+      // Fetch appointments and provider profile concurrently in parallel with resilient error fallback
+      final results = await Future.wait([
+        client.dio.get('/appointments').then((r) => r.data).catchError((_) => null),
+        client.dio.get('/providers/me').then((r) => r.data).catchError((_) => null),
+      ]);
+
+      final dynamic raw = results[0];
+      final dynamic provData = results[1];
+
       final List all = (raw is List)
           ? raw
-          : (raw is Map<String, dynamic> && raw['data'] is List ? raw['data'] as List : []);
+          : (raw is Map && raw['data'] is List ? raw['data'] as List : []);
 
       // Fetch actual provider rating and review count from backend
       double ratingVal = 0.0;
       int reviews = 0;
       try {
-        final provRes = await client.dio.get('/providers/me');
-        final dynamic pData = provRes.data is Map<String, dynamic> ? provRes.data : {};
+        final dynamic pData = provData is Map ? provData : {};
         _myProviderId = pData['userId']?.toString() ?? pData['id']?.toString();
         if (pData['rating'] != null) {
           ratingVal = (pData['rating'] as num).toDouble();
@@ -292,8 +298,11 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
         }
       }
 
+      // Sanitize list items so elements are guaranteed to be Map<String, dynamic>
+      final validList = all.whereType<Map>().map((a) => Map<String, dynamic>.from(a)).toList();
+
       // Compute actual completed visits and today's earnings
-      final completedAppts = all.where((a) => a['status'] == 'completed').toList();
+      final completedAppts = validList.where((a) => a['status'] == 'completed').toList();
       final completedToday = completedAppts.where((a) {
         final date = (a['date'] ?? '').toString();
         return date.startsWith(todayStr);
@@ -305,27 +314,35 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
         if (amt is num) earningsToday += amt.toDouble();
       }
 
+      final incoming = validList.where((a) => a['status'] == 'requested' || a['status'] == 'searching' || a['status'] == 'pending').toList();
+      final active = validList.where((a) => a['status'] == 'accepted' || a['status'] == 'scheduled' || a['status'] == 'on_the_way' || a['status'] == 'arrived' || a['status'] == 'in_progress').toList();
+
       if (mounted) {
         setState(() {
           _todayEarnings = earningsToday;
           _completedVisits = completedAppts.length;
           _rating = ratingVal;
           _reviewCount = reviews;
-          _incomingRequests = all.where((a) => a['status'] == 'requested' || a['status'] == 'searching' || a['status'] == 'pending').toList();
-          _activeSchedule = all.where((a) => a['status'] == 'accepted' || a['status'] == 'scheduled' || a['status'] == 'on_the_way' || a['status'] == 'arrived' || a['status'] == 'in_progress').toList();
+          _incomingRequests = incoming;
+          _activeSchedule = active;
           _loading = false;
         });
       }
     } catch (e) {
       print('[PROVIDER] loadDashboardData error: $e');
+    } finally {
+      if (mounted && _loading) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   Map<String, dynamic>? get _activeInFlightTask {
     for (final a in _activeSchedule) {
+      if (a is! Map) continue;
       final status = a['status']?.toString();
       if (status == 'accepted' || status == 'on_the_way' || status == 'arrived' || status == 'in_progress') {
-        return a as Map<String, dynamic>;
+        return Map<String, dynamic>.from(a);
       }
     }
     return null;
@@ -489,8 +506,16 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
     final auth = ref.watch(authProvider);
     final locationState = ref.watch(locationProvider);
     final tracker = ref.watch(locationTrackingProvider);
-    final double providerLat = tracker.lat != 0.0 ? tracker.lat : (locationState.location?.latitude ?? 9.02497);
-    final double providerLon = tracker.lon != 0.0 ? tracker.lon : (locationState.location?.longitude ?? 38.74689);
+    final double providerLat = (tracker.lat != 0.0)
+        ? tracker.lat
+        : ((locationState.location?.latitude != null && locationState.location!.latitude != 0.0)
+            ? locationState.location!.latitude
+            : 9.02497);
+    final double providerLon = (tracker.lon != 0.0)
+        ? tracker.lon
+        : ((locationState.location?.longitude != null && locationState.location!.longitude != 0.0)
+            ? locationState.location!.longitude
+            : 38.74689);
     final user = auth.user;
     final rawName = user?['name']?.toString().trim();
     final fullName = (rawName != null && rawName.isNotEmpty)
@@ -505,13 +530,15 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
           children: [
             const OfflineBanner(),
             Expanded(
-              child: _loading
-                  ? const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()))
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+              child: RefreshIndicator(
+                onRefresh: _loadDashboardData,
+                color: AppTheme.primaryColor,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                     // ─── Header: Greeting & Avatar ────────────────────────────────────────
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1000,16 +1027,27 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
                     const SizedBox(height: 10),
                     if (_activeSchedule.isNotEmpty)
                       AppointmentCardWidget(
-                        appointment: _activeSchedule[0],
+                        appointment: _activeSchedule[0] is Map ? Map<String, dynamic>.from(_activeSchedule[0] as Map) : {},
                         onTap: () => context.push('/provider/appointment/${_activeSchedule[0]['id']}'),
+                      )
+                    else
+                      const CardWidget(
+                        padding: EdgeInsets.all(20),
+                        child: Center(
+                          child: Text(
+                            'No scheduled appointments for today.',
+                            style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                          ),
+                        ),
                       ),
                   ],
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
+    ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentNavIndex,
         onDestinationSelected: (index) {

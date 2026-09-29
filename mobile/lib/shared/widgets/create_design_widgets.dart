@@ -454,7 +454,7 @@ class ProviderCardWidget extends StatelessWidget {
 
 // ─── APPOINTMENT CARD ────────────────────────────────────────────────────────
 class AppointmentCardWidget extends StatelessWidget {
-  final Map<String, dynamic> appointment;
+  final Map<dynamic, dynamic> appointment;
   final VoidCallback onTap;
 
   const AppointmentCardWidget({

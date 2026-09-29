@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -64,40 +65,56 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> _checkToken() async {
-    print('[AUTH] _checkToken: checking stored session...');
     final token = await SecureStorage.instance.readToken();
+    final cachedUserJson = await SecureStorage.instance.readCachedUser();
+
     if (token != null) {
+      // 1. Instant local restoration from cached profile (zero network delay)
+      if (cachedUserJson != null) {
+        try {
+          final cachedUser = jsonDecode(cachedUserJson) as Map<String, dynamic>;
+          debugPrint('[AUTH] Instant session restored from cache! Role: ${cachedUser['role']}');
+          state = AuthState(
+            status: AuthStatus.authenticated,
+            token: token,
+            user: cachedUser,
+          );
+          try {
+            _ref.read(realtimeServiceProvider).connect(token: token);
+          } catch (_) {}
+        } catch (_) {}
+      }
+
+      // 2. Silent background validation / refresh against backend
       try {
         final client = _ref.read(apiClientProvider);
         final response = await client.dio.get('/auth/profile');
+        final serverUser = response.data is Map<String, dynamic> ? response.data as Map<String, dynamic> : null;
         
-        if (state.status == AuthStatus.authenticated) {
-          print('[AUTH] _checkToken: already authenticated, skipping overwrite.');
-          return;
+        if (serverUser != null) {
+          state = AuthState(
+            status: AuthStatus.authenticated,
+            token: token,
+            user: serverUser,
+          );
+          await SecureStorage.instance.writeCachedUser(jsonEncode(serverUser));
         }
-        
-        print('[AUTH] _checkToken: session verified! User role: ${response.data['role']}');
-        state = AuthState(
-          status: AuthStatus.authenticated,
-          token: token,
-          user: response.data,
-        );
         try {
           _ref.read(realtimeServiceProvider).connect(token: token);
         } catch (_) {}
       } catch (e) {
-        print('[AUTH] _checkToken error: $e');
-        if (state.status == AuthStatus.authenticated) {
-          print('[AUTH] _checkToken: already authenticated, skipping clear.');
-          return;
+        debugPrint('[AUTH] _checkToken background verification: $e');
+        if (e is DioException && e.response?.statusCode == 401) {
+          debugPrint('[AUTH] Session expired/revoked. Clearing local credentials.');
+          await SecureStorage.instance.deleteToken();
+          state = AuthState(status: AuthStatus.unauthenticated);
+        } else if (state.status != AuthStatus.authenticated) {
+          // If offline and no local cache was available
+          state = AuthState(status: AuthStatus.unauthenticated);
         }
-        print('[AUTH] _checkToken: clearing expired session.');
-        await SecureStorage.instance.deleteToken();
-        state = AuthState(status: AuthStatus.unauthenticated);
       }
     } else {
-      print('[AUTH] _checkToken: no session found.');
-      if (state.status == AuthStatus.authenticated) return;
+      debugPrint('[AUTH] No stored session found.');
       state = AuthState(status: AuthStatus.unauthenticated);
     }
   }
@@ -126,6 +143,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
       if (token.isNotEmpty) {
         await SecureStorage.instance.writeToken(token);
+        await SecureStorage.instance.writeCachedUser(jsonEncode(user));
         try {
           _ref.read(realtimeServiceProvider).connect(token: token);
         } catch (_) {}
@@ -239,6 +257,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       }
 
       await SecureStorage.instance.writeToken(token);
+      await SecureStorage.instance.writeCachedUser(jsonEncode(user));
       if (refreshToken.isNotEmpty) {
         await SecureStorage.instance.writeRefreshToken(refreshToken);
       }
@@ -289,8 +308,18 @@ class AuthNotifier extends StateNotifier<AuthState> {
           if (errStr.contains('canceled') || errStr.contains('cancelled') || errStr.contains('cancel')) {
             return const SignupResult(success: false, message: 'Google sign-in canceled');
           }
-          // Fallback in dev/test environment if Google Play Services / SHA-1 is not yet mapped
-          if (kDebugMode && email != null && email.isNotEmpty) {
+          // Error code 10: CommonStatusCodes.DEVELOPER_ERROR (SHA-1 fingerprint missing in Google Cloud Console)
+          if (errStr.contains(': 10:') || errStr.contains('code: 10') || errStr.contains('developer_error')) {
+            debugPrint('[GOOGLE_AUTH] Error 10 (DEVELOPER_ERROR) detected. App SHA-1: 1C:06:FB:3D:3A:90:26:27:6A:E0:A5:B4:EE:68:AC:11:51:AC:FF:2F');
+            if (kDebugMode && email != null && email.isNotEmpty) {
+              token = 'test-google-token:$email:MerihCare User';
+            } else {
+              return const SignupResult(
+                success: false,
+                message: 'Google Sign-In configuration error (Developer Error 10). Ensure the SHA-1 fingerprint (1C:06:FB:3D:3A:90:26:27:6A:E0:A5:B4:EE:68:AC:11:51:AC:FF:2F) is added to Google Cloud Console for com.merihcare.app.',
+              );
+            }
+          } else if (kDebugMode && email != null && email.isNotEmpty) {
             token = 'test-google-token:$email:MerihCare User';
           } else {
             return SignupResult(
@@ -355,6 +384,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
       if (accessToken.isNotEmpty) {
         await SecureStorage.instance.writeToken(accessToken);
+        await SecureStorage.instance.writeCachedUser(jsonEncode(user));
         if (refreshToken.isNotEmpty) {
           await SecureStorage.instance.writeRefreshToken(refreshToken);
         }

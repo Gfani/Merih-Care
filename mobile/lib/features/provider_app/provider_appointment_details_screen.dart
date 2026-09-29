@@ -133,6 +133,138 @@ class _ProviderAppointmentDetailsScreenState extends ConsumerState<ProviderAppoi
     );
   }
 
+  void _showPinVerificationDialog() {
+    final pinController = TextEditingController();
+    bool verifying = false;
+    String? pinError;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0D9488).withOpacity(0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.shield_outlined, color: Color(0xFF0D9488), size: 24),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Arrival Verification PIN',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Ask the patient for the 4-digit arrival PIN displayed on their active booking screen to verify identity.',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                ),
+                const SizedBox(height: 18),
+                TextField(
+                  controller: pinController,
+                  autofocus: true,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 10,
+                    color: Color(0xFF0D9488),
+                  ),
+                  decoration: InputDecoration(
+                    counterText: '',
+                    hintText: '••••',
+                    hintStyle: const TextStyle(letterSpacing: 8, color: Color(0xFFCBD5E1)),
+                    errorText: pinError,
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFF0D9488), width: 2),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: verifying ? null : () => Navigator.pop(dialogCtx),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: verifying
+                    ? null
+                    : () async {
+                        final pin = pinController.text.trim();
+                        if (pin.length != 4) {
+                          setDialogState(() => pinError = 'Enter 4-digit PIN');
+                          return;
+                        }
+                        setDialogState(() {
+                          verifying = true;
+                          pinError = null;
+                        });
+                        try {
+                          final client = ref.read(apiClientProvider);
+                          await client.dio.post('/appointments/${widget.appointmentId}/verify-pin', data: {
+                            'pin': pin,
+                          });
+                          if (mounted) {
+                            Navigator.pop(dialogCtx);
+                            setState(() {
+                              if (_appointment != null) {
+                                _appointment!['isPinVerified'] = true;
+                              }
+                            });
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Security PIN verified! Starting visit...'),
+                                backgroundColor: Color(0xFF0D9488),
+                              ),
+                            );
+                            _changeStatus('in_progress');
+                          }
+                        } catch (e) {
+                          setDialogState(() {
+                            verifying = false;
+                            pinError = 'Invalid PIN. Please check with patient.';
+                          });
+                        }
+                      },
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0D9488)),
+                child: verifying
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('Verify & Start'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -319,9 +451,24 @@ class _ProviderAppointmentDetailsScreenState extends ConsumerState<ProviderAppoi
           ],
         );
       case 'arrived':
-        return ElevatedButton(
-          onPressed: () => _changeStatus('in_progress'),
-          child: const Text('Start Medical Visit'),
+        final isPinVerified = _appointment?['isPinVerified'] == true;
+        return Column(
+          children: [
+            ElevatedButton.icon(
+              onPressed: () {
+                if (isPinVerified) {
+                  _changeStatus('in_progress');
+                } else {
+                  _showPinVerificationDialog();
+                }
+              },
+              icon: Icon(isPinVerified ? Icons.play_arrow_rounded : Icons.shield_outlined),
+              label: Text(isPinVerified ? 'Start Medical Visit' : 'Verify Patient PIN to Start Visit'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isPinVerified ? const Color(0xFF0D7C6A) : const Color(0xFF0D9488),
+              ),
+            ),
+          ],
         );
       case 'in_progress':
         return ElevatedButton(

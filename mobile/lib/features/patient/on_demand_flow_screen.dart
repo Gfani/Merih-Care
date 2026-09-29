@@ -71,6 +71,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
   final TextEditingController _reviewController = TextEditingController();
   String _selectedPaymentMethod = 'telebirr';
   String? _createdAppointmentId;
+  String? _verificationPin = '8492';
 
   late AnimationController _pulseController;
 
@@ -249,6 +250,10 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
       if (_createdAppointmentId != null && aptId != null && aptId != _createdAppointmentId) return;
 
       final status = data['status']?.toString();
+      final pin = data['verificationPin']?.toString() ?? data['verificationCode']?.toString();
+      if (pin != null && pin.isNotEmpty) {
+        _verificationPin = pin;
+      }
       if (status == 'searching') {
         final pName = data['providerName']?.toString();
         final pLat = (data['providerLat'] as num?)?.toDouble();
@@ -523,6 +528,9 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
 
       if (data != null && data['id'] != null) {
         _createdAppointmentId = data['id'].toString();
+        if (data['verificationPin'] != null) {
+          _verificationPin = data['verificationPin'].toString();
+        }
         ref.read(realtimeServiceProvider).joinAppointment(_createdAppointmentId!);
       }
     } catch (e) {
@@ -551,6 +559,10 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
               : null;
 
           if (apt != null) {
+            final pin = apt['verificationPin']?.toString() ?? apt['verificationCode']?.toString();
+            if (pin != null && pin.isNotEmpty) {
+              _verificationPin = pin;
+            }
             final status = apt['status']?.toString();
             if (apt['providerName'] != null) {
               _matchedProvider['id'] = apt['providerId']?.toString() ?? 'p-1';
@@ -664,7 +676,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
           children: [
             TileLayer(
               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.merihcare.mobile',
+              userAgentPackageName: 'com.merihcare.app',
             ),
 
             // Pulsing Search Radius Highlight during Matching
@@ -858,9 +870,9 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
       minSize = 0.20;
       maxSize = 0.35;
     } else if (_currentStep == OnDemandStep.providerMatched || _currentStep == OnDemandStep.liveTracking) {
-      initialSize = 0.36;
-      minSize = 0.25;
-      maxSize = 0.50;
+      initialSize = 0.44;
+      minSize = 0.28;
+      maxSize = 0.65;
     }
 
     return DraggableScrollableSheet(
@@ -1160,7 +1172,97 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
               ),
             ],
           ),
-          const SizedBox(height: 12),
+
+          // ─── Patient Arrival Security PIN Card ───────────────────────
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: const [
+                BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0D7C6A).withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.shield_outlined, size: 18, color: Color(0xFF0D7C6A)),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Arrival Security PIN',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFECFDF5),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF10B981)),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.verified_user_rounded, size: 12, color: Color(0xFF059669)),
+                          SizedBox(width: 4),
+                          Text(
+                            'Mutual Safety',
+                            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF065F46)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFF0D7C6A).withValues(alpha: 0.3), width: 1.5),
+                    ),
+                    child: Text(
+                      _verificationPin ?? '8492',
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 8,
+                        color: Color(0xFF0D7C6A),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Give this 4-digit security code to your clinician upon arrival to verify their identity before allowing entry into your home.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11, color: AppTheme.textMuted, height: 1.3),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
 
           // Action Buttons: Open Live Chat & Cancel
           Row(

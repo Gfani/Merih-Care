@@ -92,6 +92,12 @@ export class AppointmentEntity {
   @Column({ nullable: true })
   cancellationReason: string;
 
+  @Column({ nullable: true })
+  verificationPin: string;
+
+  @Column({ default: false })
+  isPinVerified: boolean;
+
   // Audits
   @CreateDateColumn()
   createdAt: Date;

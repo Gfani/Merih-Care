@@ -530,22 +530,21 @@ class LocationNotifier extends StateNotifier<LocationState> {
   }
 
   /// Auto-detects current physical location and identifies the human-readable spot name.
-  Future<LocationDataModel?> autoDetectCurrentLocation({bool forceRefresh = false}) async {
+  Future<LocationDataModel?> autoDetectCurrentLocation({bool forceRefresh = false, bool quickMode = false}) async {
     state = state.copyWith(isDetecting: true, error: null);
 
     try {
       final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       LocationPermission permission = await Geolocator.checkPermission();
 
-      if (permission == LocationPermission.denied) {
+      if (permission == LocationPermission.denied && !quickMode) {
         permission = await Geolocator.requestPermission();
       }
 
-      if (permission == LocationPermission.deniedForever) {
+      if (permission == LocationPermission.deniedForever || permission == LocationPermission.denied) {
         state = state.copyWith(
           isDetecting: false,
-          permissionGranted: false,
-          error: 'Location permissions permanently denied. Please allow location in device settings.',
+          permissionGranted: permission != LocationPermission.deniedForever,
         );
         return state.location;
       }
@@ -563,28 +562,29 @@ class LocationNotifier extends StateNotifier<LocationState> {
         }
 
         if (position == null) {
-          // 1. Try high accuracy GPS (satellite) with 5s timeout
-          try {
-            position = await Geolocator.getCurrentPosition(
-              desiredAccuracy: LocationAccuracy.high,
-              timeLimit: const Duration(seconds: 5),
-            );
-          } catch (_) {
-            // 2. Fall back to balanced/medium (Wi-Fi & cell tower) with 3s timeout
+          if (quickMode) {
+            // Fast 2-second timeout for non-blocking startup
             try {
               position = await Geolocator.getCurrentPosition(
                 desiredAccuracy: LocationAccuracy.medium,
-                timeLimit: const Duration(seconds: 3),
+                timeLimit: const Duration(seconds: 2),
+              );
+            } catch (_) {}
+          } else {
+            // 1. Try high accuracy GPS (satellite) with 4s timeout
+            try {
+              position = await Geolocator.getCurrentPosition(
+                desiredAccuracy: LocationAccuracy.high,
+                timeLimit: const Duration(seconds: 4),
               );
             } catch (_) {
-              // 3. Fall back to low accuracy with 3s timeout
+              // 2. Fall back to balanced/medium (Wi-Fi & cell tower) with 2s timeout
               try {
                 position = await Geolocator.getCurrentPosition(
-                  desiredAccuracy: LocationAccuracy.low,
-                  timeLimit: const Duration(seconds: 3),
+                  desiredAccuracy: LocationAccuracy.medium,
+                  timeLimit: const Duration(seconds: 2),
                 );
               } catch (_) {
-                // 4. Fall back to OS cached last known position
                 position = await Geolocator.getLastKnownPosition();
               }
             }

@@ -50,14 +50,44 @@ class SecureStorage {
     return _refreshTokenFallback;
   }
 
+  static const _cachedUserKey = 'cached_user_profile';
+  String? _cachedUserFallback;
+
+  Future<void> writeCachedUser(String userJson) async {
+    _cachedUserFallback = userJson;
+    try {
+      await _storage.write(key: _cachedUserKey, value: userJson);
+    } catch (_) {}
+  }
+
+  Future<String?> readCachedUser() async {
+    try {
+      final user = await _storage.read(key: _cachedUserKey);
+      if (user != null && user.isNotEmpty) {
+        _cachedUserFallback = user;
+        return user;
+      }
+    } catch (_) {}
+    return _cachedUserFallback;
+  }
+
+  Future<void> deleteCachedUser() async {
+    _cachedUserFallback = null;
+    try {
+      await _storage.delete(key: _cachedUserKey);
+    } catch (_) {}
+  }
+
   Future<void> deleteToken() async {
     // Unregister device push token before deleting credentials
     await NotificationService.instance.unregisterToken();
     _tokenFallback = null;
     _refreshTokenFallback = null;
+    _cachedUserFallback = null;
     try {
       await _storage.delete(key: _tokenKey);
       await _storage.delete(key: _refreshTokenKey);
+      await _storage.delete(key: _cachedUserKey);
     } catch (_) {}
   }
 

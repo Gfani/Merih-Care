@@ -31,6 +31,7 @@ import '../../features/provider_app/provider_map_navigation_screen.dart';
 import '../../features/provider_app/provider_earnings_screen.dart';
 import '../../features/provider_app/provider_active_flow_screen.dart';
 import '../../features/provider_app/provider_edit_profile_screen.dart';
+import '../../features/splash/splash_screen.dart';
 
 class RouterNotifier extends ChangeNotifier {
   final Ref _ref;
@@ -51,7 +52,7 @@ final appRouter = Provider<GoRouter>((ref) {
   final notifier = ref.watch(routerNotifierProvider);
 
   return GoRouter(
-    initialLocation: '/onboarding',
+    initialLocation: '/',
     refreshListenable: notifier,
     redirect: (context, state) {
       final auth = ref.read(authProvider);
@@ -59,27 +60,31 @@ final appRouter = Provider<GoRouter>((ref) {
       final location = state.uri.path;
       final isAuthPage = location == '/login' || location == '/signup';
       final isOnboarding = location == '/onboarding';
-
-      print('[ROUTER] redirect: location=$location, isAuth=$isAuth, status=${auth.status}, role=${auth.user?['role']}');
+      final isSplash = location == '/';
 
       if (auth.status == AuthStatus.unknown) {
-        return null;
+        return isSplash ? null : '/';
       }
 
-      if (!isAuth && !isAuthPage && !isOnboarding) {
-        print('[ROUTER] Redirecting to /login (not authenticated)');
-        return '/login';
+      if (isAuth) {
+        if (isAuthPage || isOnboarding || isSplash) {
+          final role = auth.user?['role'];
+          final target = role == 'provider' ? '/provider-dashboard' : '/dashboard';
+          return target;
+        }
+        return null;
+      } else {
+        if (isSplash) {
+          return '/onboarding';
+        }
+        if (!isAuthPage && !isOnboarding) {
+          return '/login';
+        }
+        return null;
       }
-      if (isAuth && (isAuthPage || isOnboarding)) {
-        final role = auth.user?['role'];
-        final target = role == 'provider' ? '/provider-dashboard' : '/dashboard';
-        print('[ROUTER] Redirecting to $target (authenticated, role=$role)');
-        return target;
-      }
-      print('[ROUTER] Allowing navigation to: $location');
-      return null;
     },
     routes: [
+      GoRoute(path: '/', builder: (ctx, _) => const SplashScreen()),
       GoRoute(path: '/onboarding', builder: (ctx, _) => const OnboardingScreen()),
       GoRoute(path: '/login', builder: (ctx, _) => const LoginScreen()),
       GoRoute(path: '/signup', builder: (ctx, _) => const SignupScreen()),

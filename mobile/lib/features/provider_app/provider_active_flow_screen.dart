@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/network/network_providers.dart';
 import '../../shared/widgets/create_design_widgets.dart';
+import 'widgets/live_tracking_map.dart';
 
 enum ProviderFlowStep {
   incoming,
@@ -41,6 +42,12 @@ class _ProviderActiveFlowScreenState extends ConsumerState<ProviderActiveFlowScr
   final TextEditingController _clinicalNotesController = TextEditingController(text: 'Patient presented for routine checkup. Vitals stable, dressing changed cleanly.');
   final TextEditingController _prescriptionsController = TextEditingController(text: 'Amoxicillin 500mg PO TID x 5 days');
 
+  // Arrival Mutual Security PIN Verification
+  final TextEditingController _pinInputController = TextEditingController();
+  bool _pinVerifying = false;
+  bool _pinVerified = false;
+  String? _pinErrorMessage;
+
   final Map<String, dynamic> _requestData = {
     'id': 'req-active',
     'patientName': 'Patient',
@@ -75,6 +82,22 @@ class _ProviderActiveFlowScreenState extends ConsumerState<ProviderActiveFlowScr
     _requestData['grossFee'] = d['amount'] != null
         ? (d['amount'] as num).toDouble()
         : (d['estimatedEarnings'] != null ? (d['estimatedEarnings'] as num).toDouble() : 800.0);
+
+    final double? pLat = (d['latitude'] ?? d['lat'] ?? d['patientLat']) is num
+        ? (d['latitude'] ?? d['lat'] ?? d['patientLat']).toDouble()
+        : null;
+    final double? pLon = (d['longitude'] ?? d['lng'] ?? d['lon'] ?? d['patientLng'] ?? d['patientLon']) is num
+        ? (d['longitude'] ?? d['lng'] ?? d['lon'] ?? d['patientLng'] ?? d['patientLon']).toDouble()
+        : null;
+    if (pLat != null) _requestData['patientLat'] = pLat;
+    if (pLon != null) _requestData['patientLon'] = pLon;
+
+    if (d['verificationPin'] != null) {
+      _requestData['verificationPin'] = d['verificationPin'].toString();
+    }
+    if (d['isPinVerified'] == true) {
+      _pinVerified = true;
+    }
 
     final status = d['status']?.toString();
     if (status == 'cancelled') {
@@ -150,6 +173,7 @@ class _ProviderActiveFlowScreenState extends ConsumerState<ProviderActiveFlowScr
     _tempController.dispose();
     _clinicalNotesController.dispose();
     _prescriptionsController.dispose();
+    _pinInputController.dispose();
     super.dispose();
   }
 
@@ -204,7 +228,60 @@ class _ProviderActiveFlowScreenState extends ConsumerState<ProviderActiveFlowScr
     setState(() => _currentStep = ProviderFlowStep.arrived);
   }
 
+  Future<void> _verifySecurityPin() async {
+    final entered = _pinInputController.text.trim();
+    if (entered.length != 4) {
+      setState(() => _pinErrorMessage = 'Please enter all 4 digits of the patient security code.');
+      return;
+    }
+
+    setState(() {
+      _pinVerifying = true;
+      _pinErrorMessage = null;
+    });
+
+    try {
+      final client = ref.read(apiClientProvider);
+      final aptId = _requestData['id']?.toString() ?? 'apt-1';
+      await client.dio.post('/appointments/$aptId/verify-pin', data: {
+        'pin': entered,
+      });
+
+      if (mounted) {
+        setState(() {
+          _pinVerified = true;
+          _pinVerifying = false;
+          _pinErrorMessage = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Expanded(child: Text('Patient identity verified! You may now commence treatment.')),
+              ],
+            ),
+            backgroundColor: Color(0xFF0D7C6A),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _pinVerifying = false;
+          _pinErrorMessage = 'Invalid security PIN. Please ask the patient to check their 4-digit code.';
+        });
+      }
+    }
+  }
+
   Future<void> _startVisit() async {
+    if (!_pinVerified) {
+      setState(() => _pinErrorMessage = 'You must verify the patient\'s 4-digit security code before commencing treatment.');
+      return;
+    }
+
     await _updateAppointmentStatus('in_progress');
     setState(() {
       _currentStep = ProviderFlowStep.inProgress;
@@ -494,88 +571,57 @@ class _ProviderActiveFlowScreenState extends ConsumerState<ProviderActiveFlowScr
     );
   }
 
-  // ─── 3. NAVIGATING SCREEN ────────────────────────────────────────────────────
+  // ─── 3. NAVIGATING SCREEN (REAL-TIME LIVE MAP) ───────────────────────────────
   Widget _buildNavigatingScreen() {
-    return Column(
-      children: [
-        Expanded(
-          child: Container(
-            color: const Color(0xFFE2E8EE),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.directions_car, size: 48, color: AppTheme.primaryColor),
-                      SizedBox(height: 6),
-                      Text('Route: 2.4 km via Bole Rd', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textSecondary)),
-                      Text('Estimated Arrival: 12 mins', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
-                    ],
-                  ),
-                ),
-                Positioned(
-                  top: 16,
-                  left: 16,
-                  right: 16,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.turn_right, size: 28, color: AppTheme.primaryColor),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('In 400m, turn right onto Africa Avenue', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                              Text('Destination on right: ${_requestData['address']}', style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.all(16),
-          color: Colors.white,
-          child: ElevatedButton(
-            onPressed: _markArrived,
-            child: const Text('I Have Arrived at Patient Location'),
-          ),
-        ),
-      ],
+    final destLat = (_requestData['patientLat'] as num?)?.toDouble() ?? 9.0054;
+    final destLon = (_requestData['patientLon'] as num?)?.toDouble() ?? 38.7845;
+
+    return LiveTrackingMap(
+      destinationLat: destLat,
+      destinationLon: destLon,
+      destinationName: _requestData['patientName'] ?? 'Patient',
+      destinationAddress: _requestData['address'],
+      onArrived: _markArrived,
+      showArrivedButton: true,
     );
   }
 
-  // ─── 4. ARRIVED SCREEN ───────────────────────────────────────────────────────
+  // ─── 4. ARRIVED SCREEN (MUTUAL SECURITY VERIFICATION) ─────────────────────────
   Widget _buildArrivedScreen() {
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          const SizedBox(height: 10),
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(color: Color(0xFFEDE9FE), shape: BoxShape.circle),
-            child: const Icon(Icons.pin_drop, color: Color(0xFF7C3AED), size: 48),
+            decoration: BoxDecoration(
+              color: _pinVerified ? const Color(0xFFE6F5F2) : const Color(0xFFEDE9FE),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              _pinVerified ? Icons.verified_user_rounded : Icons.shield_outlined,
+              color: _pinVerified ? const Color(0xFF0D7C6A) : const Color(0xFF7C3AED),
+              size: 48,
+            ),
           ),
           const SizedBox(height: 16),
-          const Text('You Have Arrived at Location', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(
+            _pinVerified ? 'Arrival Verified & Authenticated' : 'Arrived at Patient Home',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 4),
-          const Text('Verify patient identity and commence medical treatment.', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-          const SizedBox(height: 24),
+          Text(
+            _pinVerified
+                ? 'Identity confirmed. You are authorized to commence treatment.'
+                : 'Mutual security check: verify identity before entering the premises.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+          ),
+          const SizedBox(height: 20),
+
+          // Patient Information Card
           CardWidget(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -584,27 +630,174 @@ class _ProviderActiveFlowScreenState extends ConsumerState<ProviderActiveFlowScr
                   children: [
                     AvatarWidget(name: _requestData['patientName'], radius: 20),
                     const SizedBox(width: 12),
-                    Text(_requestData['patientName'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _requestData['patientName'],
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
+                          Text(
+                            _requestData['address'] ?? 'Patient Destination',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-                const Divider(height: 20, color: AppTheme.borderColor),
-                const Text('Enter 4-Digit Patient Security Code', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-                const SizedBox(height: 8),
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text('8492', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 4, color: AppTheme.primaryColor)),
-                    SizedBox(width: 8),
-                    Icon(Icons.check_circle, color: AppTheme.successColor, size: 20),
+                const Divider(height: 24, color: AppTheme.borderColor),
+
+                // PIN Verification Form / Verified State
+                if (!_pinVerified) ...[
+                  const Row(
+                    children: [
+                      Icon(Icons.lock_outline_rounded, size: 16, color: Color(0xFF7C3AED)),
+                      SizedBox(width: 6),
+                      Text(
+                        'Patient Security Verification PIN',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Ask the patient for the 4-digit security code shown on their Merihcare booking screen.',
+                    style: TextStyle(fontSize: 11.5, color: AppTheme.textSecondary, height: 1.3),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // PIN Input Field
+                  TextField(
+                    controller: _pinInputController,
+                    keyboardType: TextInputType.number,
+                    maxLength: 4,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 10,
+                      color: Color(0xFF0D7C6A),
+                    ),
+                    decoration: InputDecoration(
+                      hintText: '••••',
+                      counterText: '',
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF0D7C6A), width: 2),
+                      ),
+                    ),
+                  ),
+
+                  if (_pinErrorMessage != null) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.red.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.error_outline_rounded, size: 16, color: Colors.red.shade700),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              _pinErrorMessage!,
+                              style: TextStyle(color: Colors.red.shade800, fontSize: 11.5),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
-                ),
+
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0D7C6A),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: _pinVerifying ? null : _verifySecurityPin,
+                      icon: _pinVerifying
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.security_rounded, size: 18),
+                      label: Text(
+                        _pinVerifying ? 'Verifying PIN...' : 'Verify Security PIN',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ),
+                  ),
+                ] else ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFECFDF5),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFF10B981)),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 22),
+                        SizedBox(width: 8),
+                        Text(
+                          'Mutual Security Verification Passed',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF065F46),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
           const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: _startVisit,
-            child: const Text('Commence Treatment / Start Visit'),
+
+          // Commence Treatment Button (Unlocked only after PIN verified)
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _pinVerified ? AppTheme.primaryColor : Colors.grey.shade400,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: _pinVerified ? _startVisit : () {
+                setState(() => _pinErrorMessage = 'Please enter and verify the patient\'s 4-digit code first.');
+              },
+              icon: Icon(_pinVerified ? Icons.medical_services_outlined : Icons.lock_outline_rounded, size: 18),
+              label: Text(
+                _pinVerified ? 'Commence Treatment / Start Visit' : 'Verify Security PIN to Unlock Visit',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+            ),
           ),
         ],
       ),
