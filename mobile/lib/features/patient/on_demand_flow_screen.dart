@@ -576,6 +576,14 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
       }
     } catch (e) {
       print('[DISPATCH] Error creating real appointment: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Connecting to clinical dispatch network...'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
     }
 
     _startPolling();
@@ -589,6 +597,11 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
         return;
       }
       setState(() => _searchSeconds += 2);
+
+      if (_createdAppointmentId == null && _searchSeconds % 6 == 0 && _searchSeconds <= 18) {
+        _startFindingProvider();
+        return;
+      }
 
       if (_createdAppointmentId != null) {
         try {

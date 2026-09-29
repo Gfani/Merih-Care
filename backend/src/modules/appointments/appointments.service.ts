@@ -238,10 +238,6 @@ export class AppointmentsService {
       const apt = new AppointmentEntity();
       apt.id = "apt-" + crypto.randomUUID();
 
-      apt.patientId = patientId;
-      apt.providerId = providerId;
-      apt.serviceId = serviceId;
-
       apt.patientName = data.patientName || "Patient";
       apt.patientAvatar = data.patientAvatar || null;
       apt.providerName = data.providerName || null;
@@ -249,12 +245,14 @@ export class AppointmentsService {
       apt.providerPhone = data.providerPhone || null;
       apt.patientPhone = data.patientPhone || null;
 
-      if (!apt.providerPhone && (providerId || data.providerName)) {
+      apt.providerId = providerId || null;
+      if (providerId || data.providerName) {
         try {
           const prov = providerId
             ? await manager.findOne(ProviderEntity, { where: [{ id: providerId }, { userId: providerId }], relations: ["user"] })
             : await manager.findOne(ProviderEntity, { where: { name: data.providerName }, relations: ["user"] });
           if (prov) {
+            apt.providerId = prov.id;
             if (!apt.providerName) apt.providerName = prov.name;
             if (!apt.providerPhone) apt.providerPhone = prov.phone || prov.user?.phone || null;
             if (!apt.providerAvatar) apt.providerAvatar = prov.avatar || null;
@@ -262,13 +260,25 @@ export class AppointmentsService {
         } catch (_) {}
       }
 
-      if (!apt.patientPhone && patientId) {
+      apt.patientId = patientId || null;
+      if (patientId) {
         try {
           const pat = await manager.findOne(UserEntity, { where: { id: patientId } });
           if (pat) {
+            apt.patientId = pat.id;
             if (!apt.patientName || apt.patientName === "Patient") apt.patientName = pat.name;
             if (!apt.patientPhone) apt.patientPhone = pat.phone || null;
             if (!apt.patientAvatar) apt.patientAvatar = (pat as any).avatar || null;
+          }
+        } catch (_) {}
+      }
+
+      apt.serviceId = serviceId || null;
+      if (serviceId) {
+        try {
+          const srv = await manager.findOne(ServiceEntity, { where: { id: serviceId } });
+          if (srv) {
+            apt.serviceId = srv.id;
           }
         } catch (_) {}
       }

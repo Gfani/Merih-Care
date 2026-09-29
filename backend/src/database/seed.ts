@@ -29,9 +29,70 @@ export class DatabaseSeedService implements OnModuleInit {
 
   async onModuleInit() {
     try {
+      await this.ensureSchema();
+    } catch (err) {
+      console.warn("Non-fatal error during schema guarantee:", err);
+    }
+    try {
       await this.seed();
     } catch (err) {
       console.error("Non-fatal error during database seed check:", err);
+    }
+  }
+
+  async ensureSchema() {
+    try {
+      const runner = this.appointmentRepo.manager.connection.createQueryRunner();
+      const dbType = this.appointmentRepo.manager.connection.options.type;
+
+      if (dbType === "postgres") {
+        // Appointments table critical columns
+        await runner.query(`ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "latitude" float;`).catch(() => {});
+        await runner.query(`ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "longitude" float;`).catch(() => {});
+        await runner.query(`ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "verificationPin" varchar(10);`).catch(() => {});
+        await runner.query(`ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "isPinVerified" boolean DEFAULT false;`).catch(() => {});
+        await runner.query(`ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "serviceId" varchar;`).catch(() => {});
+        await runner.query(`ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "visitNotes" text;`).catch(() => {});
+        await runner.query(`ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "disputeReason" text;`).catch(() => {});
+        await runner.query(`ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "cancelledBy" varchar;`).catch(() => {});
+        await runner.query(`ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "cancellationReason" text;`).catch(() => {});
+
+        // Providers table critical columns
+        await runner.query(`ALTER TABLE "providers" ADD COLUMN IF NOT EXISTS "latitude" float;`).catch(() => {});
+        await runner.query(`ALTER TABLE "providers" ADD COLUMN IF NOT EXISTS "longitude" float;`).catch(() => {});
+        await runner.query(`ALTER TABLE "providers" ADD COLUMN IF NOT EXISTS "licenseNumber" varchar;`).catch(() => {});
+        await runner.query(`ALTER TABLE "providers" ADD COLUMN IF NOT EXISTS "specialty" varchar;`).catch(() => {});
+        await runner.query(`ALTER TABLE "providers" ADD COLUMN IF NOT EXISTS "education" varchar;`).catch(() => {});
+        await runner.query(`ALTER TABLE "providers" ADD COLUMN IF NOT EXISTS "hospitalAffiliation" varchar;`).catch(() => {});
+        await runner.query(`ALTER TABLE "providers" ADD COLUMN IF NOT EXISTS "cvUrl" varchar;`).catch(() => {});
+        await runner.query(`ALTER TABLE "providers" ADD COLUMN IF NOT EXISTS "licenseDocumentUrl" varchar;`).catch(() => {});
+        await runner.query(`ALTER TABLE "providers" ADD COLUMN IF NOT EXISTS "idDocumentUrl" varchar;`).catch(() => {});
+
+        // Users & preferences
+        await runner.query(`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "emailVerificationExpires" varchar;`).catch(() => {});
+        await runner.query(`ALTER TABLE "notification_preferences" ADD COLUMN IF NOT EXISTS "pushToken" varchar;`).catch(() => {});
+        await runner.query(`ALTER TABLE "notification_preferences" ADD COLUMN IF NOT EXISTS "devicePlatform" varchar;`).catch(() => {});
+
+        // Documents table
+        await runner.query(`
+          CREATE TABLE IF NOT EXISTS "documents" (
+            "id" varchar PRIMARY KEY NOT NULL,
+            "fileKey" varchar UNIQUE NOT NULL,
+            "ownerId" varchar NOT NULL,
+            "documentType" varchar NOT NULL DEFAULT 'credential',
+            "fileName" varchar NOT NULL,
+            "fileSize" integer NOT NULL DEFAULT 0,
+            "mimeType" varchar NOT NULL DEFAULT 'application/octet-stream',
+            "verifierId" varchar,
+            "fileData" text,
+            "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
+            "updatedAt" TIMESTAMP NOT NULL DEFAULT now()
+          );
+        `).catch(() => {});
+      }
+      await runner.release();
+    } catch (err) {
+      console.warn("Schema initialization notice:", err);
     }
   }
 

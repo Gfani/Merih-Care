@@ -509,7 +509,12 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                             setState(() => _submitting = false);
                             print('[BOOKING] Error booking appointment: $err');
                             if (mounted) {
-                              context.replace('/appointments');
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Failed to book appointment. Please try again.'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
                             }
                           }
                         }

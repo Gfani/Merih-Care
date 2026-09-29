@@ -14,15 +14,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     const exceptionResponse = exception instanceof HttpException 
       ? exception.getResponse() 
-      : { message: "Internal server error" };
+      : null;
 
-    const message = typeof exceptionResponse === "object" && exceptionResponse["message"] 
+    const message = exceptionResponse && typeof exceptionResponse === "object" && exceptionResponse["message"] 
       ? exceptionResponse["message"] 
-      : exception.message || "An unexpected error occurred";
+      : (exception?.message || "An unexpected error occurred");
 
-    const error = typeof exceptionResponse === "object" && exceptionResponse["error"]
+    const error = exceptionResponse && typeof exceptionResponse === "object" && exceptionResponse["error"]
       ? exceptionResponse["error"]
-      : "Internal Server Error";
+      : (status === 500 ? "Internal Server Error" : "Error");
 
     let errorCode = "INTERNAL_SERVER_ERROR";
     if (status === 400) errorCode = "VALIDATION_FAILED";
