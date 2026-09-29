@@ -14,6 +14,9 @@ on:
 permissions:
   contents: write   # needed for GitHub Release creation
   packages: write
+  checks: read      # needed for wait-on-check-action in ci-gate
+  actions: read
+  statuses: read
 
 env:
   AZURE_RESOURCE_GROUP: rg-merihcare-uae

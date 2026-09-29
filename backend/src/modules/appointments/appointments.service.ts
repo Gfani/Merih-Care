@@ -424,8 +424,6 @@ export class AppointmentsService {
             this.realtimeService.emitToRoom(`provider:${provUserId}`, "new_service_request", eventPayload);
             this.realtimeService.emitToRoom(`provider:${provUserId}`, "appointment_status_update", eventPayload);
           }
-          this.realtimeService.emitToRoom("providers", "new_service_request", eventPayload);
-          this.realtimeService.emitToRoom("providers", "appointment_status_update", eventPayload);
 
           if (this.notificationsService && provUserId) {
             this.notificationsService.sendNotification(provUserId, {
