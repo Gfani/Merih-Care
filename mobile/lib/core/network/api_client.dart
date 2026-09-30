@@ -33,6 +33,8 @@ class ApiClient {
         },
         onError: (DioException e, handler) {
           // Global error handling or token refreshing could go here
+          // ignore: avoid_print
+          print('[API] DioException on ${e.requestOptions.method} ${e.requestOptions.uri}: type=${e.type}, message=${e.message}, error=${e.error}');
           return handler.next(e);
         },
       ),

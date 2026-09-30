@@ -18,7 +18,8 @@
     <application
         android:label="Merihcare"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <!-- Google Maps API Key placeholder -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
