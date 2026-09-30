@@ -21,9 +21,13 @@ import '../../features/patient/medical_records_screen.dart';
 import '../../features/patient/emergency_screen.dart';
 import '../../features/patient/profile_settings_screen.dart';
 import '../../features/patient/on_demand_flow_screen.dart';
+import '../../features/patient/medical_information_screen.dart';
+import '../../features/payments/payout_methods_screen.dart';
 
 // Provider App imports
 import '../../features/provider_app/provider_dashboard_screen.dart';
+import '../../features/provider_app/provider_verification_screen.dart';
+import '../../features/provider_app/provider_requests_screen.dart';
 import '../../features/provider_app/credentials_upload_screen.dart';
 import '../../features/provider_app/provider_availability_screen.dart';
 import '../../features/provider_app/provider_appointment_details_screen.dart';
@@ -138,6 +142,9 @@ final appRouter = Provider<GoRouter>((ref) {
       GoRoute(path: '/medical-records', builder: (ctx, _) => const MedicalRecordsScreen()),
       GoRoute(path: '/emergency', builder: (ctx, _) => const EmergencyScreen()),
       GoRoute(path: '/profile-settings', builder: (ctx, _) => const ProfileSettingsScreen()),
+      GoRoute(path: '/profile', builder: (ctx, _) => const ProfileSettingsScreen()),
+      GoRoute(path: '/medical-information', builder: (ctx, _) => const MedicalInformationScreen()),
+      GoRoute(path: '/payout-methods', builder: (ctx, _) => const PayoutMethodsScreen()),
       GoRoute(
         path: '/patient/on-demand',
         builder: (ctx, state) => OnDemandFlowScreen(
@@ -147,6 +154,9 @@ final appRouter = Provider<GoRouter>((ref) {
 
       // Provider App Routes
       GoRoute(path: '/provider-dashboard', builder: (ctx, _) => const ProviderDashboardScreen()),
+      GoRoute(path: '/provider/requests', builder: (ctx, _) => const ProviderRequestsScreen()),
+      GoRoute(path: '/provider/verification', builder: (ctx, _) => const ProviderVerificationScreen()),
+      GoRoute(path: '/provider/payout-methods', builder: (ctx, _) => const PayoutMethodsScreen()),
       GoRoute(path: '/provider/profile', builder: (ctx, _) => const ProviderEditProfileScreen()),
       GoRoute(
         path: '/provider/active-request', 

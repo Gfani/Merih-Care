@@ -1073,27 +1073,55 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
             case 0:
               break;
             case 1:
-              context.push('/provider/availability');
+              context.push('/provider/requests');
               break;
             case 2:
-              context.push('/provider/earnings');
+              context.push('/provider/availability');
               break;
             case 3:
               context.push('/chat/apt-101');
               break;
             case 4:
-              context.push('/provider/credentials');
+              context.push('/provider/profile');
               break;
           }
         },
         backgroundColor: Colors.white,
         elevation: 2,
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard, color: AppTheme.primaryColor), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.schedule_outlined), selectedIcon: Icon(Icons.schedule, color: AppTheme.primaryColor), label: 'Schedule'),
-          NavigationDestination(icon: Icon(Icons.account_balance_wallet_outlined), selectedIcon: Icon(Icons.account_balance_wallet, color: AppTheme.primaryColor), label: 'Earnings'),
-          NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble, color: AppTheme.primaryColor), label: 'Messages'),
-          NavigationDestination(icon: Icon(Icons.verified_user_outlined), selectedIcon: Icon(Icons.verified_user, color: AppTheme.primaryColor), label: 'Credentials'),
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home, color: Color(0xFF0D7C6A)),
+            label: 'Home',
+          ),
+          NavigationDestination(
+            icon: Badge(
+              label: Text('3'),
+              backgroundColor: Color(0xFFDC2626),
+              child: Icon(Icons.assignment_outlined),
+            ),
+            selectedIcon: Badge(
+              label: Text('3'),
+              backgroundColor: Color(0xFFDC2626),
+              child: Icon(Icons.assignment, color: Color(0xFF0D7C6A)),
+            ),
+            label: 'Requests',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.calendar_month_outlined),
+            selectedIcon: Icon(Icons.calendar_month, color: Color(0xFF0D7C6A)),
+            label: 'Schedule',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.chat_bubble_outline),
+            selectedIcon: Icon(Icons.chat_bubble, color: Color(0xFF0D7C6A)),
+            label: 'Messages',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person, color: Color(0xFF0D7C6A)),
+            label: 'Profile',
+          ),
         ],
       ),
     );
