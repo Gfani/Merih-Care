@@ -1157,10 +1157,27 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                                 : null;
 
                             setState(() => _loading = true);
-                            final result = await ref.read(authProvider.notifier).signInWithGoogle(
+                            final initialEmail = _emailController.text.trim();
+                            var result = await ref.read(authProvider.notifier).signInWithGoogle(
                                   role: _role,
                                   providerData: providerData,
+                                  email: initialEmail.isNotEmpty ? initialEmail : null,
                                 );
+
+                            if (result.requiresEmail && mounted) {
+                              setState(() => _loading = false);
+                              final emailFromPrompt = await _showGoogleEmailPromptDialog(context, initialEmail);
+                              if (emailFromPrompt != null && emailFromPrompt.isNotEmpty) {
+                                setState(() => _loading = true);
+                                result = await ref.read(authProvider.notifier).signInWithGoogle(
+                                      role: _role,
+                                      providerData: providerData,
+                                      email: emailFromPrompt,
+                                    );
+                              } else {
+                                return;
+                              }
+                            }
                             if (mounted) setState(() => _loading = false);
                             if (!mounted) return;
 
@@ -1761,5 +1778,72 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     );
 
     return isVerified;
+  }
+
+  Future<String?> _showGoogleEmailPromptDialog(BuildContext context, [String? prefill]) async {
+    final controller = TextEditingController(text: prefill ?? '');
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.account_circle, color: Color(0xFF0F766E), size: 24),
+            ),
+            const SizedBox(width: 10),
+            const Text('Google Sign-Up', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter your Google account email to register:',
+              style: TextStyle(fontSize: 14, color: Colors.black87),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.emailAddress,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: 'name@gmail.com',
+                prefixIcon: const Icon(Icons.email_outlined, size: 20),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0F766E),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () {
+              final em = controller.text.trim();
+              if (em.isNotEmpty && em.contains('@')) {
+                Navigator.pop(ctx, em);
+              }
+            },
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
   }
 }

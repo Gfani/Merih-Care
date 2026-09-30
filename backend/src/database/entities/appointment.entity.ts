@@ -98,6 +98,9 @@ export class AppointmentEntity {
   @Column({ default: false })
   isPinVerified: boolean;
 
+  @Column({ type: "simple-array", nullable: true })
+  excludedProviders: string[];
+
   // Audits
   @CreateDateColumn()
   createdAt: Date;

@@ -17,6 +17,8 @@ export type NotificationType =
   | "verification_update"
   | "emergency"
   | "new_service_request"
+  | "service_offer"
+  | "dispatch_update"
   | "general";
 
 export interface SendNotificationOptions {

@@ -247,85 +247,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   width: double.infinity,
                   height: 48,
                   child: OutlinedButton(
-                    onPressed: _loading
-                        ? null
-                        : () async {
-                            setState(() => _loading = true);
-                            final result = await ref.read(authProvider.notifier).signInWithGoogle();
-                            if (mounted) setState(() => _loading = false);
-                            if (!mounted) return;
-
-                            if (result.success) {
-                              if (result.pendingApproval) {
-                                await showDialog(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    title: const Row(
-                                      children: [
-                                        Icon(Icons.hourglass_top_rounded, color: Color(0xFF0D7C6A)),
-                                        SizedBox(width: 8),
-                                        Text('Pending Approval'),
-                                      ],
-                                    ),
-                                    content: Text(result.message ?? 'Your account is pending administrator approval.'),
-                                    actions: [
-                                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
-                                    ],
-                                  ),
-                                );
-                              } else {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(result.message ?? 'Welcome back. You can sign in with Google.'),
-                                      backgroundColor: const Color(0xFF0D7C6A),
-                                      behavior: SnackBarBehavior.floating,
-                                    ),
-                                  );
-                                }
-                                final user = ref.read(authProvider).user;
-                                final role = user?['role'];
-                                if (role == 'provider') {
-                                  context.go('/provider-dashboard');
-                                } else {
-                                  context.go('/dashboard');
-                                }
-                              }
-                            } else {
-                              final err = result.message ?? 'Google Sign-in failed.';
-                              if (err.toLowerCase().contains('cancel')) {
-                                return;
-                              }
-                              final isSuspended = err.toLowerCase().contains('suspended');
-                              if (isSuspended) {
-                                showDialog(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                    title: const Row(
-                                      children: [
-                                        Icon(Icons.block, color: Colors.red),
-                                        SizedBox(width: 8),
-                                        Text('Account Suspended'),
-                                      ],
-                                    ),
-                                    content: Text(err),
-                                    actions: [
-                                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
-                                    ],
-                                  ),
-                                );
-                              } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(err),
-                                    backgroundColor: Colors.red.shade700,
-                                    behavior: SnackBarBehavior.floating,
-                                  ),
-                                );
-                              }
-                            }
-                          },
+                    onPressed: _loading ? null : _handleGoogleSignIn,
                     style: OutlinedButton.styleFrom(
                       side: BorderSide(color: Colors.grey.shade300),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -466,6 +388,170 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Future<void> _handleGoogleSignIn() async {
+    setState(() => _loading = true);
+    final initialEmail = _emailController.text.trim();
+    var result = await ref.read(authProvider.notifier).signInWithGoogle(
+          role: 'patient',
+          email: initialEmail.isNotEmpty ? initialEmail : null,
+        );
+
+    if (result.requiresEmail && mounted) {
+      setState(() => _loading = false);
+      final emailFromPrompt = await _showGoogleEmailPromptDialog(context, initialEmail);
+      if (emailFromPrompt != null && emailFromPrompt.isNotEmpty) {
+        setState(() => _loading = true);
+        result = await ref.read(authProvider.notifier).signInWithGoogle(
+              role: 'patient',
+              email: emailFromPrompt,
+            );
+      } else {
+        return;
+      }
+    }
+
+    if (mounted) setState(() => _loading = false);
+    if (!mounted) return;
+
+    if (result.success) {
+      if (result.pendingApproval) {
+        await showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.hourglass_top_rounded, color: Color(0xFF0D7C6A)),
+                SizedBox(width: 8),
+                Text('Pending Approval'),
+              ],
+            ),
+            content: Text(result.message ?? 'Your account is pending administrator approval.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+            ],
+          ),
+        );
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result.message ?? 'Welcome back. You can sign in with Google.'),
+              backgroundColor: const Color(0xFF0D7C6A),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        final user = ref.read(authProvider).user;
+        final role = user?['role'];
+        if (role == 'provider') {
+          context.go('/provider-dashboard');
+        } else {
+          context.go('/dashboard');
+        }
+      }
+    } else {
+      final err = result.message ?? 'Google Sign-in failed.';
+      if (err.toLowerCase().contains('cancel')) {
+        return;
+      }
+      final isSuspended = err.toLowerCase().contains('suspended');
+      if (isSuspended) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.block, color: Colors.red),
+                SizedBox(width: 8),
+                Text('Account Suspended'),
+              ],
+            ),
+            content: Text(err),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+            ],
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(err),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<String?> _showGoogleEmailPromptDialog(BuildContext context, [String? prefill]) async {
+    final controller = TextEditingController(text: prefill ?? '');
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.account_circle, color: Color(0xFF0D7C6A), size: 24),
+            ),
+            const SizedBox(width: 10),
+            const Text('Google Sign-In', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter your Google account email to continue:',
+              style: TextStyle(fontSize: 14, color: Colors.black87),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.emailAddress,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: 'name@gmail.com',
+                prefixIcon: const Icon(Icons.email_outlined, size: 20),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0D7C6A),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () {
+              final em = controller.text.trim();
+              if (em.isNotEmpty && em.contains('@')) {
+                Navigator.pop(ctx, em);
+              }
+            },
+            child: const Text('Continue'),
+          ),
+        ],
       ),
     );
   }

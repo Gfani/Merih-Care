@@ -269,6 +269,16 @@ class MobileRealtimeService {
     _chatSocket?.emit('leave_conversation', {'conversationId': conversationId});
   }
 
+  /// Decline service offer
+  void declineOffer(String appointmentId) {
+    _realtimeSocket?.emit('decline_offer', {'appointmentId': appointmentId});
+  }
+
+  /// Accept service offer
+  void acceptOffer(String appointmentId) {
+    _realtimeSocket?.emit('accept_offer', {'appointmentId': appointmentId});
+  }
+
   /// Send provider location with 3-second client-side throttle & optional privacy masking
   bool sendLocationUpdate({
     String? appointmentId,
@@ -349,16 +359,6 @@ class MobileRealtimeService {
     }
     _realtimeSocket?.emit('location_update', payload);
     _realtimeSocket?.emit('update_location', payload);
-  }
-
-  /// Accept incoming high-priority dispatch offer
-  void acceptOffer(String appointmentId) {
-    _realtimeSocket?.emit('accept_offer', {'appointmentId': appointmentId});
-  }
-
-  /// Decline incoming dispatch offer (cascades to next closest provider)
-  void declineOffer(String appointmentId) {
-    _realtimeSocket?.emit('decline_offer', {'appointmentId': appointmentId});
   }
 
   /// Send chat message

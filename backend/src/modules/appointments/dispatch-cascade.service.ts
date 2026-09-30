@@ -1,8 +1,9 @@
-import { Injectable, Logger, Optional } from "@nestjs/common";
+import { Injectable, Logger, Optional, Inject, forwardRef } from "@nestjs/common";
 import { DataSource } from "typeorm";
 import { RealtimeService } from "../realtime/realtime.service";
 import { ChatService } from "../chat/chat.service";
 import { LocationsService, getLocationsRedisClient } from "../locations/locations.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { AppointmentEntity } from "../../database/entities/appointment.entity";
 import { ProviderEntity } from "../../database/entities/provider.entity";
 import { LocationEntity } from "../../database/entities/location.entity";
@@ -42,6 +43,7 @@ export interface CascadeSession {
   expiresAt: number;
   timer?: NodeJS.Timeout;
   status: "active" | "accepted" | "exhausted" | "cancelled";
+  excludedProviders: Set<string>;
 }
 
 function calculateHaversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -158,20 +160,78 @@ export class DispatchCascadeService {
     private readonly chatService?: ChatService,
     @Optional()
     private readonly locationsService?: LocationsService,
+    @Optional()
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notificationsService?: NotificationsService,
   ) {}
+
+  private async getExcludedProvidersFromRedis(appointmentId: string): Promise<Set<string>> {
+    const redis = getLocationsRedisClient();
+    const set = new Set<string>();
+    if (!redis) return set;
+    try {
+      if (typeof redis.smembers === "function") {
+        const members: string[] = await redis.smembers(`providers:excluded:${appointmentId}`);
+        if (Array.isArray(members)) {
+          for (const m of members) set.add(String(m));
+        }
+      }
+    } catch (_) {}
+    return set;
+  }
+
+  private async addExcludedProviderToRedis(appointmentId: string, providerId: string): Promise<void> {
+    const redis = getLocationsRedisClient();
+    if (!redis || !providerId) return;
+    try {
+      if (typeof redis.sadd === "function") {
+        await redis.sadd(`providers:excluded:${appointmentId}`, providerId);
+        if (typeof redis.expire === "function") {
+          await redis.expire(`providers:excluded:${appointmentId}`, 3600);
+        }
+      }
+    } catch (_) {}
+  }
+
+  private async persistExcludedProviderInDb(appointmentId: string, providerId: string): Promise<void> {
+    if (!this.dataSource || !this.dataSource.isInitialized || !providerId) return;
+    try {
+      const aptRepo = this.dataSource.getRepository(AppointmentEntity);
+      const apt = await aptRepo.findOne({ where: { id: appointmentId } });
+      if (apt) {
+        const existing = Array.isArray(apt.excludedProviders) ? apt.excludedProviders : [];
+        if (!existing.includes(providerId)) {
+          apt.excludedProviders = [...existing, providerId];
+          await aptRepo.save(apt);
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(`Could not persist excluded provider in DB: ${err?.message || err}`);
+    }
+  }
 
   /**
    * Find verified and online providers matching specialty within radiusKm (default 5km),
    * querying Redis GEOADD/GEOSEARCH when available, fetching OSRM shortest path routes & ETAs,
-   * and ranking candidates strictly by the shortest OSRM driving duration.
+   * filtering out excluded candidates, and ranking candidates strictly by the shortest driving duration.
    */
   async findRankedCandidates(
     patientLat: number,
     patientLng: number,
     specialtyOrService?: string,
     radiusKm = 5,
+    excludedProviders?: Set<string> | string[],
   ): Promise<CandidateProvider[]> {
     if (!this.dataSource || !this.dataSource.isInitialized) return [];
+
+    const excludedSet = new Set<string>();
+    if (excludedProviders) {
+      if (excludedProviders instanceof Set) {
+        for (const item of excludedProviders) excludedSet.add(item);
+      } else if (Array.isArray(excludedProviders)) {
+        for (const item of excludedProviders) excludedSet.add(item);
+      }
+    }
 
     const provRepo = this.dataSource.getRepository(ProviderEntity);
     const locRepo = this.dataSource.getRepository(LocationEntity);
@@ -278,6 +338,10 @@ export class DispatchCascadeService {
     const candidates: CandidateProvider[] = [];
 
     for (const prov of providers) {
+      if (excludedSet.has(prov.id) || (prov.userId && excludedSet.has(prov.userId))) {
+        continue; // Excluded from this cascade cycle (already rejected or timed out)
+      }
+
       // Determine coordinates: prefer Redis geospatial location, fallback to locRepo, then provider profile
       let pLat = prov.latitude;
       let pLng = prov.longitude;
@@ -355,25 +419,66 @@ export class DispatchCascadeService {
   /**
    * Start the cascade dispatch routine for an immediate on-demand care request.
    */
+  /**
+   * Start the cascade dispatch routine for an immediate on-demand care request.
+   */
   async startCascade(
     appointment: AppointmentEntity,
     patientLat?: number,
     patientLng?: number,
     radiusKm = 5,
+    timeoutSeconds = 30,
   ): Promise<CascadeSession | null> {
     // Default to Addis Ababa central coordinates if not provided
-    const lat = typeof patientLat === "number" ? patientLat : 9.0222;
-    const lng = typeof patientLng === "number" ? patientLng : 38.7468;
+    const lat = typeof patientLat === "number" ? patientLat : (appointment.latitude ?? 9.0222);
+    const lng = typeof patientLng === "number" ? patientLng : (appointment.longitude ?? 38.7468);
 
-    let candidates = await this.findRankedCandidates(lat, lng, appointment.service, radiusKm);
+    // Cancel any existing session for this appointment
+    this.cancelCascade(appointment.id);
+
+    // Load excluded providers from DB and Redis
+    const redisExcluded = await this.getExcludedProvidersFromRedis(appointment.id);
+    const dbExcluded = Array.isArray(appointment.excludedProviders) ? appointment.excludedProviders : [];
+    const excludedProviders = new Set<string>([...redisExcluded, ...dbExcluded]);
+
+    let candidates = await this.findRankedCandidates(lat, lng, appointment.service, radiusKm, excludedProviders);
 
     // If no candidate found within radiusKm, widen search up to 25 km
     if (candidates.length === 0 && radiusKm < 25) {
-      candidates = await this.findRankedCandidates(lat, lng, appointment.service, 25);
+      candidates = await this.findRankedCandidates(lat, lng, appointment.service, 25, excludedProviders);
     }
 
     if (candidates.length === 0) {
       this.logger.warn(`No candidate providers found within radius for appointment ${appointment.id}`);
+      // Notify patient: "No doctors available nearby right now, searching again..."
+      const exhaustedMsg = "No doctors available nearby right now, searching again...";
+      this.realtimeService.emitToRoom(`patient:${appointment.patientId}`, "dispatch_update", {
+        event: "dispatch_update",
+        appointmentId: appointment.id,
+        status: "searching",
+        exhausted: true,
+        message: exhaustedMsg,
+      });
+      this.realtimeService.emitToRoom(`patient:${appointment.patientId}`, "dispatch_cascade_exhausted", {
+        appointmentId: appointment.id,
+        message: exhaustedMsg,
+      });
+
+      if (this.notificationsService && appointment.patientId) {
+        this.notificationsService.sendNotification(appointment.patientId, {
+          type: "dispatch_update",
+          title: "Searching for Clinicians 🩺",
+          body: exhaustedMsg,
+          priority: "normal",
+          targetChannel: "in_app",
+          data: {
+            appointmentId: appointment.id,
+            status: "searching",
+            exhausted: true,
+          },
+        }).catch(() => {});
+      }
+
       // Fallback: broadcast to general providers pool & alert dispatch admin
       const fallbackPayload = {
         id: appointment.id,
@@ -388,7 +493,7 @@ export class DispatchCascadeService {
         patientLat: lat,
         patientLng: lng,
         amount: appointment.amount,
-        status: appointment.status,
+        status: "searching",
       };
       this.realtimeService.emitToRoom("providers", "new_service_request", fallbackPayload);
       this.realtimeService.emitToRoom("admin", "new_service_request", fallbackPayload);
@@ -398,9 +503,6 @@ export class DispatchCascadeService {
       });
       return null;
     }
-
-    // Cancel any existing session for this appointment
-    this.cancelCascade(appointment.id);
 
     const session: CascadeSession = {
       appointmentId: appointment.id,
@@ -415,9 +517,10 @@ export class DispatchCascadeService {
       amount: appointment.amount || 0,
       candidates,
       currentIndex: 0,
-      offerTimeoutSeconds: 30,
-      expiresAt: Date.now() + 30000,
+      offerTimeoutSeconds: timeoutSeconds,
+      expiresAt: Date.now() + timeoutSeconds * 1000,
       status: "active",
+      excludedProviders,
     };
 
     this.activeSessions.set(appointment.id, session);
@@ -428,40 +531,22 @@ export class DispatchCascadeService {
   }
 
   /**
-   * Send high-priority service_offer WebSocket event to candidate at session.currentIndex.
+   * Send high-priority service_offer WebSocket event to candidate at session.currentIndex with strict 30-second timer.
    */
   private async sendOfferToCurrentCandidate(session: CascadeSession): Promise<void> {
     if (session.status !== "active") return;
 
+    // Skip any candidate that was already excluded
+    while (
+      session.currentIndex < session.candidates.length &&
+      (session.excludedProviders.has(session.candidates[session.currentIndex].providerId) ||
+       session.excludedProviders.has(session.candidates[session.currentIndex].userId))
+    ) {
+      session.currentIndex++;
+    }
+
     if (session.currentIndex >= session.candidates.length) {
-      // All candidates exhausted!
-      this.logger.log(`All candidates declined/timed out for appointment ${session.appointmentId}`);
-      session.status = "exhausted";
-      this.activeSessions.delete(session.appointmentId);
-
-      const eventPayload = {
-        appointmentId: session.appointmentId,
-        id: session.appointmentId,
-        patientId: session.patientId,
-        patientName: session.patientName,
-        service: session.service,
-        location: session.address,
-        latitude: session.patientLat,
-        longitude: session.patientLng,
-        patientLat: session.patientLat,
-        patientLng: session.patientLng,
-        amount: session.amount,
-        status: "requested",
-      };
-
-      // Fall back to general providers broadcast pool
-      this.realtimeService.emitToRoom("providers", "new_service_request", eventPayload);
-      this.realtimeService.emitToRoom("admin", "new_service_request", eventPayload);
-      this.realtimeService.emitToRoom("admin", "dispatch_cascade_exhausted", {
-        appointmentId: session.appointmentId,
-        totalAttempted: session.candidates.length,
-        message: "All nearby provider offers were declined or timed out. Request returned to review queue.",
-      });
+      await this.handleCandidateExhaustion(session);
       return;
     }
 
@@ -472,6 +557,7 @@ export class DispatchCascadeService {
     const offerPayload = {
       event: "service_offer",
       appointmentId: session.appointmentId,
+      id: session.appointmentId,
       patientId: session.patientId,
       patientName: session.patientName,
       patientPhone: session.patientPhone,
@@ -484,6 +570,7 @@ export class DispatchCascadeService {
       etaMinutes: candidate.etaMinutes,
       etaSeconds: candidate.etaSeconds,
       fee: session.amount,
+      amount: session.amount,
       timeoutSeconds: timeoutSec,
       expiresAt: session.expiresAt,
       cascadeIndex: session.currentIndex,
@@ -494,10 +581,30 @@ export class DispatchCascadeService {
       routeGeometry: candidate.geometry || null,
     };
 
-    // Emit targeted high-priority event to the candidate's rooms
+    // Emit targeted high-priority events to the candidate's rooms (both service_offer and new_service_request)
     this.realtimeService.emitToRoom(`provider:${candidate.userId}`, "service_offer", offerPayload);
+    this.realtimeService.emitToRoom(`provider:${candidate.userId}`, "new_service_request", offerPayload);
     if (candidate.providerId !== candidate.userId) {
       this.realtimeService.emitToRoom(`provider:${candidate.providerId}`, "service_offer", offerPayload);
+      this.realtimeService.emitToRoom(`provider:${candidate.providerId}`, "new_service_request", offerPayload);
+    }
+
+    // High-priority push notification to provider
+    if (this.notificationsService) {
+      this.notificationsService.sendNotification(candidate.userId, {
+        type: "service_offer",
+        title: "New Immediate Care Request 🩺 (30s)",
+        body: `${session.patientName} requested ${session.service} (${candidate.distanceKm} km away, ETA ~${candidate.etaMinutes}m). 30 seconds to accept.`,
+        priority: "critical",
+        targetChannel: "in_app",
+        data: {
+          appointmentId: session.appointmentId,
+          expiresAt: session.expiresAt,
+          timeoutSeconds: timeoutSec,
+          distanceKm: candidate.distanceKm,
+          etaMinutes: candidate.etaMinutes,
+        },
+      }).catch(() => {});
     }
 
     // Emit real-time dispatch progress to the patient so map draws route & floating ETA badge
@@ -542,11 +649,116 @@ export class DispatchCascadeService {
       `Dispatched offer to candidate #${session.currentIndex} (${candidate.name}, ${candidate.distanceKm} km, ETA: ${candidate.etaMinutes} min) for apt ${session.appointmentId}`,
     );
 
-    // Start 30-second acceptance countdown timer
+    // Strict 30-second acceptance countdown timer
     if (session.timer) clearTimeout(session.timer);
     session.timer = setTimeout(() => {
-      this.handleTimeout(session.appointmentId, candidate.userId);
+      this.handleTimeout(session.appointmentId, candidate.userId, candidate.providerId);
     }, timeoutSec * 1000);
+  }
+
+  /**
+   * Handle candidate batch exhaustion: expand search up to 25km, or transition to terminal state.
+   */
+  private async handleCandidateExhaustion(session: CascadeSession): Promise<void> {
+    this.logger.log(`Candidate batch exhausted for apt ${session.appointmentId}. Attempting search radius expansion up to 25km...`);
+
+    // Check if new candidates exist within 25km excluding all previously pinged providers
+    const expandedCandidates = await this.findRankedCandidates(
+      session.patientLat,
+      session.patientLng,
+      session.service,
+      25,
+      session.excludedProviders,
+    );
+
+    const existingProvIds = new Set(session.candidates.map((c) => c.providerId));
+    const newCandidates = expandedCandidates.filter(
+      (c) =>
+        !existingProvIds.has(c.providerId) &&
+        !session.excludedProviders.has(c.providerId) &&
+        !session.excludedProviders.has(c.userId),
+    );
+
+    if (newCandidates.length > 0) {
+      this.logger.log(`Found ${newCandidates.length} additional candidates in expanded radius for apt ${session.appointmentId}. Continuing cascade.`);
+      session.candidates.push(...newCandidates);
+      await this.sendOfferToCurrentCandidate(session);
+      return;
+    }
+
+    // Terminal state: 0 remaining online providers within radius after exhausting all candidates
+    this.logger.log(`Terminal state: 0 remaining online providers within radius for appointment ${session.appointmentId}`);
+    session.status = "exhausted";
+    if (session.timer) clearTimeout(session.timer);
+    this.activeSessions.delete(session.appointmentId);
+
+    // Keep appointment in 'searching' status in DB (DO NOT cancel!)
+    try {
+      const aptRepo = this.dataSource.getRepository(AppointmentEntity);
+      const apt = await aptRepo.findOne({ where: { id: session.appointmentId } });
+      if (apt && apt.status !== "accepted" && apt.status !== "completed") {
+        apt.status = "searching";
+        await aptRepo.save(apt);
+      }
+    } catch (_) {}
+
+    // Notify the patient: "No doctors available nearby right now, searching again..."
+    const exhaustedMsg = "No doctors available nearby right now, searching again...";
+    const patientPayload = {
+      event: "dispatch_update",
+      appointmentId: session.appointmentId,
+      status: "searching",
+      exhausted: true,
+      message: exhaustedMsg,
+      totalAttempted: session.excludedProviders.size,
+    };
+    this.realtimeService.emitToRoom(`patient:${session.patientId}`, "dispatch_update", patientPayload);
+    this.realtimeService.emitToRoom(`patient:${session.patientId}`, "dispatch_cascade_exhausted", {
+      appointmentId: session.appointmentId,
+      message: exhaustedMsg,
+      totalAttempted: session.excludedProviders.size,
+    });
+
+    if (this.notificationsService && session.patientId) {
+      this.notificationsService.sendNotification(session.patientId, {
+        type: "dispatch_update",
+        title: "Searching for Clinicians 🩺",
+        body: exhaustedMsg,
+        priority: "normal",
+        targetChannel: "in_app",
+        data: {
+          appointmentId: session.appointmentId,
+          status: "searching",
+          exhausted: true,
+        },
+      }).catch(() => {});
+    }
+
+    // Inform admin room
+    this.realtimeService.emitToRoom("admin", "dispatch_cascade_exhausted", {
+      appointmentId: session.appointmentId,
+      totalAttempted: session.excludedProviders.size,
+      message: `All nearby providers declined or timed out for appointment ${session.appointmentId}. Kept in searching queue.`,
+    });
+
+    // Fall back to general providers broadcast pool
+    const broadcastPayload = {
+      id: session.appointmentId,
+      appointmentId: session.appointmentId,
+      patientId: session.patientId,
+      patientName: session.patientName,
+      patientPhone: session.patientPhone,
+      service: session.service,
+      location: session.address,
+      latitude: session.patientLat,
+      longitude: session.patientLng,
+      patientLat: session.patientLat,
+      patientLng: session.patientLng,
+      amount: session.amount,
+      status: "searching",
+    };
+    this.realtimeService.emitToRoom("providers", "new_service_request", broadcastPayload);
+    this.realtimeService.emitToRoom("admin", "new_service_request", broadcastPayload);
   }
 
   /**
@@ -719,44 +931,127 @@ export class DispatchCascadeService {
   }
 
   /**
-   * Called when provider clicks "Decline" on mobile app.
+   * Called when provider calls POST /api/v1/appointments/:id/reject or socket decline_offer.
+   * Does NOT cancel the appointment! Instead, sets status to 'searching', logs excluded provider,
+   * and immediately cascades to the next candidate.
    */
-  async handleDecline(appointmentId: string, providerIdentifier: string): Promise<void> {
+  async handleReject(appointmentId: string, providerIdentifier: string, reason?: string): Promise<void> {
     const session = this.activeSessions.get(appointmentId);
-    if (!session || session.status !== "active") return;
 
-    const currentCandidate = session.candidates[session.currentIndex];
-    if (!currentCandidate || (currentCandidate.userId !== providerIdentifier && currentCandidate.providerId !== providerIdentifier)) {
-      return;
-    }
+    // 1. Always record in Redis and Database exclusions
+    await this.addExcludedProviderToRedis(appointmentId, providerIdentifier);
+    await this.persistExcludedProviderInDb(appointmentId, providerIdentifier);
+
+    // 2. Ensure DB appointment status remains 'searching' (NEVER 'cancelled'!)
+    try {
+      const aptRepo = this.dataSource.getRepository(AppointmentEntity);
+      const apt = await aptRepo.findOne({ where: { id: appointmentId } });
+      if (apt && apt.status !== "accepted" && apt.status !== "completed") {
+        apt.status = "searching";
+        const existing = Array.isArray(apt.excludedProviders) ? apt.excludedProviders : [];
+        if (!existing.includes(providerIdentifier)) {
+          apt.excludedProviders = [...existing, providerIdentifier];
+        }
+        await aptRepo.save(apt);
+      }
+    } catch (_) {}
+
+    // 3. Record in status history
+    try {
+      const histRepo = this.dataSource.getRepository(AppointmentStatusHistoryEntity);
+      const hist = new AppointmentStatusHistoryEntity();
+      hist.id = `apth-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      hist.appointmentId = appointmentId;
+      hist.status = "searching";
+      hist.changedBy = providerIdentifier;
+      hist.notes = `Provider declined offer: ${reason || "Declined by provider"}. Cascading to next clinician...`;
+      hist.createdAt = new Date().toISOString();
+      await histRepo.save(hist);
+    } catch (_) {}
+
+    if (!session || session.status !== "active") return;
 
     if (session.timer) clearTimeout(session.timer);
 
-    this.realtimeService.emitToRoom(`provider:${currentCandidate.userId}`, "offer_cancelled", {
+    session.excludedProviders.add(providerIdentifier);
+    const currentCandidate = session.candidates[session.currentIndex];
+    if (currentCandidate) {
+      session.excludedProviders.add(currentCandidate.userId);
+      session.excludedProviders.add(currentCandidate.providerId);
+    }
+
+    this.realtimeService.emitToRoom(`provider:${providerIdentifier}`, "offer_cancelled", {
       appointmentId,
-      reason: "declined",
+      reason: reason || "declined",
     });
 
-    this.logger.log(`Provider ${currentCandidate.name} declined offer for apt ${appointmentId}. Cascading to next clinician...`);
+    this.logger.log(`Provider ${providerIdentifier} declined offer for apt ${appointmentId} (${reason || "No reason"}). Cascading immediately to next clinician...`);
 
     // Cascade to next candidate
     session.currentIndex += 1;
     await this.sendOfferToCurrentCandidate(session);
   }
 
+  async handleDecline(appointmentId: string, providerIdentifier: string): Promise<void> {
+    return this.handleReject(appointmentId, providerIdentifier, "declined");
+  }
+
   /**
    * Called when 30-second countdown timer expires.
    */
-  private async handleTimeout(appointmentId: string, providerUserId: string): Promise<void> {
+  async handleTimeout(appointmentId: string, providerUserId: string, providerId?: string): Promise<void> {
     const session = this.activeSessions.get(appointmentId);
     if (!session || session.status !== "active") return;
 
     const currentCandidate = session.candidates[session.currentIndex];
-    if (currentCandidate && currentCandidate.userId === providerUserId) {
+    if (
+      currentCandidate &&
+      (currentCandidate.userId === providerUserId ||
+       currentCandidate.providerId === providerId ||
+       !providerUserId)
+    ) {
+      if (session.timer) clearTimeout(session.timer);
+
+      // Add to exclusions
+      session.excludedProviders.add(currentCandidate.userId);
+      session.excludedProviders.add(currentCandidate.providerId);
+      await this.addExcludedProviderToRedis(appointmentId, currentCandidate.userId);
+      await this.addExcludedProviderToRedis(appointmentId, currentCandidate.providerId);
+      await this.persistExcludedProviderInDb(appointmentId, currentCandidate.providerId);
+
       this.realtimeService.emitToRoom(`provider:${currentCandidate.userId}`, "offer_expired", {
         appointmentId,
         message: "Acceptance window (30s) expired.",
       });
+      if (currentCandidate.providerId !== currentCandidate.userId) {
+        this.realtimeService.emitToRoom(`provider:${currentCandidate.providerId}`, "offer_expired", {
+          appointmentId,
+          message: "Acceptance window (30s) expired.",
+        });
+      }
+
+      // Record in appointment history
+      try {
+        const histRepo = this.dataSource.getRepository(AppointmentStatusHistoryEntity);
+        const hist = new AppointmentStatusHistoryEntity();
+        hist.id = `apth-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        hist.appointmentId = appointmentId;
+        hist.status = "searching";
+        hist.changedBy = currentCandidate.userId;
+        hist.notes = `Offer timed out after 30s on ${currentCandidate.name}. Cascading to next clinician...`;
+        hist.createdAt = new Date().toISOString();
+        await histRepo.save(hist);
+      } catch (_) {}
+
+      // Keep appointment status as 'searching' (do NOT cancel!)
+      try {
+        const aptRepo = this.dataSource.getRepository(AppointmentEntity);
+        const apt = await aptRepo.findOne({ where: { id: appointmentId } });
+        if (apt && apt.status !== "accepted" && apt.status !== "completed") {
+          apt.status = "searching";
+          await aptRepo.save(apt);
+        }
+      } catch (_) {}
 
       this.logger.log(`Offer for apt ${appointmentId} timed out on provider ${currentCandidate.name}. Cascading to next clinician...`);
 

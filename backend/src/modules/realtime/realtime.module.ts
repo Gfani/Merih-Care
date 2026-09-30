@@ -8,6 +8,7 @@ import { PresenceService } from "./presence.service";
 import { LocationEntity } from "../../database/entities/location.entity";
 import { AppointmentEntity } from "../../database/entities/appointment.entity";
 import { DispatchCascadeService } from "../appointments/dispatch-cascade.service";
+import { NotificationsModule } from "../notifications/notifications.module";
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { DispatchCascadeService } from "../appointments/dispatch-cascade.service
       }),
       inject: [ConfigService],
     }),
+    forwardRef(() => NotificationsModule),
   ],
   providers: [RealtimeGateway, RealtimeService, PresenceService, DispatchCascadeService],
   exports: [RealtimeService, PresenceService, DispatchCascadeService],

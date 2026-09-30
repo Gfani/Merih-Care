@@ -100,6 +100,34 @@ class _ProviderAppointmentDetailsScreenState extends ConsumerState<ProviderAppoi
     }
   }
 
+  Future<void> _rejectRequest({String? notes}) async {
+    setState(() => _updatingStatus = true);
+    try {
+      final client = ref.read(apiClientProvider);
+      await client.dio.post('/appointments/${widget.appointmentId}/reject', data: {
+        'reason': notes ?? 'Provider declined request',
+      });
+      ref.read(realtimeServiceProvider).declineOffer(widget.appointmentId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Request declined. Cascading to next clinician.'),
+            backgroundColor: Color(0xFFDC2626),
+          ),
+        );
+        context.pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to decline: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _updatingStatus = false);
+    }
+  }
+
   void _showCompleteVisitDialog() {
     showDialog(
       context: context,
@@ -413,7 +441,7 @@ class _ProviderAppointmentDetailsScreenState extends ConsumerState<ProviderAppoi
             ),
             const SizedBox(height: 12),
             OutlinedButton(
-              onPressed: () => _changeStatus('cancelled', notes: 'Provider declined request'),
+              onPressed: () => _rejectRequest(notes: 'Provider declined request'),
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: Color(0xFFEF4444)),
                 foregroundColor: const Color(0xFFDC2626),

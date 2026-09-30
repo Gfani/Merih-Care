@@ -168,6 +168,19 @@ export class VerifyPinDto {
   pin: string;
 }
 
+export class RejectAppointmentDto {
+  @ApiPropertyOptional({ description: "Rejection reason" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string;
+
+  @ApiPropertyOptional({ description: "Provider ID who declined" })
+  @IsOptional()
+  @IsString()
+  providerId?: string;
+}
+
 export class CancelAppointmentDto {
   @ApiPropertyOptional({ description: "Cancellation reason description" })
   @IsOptional()
@@ -391,6 +404,16 @@ export class AppointmentsController {
   ) {
     const actorId = req.user?.id || "unknown";
     return this.appointmentsService.markNoShow(id, body.party, actorId, body.notes);
+  }
+
+  @Post(":id/reject")
+  async rejectAppointment(
+    @Param("id") id: string,
+    @Body() body: RejectAppointmentDto,
+    @Req() req: any
+  ) {
+    const actorId = body?.providerId || req.user?.providerId || req.user?.id || req.user?.sub || "provider";
+    return this.appointmentsService.rejectAppointment(id, actorId, body?.reason);
   }
 
   @Post(":id/cancel")

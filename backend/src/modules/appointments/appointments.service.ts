@@ -180,7 +180,7 @@ export class AppointmentsService {
   isValidTransition(from: string, to: string): boolean {
     const transitions: Record<string, string[]> = {
       requested: ["accepted", "scheduled", "searching", "cancelled", "expired"],
-      searching: ["accepted", "scheduled", "requested", "cancelled", "expired"],
+      searching: ["accepted", "scheduled", "requested", "searching", "cancelled", "expired"],
       accepted: ["scheduled", "on_the_way", "cancelled"],
       scheduled: ["on_the_way", "arrived", "in_progress", "rescheduled", "cancelled", "no_show"],
       on_the_way: ["arrived", "cancelled", "in_progress"],
@@ -501,6 +501,48 @@ export class AppointmentsService {
     return result;
   }
 
+  async rejectAppointment(id: string, actorId: string, reason?: string): Promise<AppointmentEntity> {
+    const apt = await this.appointmentRepo.findOne({ where: { id } });
+    if (!apt) throw new BadRequestException("Appointment not found");
+
+    if (apt.status === "completed" || apt.status === "in_progress") {
+      throw new BadRequestException(`Cannot reject appointment in status ${apt.status}`);
+    }
+
+    // Do NOT set status to cancelled! Update/keep as searching
+    apt.status = "searching";
+    const existingExcluded = Array.isArray(apt.excludedProviders) ? apt.excludedProviders : [];
+    if (actorId && !existingExcluded.includes(actorId)) {
+      apt.excludedProviders = [...existingExcluded, actorId];
+    }
+    const savedApt = await this.appointmentRepo.save(apt);
+
+    // Save status history record
+    const history = new AppointmentStatusHistoryEntity();
+    history.id = `apth-${crypto.randomUUID()}`;
+    history.appointmentId = id;
+    history.status = "searching";
+    history.changedBy = actorId;
+    history.notes = `Provider declined: ${reason || "Declined by clinician"}. Cascading to next candidate.`;
+    history.createdAt = new Date().toISOString();
+    await this.historyRepo.save(history);
+
+    // Realtime update to rooms
+    this.realtimeService.emitAppointmentUpdate(id, "searching", {
+      appointmentId: id,
+      patientId: savedApt.patientId,
+      status: "searching",
+      excludedProvider: actorId,
+    });
+
+    // Immediately trigger next dispatch cycle
+    if (this.dispatchCascadeService) {
+      await this.dispatchCascadeService.handleReject(id, actorId, reason);
+    }
+
+    return savedApt;
+  }
+
   async updateStatus(
     id: string, 
     newStatus: string, 
@@ -511,6 +553,13 @@ export class AppointmentsService {
   ): Promise<AppointmentEntity> {
     const apt = await this.appointmentRepo.findOne({ where: { id } });
     if (!apt) throw new BadRequestException("Appointment not found");
+
+    // Prevent auto-cancellation on provider decline - cascade instead!
+    if (newStatus === "cancelled" && (apt.status === "searching" || apt.status === "requested" || apt.status === "pending")) {
+      if (actorId && actorId !== "patient" && actorId !== apt.patientId) {
+        return this.rejectAppointment(id, actorId, visitNotes || disputeReason || "Provider declined incoming request");
+      }
+    }
 
     if (!this.isValidTransition(apt.status, newStatus)) {
       throw new BadRequestException(`Invalid status transition from ${apt.status} to ${newStatus}`);
@@ -667,6 +716,13 @@ export class AppointmentsService {
     apt.cancelledBy = actorId;
     apt.cancellationReason = reason;
     const savedApt = await this.appointmentRepo.save(apt);
+
+    // Cancel any active cascade dispatch offer cycle
+    if (this.dispatchCascadeService) {
+      try {
+        this.dispatchCascadeService.cancelCascade(id);
+      } catch (_) {}
+    }
 
     if (this.notificationsService) {
       this.notificationsService.markAppointmentNotificationsRead(id).catch(() => {});

@@ -374,15 +374,17 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
   Future<void> _declineIncomingRequest(dynamic req) async {
     try {
       final client = ref.read(apiClientProvider);
-      final aptId = req['id']?.toString() ?? req['appointmentId']?.toString() ?? 'apt-1';
-      await client.dio.put('/appointments/$aptId/status', data: {
-        'status': 'cancelled',
-        'visitNotes': 'Provider declined incoming request',
-      });
+      final aptId = req['id']?.toString() ?? req['appointmentId']?.toString() ?? '';
+      if (aptId.isNotEmpty) {
+        await client.dio.post('/appointments/$aptId/reject', data: {
+          'reason': 'Provider declined incoming request',
+        });
+        ref.read(realtimeServiceProvider).declineOffer(aptId);
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Care request declined.'),
+          content: Text('Care request declined. Cascading to next clinician.'),
           backgroundColor: Color(0xFFDC2626),
         ),
       );

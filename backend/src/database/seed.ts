@@ -56,6 +56,7 @@ export class DatabaseSeedService implements OnModuleInit {
         await runner.query(`ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "disputeReason" text;`).catch(() => {});
         await runner.query(`ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "cancelledBy" varchar;`).catch(() => {});
         await runner.query(`ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "cancellationReason" text;`).catch(() => {});
+        await runner.query(`ALTER TABLE "appointments" ADD COLUMN IF NOT EXISTS "excludedProviders" text;`).catch(() => {});
 
         // Providers table critical columns
         await runner.query(`ALTER TABLE "providers" ADD COLUMN IF NOT EXISTS "latitude" float;`).catch(() => {});
