@@ -35,6 +35,9 @@ jobs:
     name: ✅ CI Gate
     runs-on: ubuntu-latest
     steps:
+      - name: Wait for CI checks to initialize
+        run: sleep 25
+
       - name: Wait for CI workflow to complete
         uses: lewagon/wait-on-check-action@v1.3.4
         with:
