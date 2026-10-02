@@ -35,6 +35,7 @@ import '../../features/provider_app/provider_map_navigation_screen.dart';
 import '../../features/provider_app/provider_earnings_screen.dart';
 import '../../features/provider_app/provider_active_flow_screen.dart';
 import '../../features/provider_app/provider_edit_profile_screen.dart';
+import '../../features/provider_app/provider_profile_settings_screen.dart';
 import '../../features/splash/splash_screen.dart';
 
 class RouterNotifier extends ChangeNotifier {
@@ -157,7 +158,8 @@ final appRouter = Provider<GoRouter>((ref) {
       GoRoute(path: '/provider/requests', builder: (ctx, _) => const ProviderRequestsScreen()),
       GoRoute(path: '/provider/verification', builder: (ctx, _) => const ProviderVerificationScreen()),
       GoRoute(path: '/provider/payout-methods', builder: (ctx, _) => const PayoutMethodsScreen()),
-      GoRoute(path: '/provider/profile', builder: (ctx, _) => const ProviderEditProfileScreen()),
+      GoRoute(path: '/provider/profile', builder: (ctx, _) => const ProviderProfileSettingsScreen()),
+      GoRoute(path: '/provider/edit-profile', builder: (ctx, _) => const ProviderEditProfileScreen()),
       GoRoute(
         path: '/provider/active-request', 
         builder: (ctx, state) => ProviderActiveFlowScreen(

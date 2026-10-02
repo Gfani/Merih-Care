@@ -51,7 +51,8 @@ export class PaymentsController {
   @Get("receipts")
   @UseGuards(JwtAuthGuard)
   async getReceipts(@Req() req: any) {
-    return this.paymentsService.getTransactions();
+    const actorId = req.user?.id || req.user?.sub;
+    return this.paymentsService.getTransactions(50, 0, actorId);
   }
 
   @Get("receipt/:txRef")

@@ -50,7 +50,7 @@ export class PaymentsService {
     return rate;
   }
 
-  async getTransactions(limit = 50, offset = 0) {
+  async getTransactions(limit = 50, offset = 0, userId?: string) {
     const events = await this.eventRepo.find({
       order: { createdAt: "DESC" as any },
       take: limit,
@@ -80,6 +80,9 @@ export class PaymentsService {
 
       return {
         id: evt.paymentId || evt.id,
+        appointmentId: apt?.id || payload.appointmentId,
+        patientId: apt?.patientId || payload.patientId,
+        providerId: apt?.providerId || payload.providerId,
         patientName: apt?.patientName || (apt?.patient as any)?.name || payload.first_name || "Patient",
         providerName: apt?.providerName || (apt?.provider as any)?.name || "Assigned Provider",
         service: apt?.service || "Healthcare Consultation",
@@ -101,22 +104,10 @@ export class PaymentsService {
       };
     });
 
-    if (result.length === 0) {
-      return appointments.map((apt) => ({
-        id: `tx-${apt.id}`,
-        patientName: apt.patientName || (apt?.patient as any)?.name || "Patient",
-        providerName: apt.providerName || (apt?.provider as any)?.name || "Assigned Provider",
-        service: apt.service || "Healthcare Visit",
-        amount: apt.amount || 800,
-        method: "Telebirr",
-        status:
-          apt.status === "completed" || apt.status === "scheduled"
-            ? "successful"
-            : apt.status === "cancelled"
-            ? "refunded"
-            : "pending",
-        date: apt.date || new Date().toISOString().split("T")[0],
-      }));
+    if (userId) {
+      return result.filter(
+        (r) => r.patientId === userId || r.providerId === userId
+      );
     }
 
     return result;

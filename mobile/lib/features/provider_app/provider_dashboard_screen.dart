@@ -12,6 +12,7 @@ import '../../shared/widgets/create_design_widgets.dart';
 import '../../shared/widgets/offline_banner.dart';
 import 'package:latlong2/latlong.dart';
 import 'widgets/provider_incoming_requests_map.dart';
+import 'widgets/provider_bottom_nav_bar.dart';
 
 class ProviderDashboardScreen extends ConsumerStatefulWidget {
   const ProviderDashboardScreen({super.key});
@@ -22,7 +23,6 @@ class ProviderDashboardScreen extends ConsumerStatefulWidget {
 
 class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScreen> {
   String? _myProviderId;
-  int _currentNavIndex = 0;
   bool _isOnline = true;
   double _todayEarnings = 0.0;
   int _completedVisits = 0;
@@ -1065,64 +1065,8 @@ class _ProviderDashboardScreenState extends ConsumerState<ProviderDashboardScree
         ],
       ),
     ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentNavIndex,
-        onDestinationSelected: (index) {
-          setState(() => _currentNavIndex = index);
-          switch (index) {
-            case 0:
-              break;
-            case 1:
-              context.push('/provider/requests');
-              break;
-            case 2:
-              context.push('/provider/availability');
-              break;
-            case 3:
-              context.push('/chat/apt-101');
-              break;
-            case 4:
-              context.push('/provider/profile');
-              break;
-          }
-        },
-        backgroundColor: Colors.white,
-        elevation: 2,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home, color: Color(0xFF0D7C6A)),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Badge(
-              label: Text('3'),
-              backgroundColor: Color(0xFFDC2626),
-              child: Icon(Icons.assignment_outlined),
-            ),
-            selectedIcon: Badge(
-              label: Text('3'),
-              backgroundColor: Color(0xFFDC2626),
-              child: Icon(Icons.assignment, color: Color(0xFF0D7C6A)),
-            ),
-            label: 'Requests',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month, color: Color(0xFF0D7C6A)),
-            label: 'Schedule',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline),
-            selectedIcon: Icon(Icons.chat_bubble, color: Color(0xFF0D7C6A)),
-            label: 'Messages',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person, color: Color(0xFF0D7C6A)),
-            label: 'Profile',
-          ),
-        ],
+      bottomNavigationBar: const ProviderBottomNavBar(
+        currentIndex: 0,
       ),
     );
   }

@@ -96,8 +96,9 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
           ),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
         child: Column(
           children: [
             // ─── User Profile Header Card ──────────────────────────────────────
@@ -300,6 +301,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
           ],
         ),
       ),
+    ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: 4, // Profile active
         onDestinationSelected: (index) {
@@ -449,28 +451,74 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
   void _showLanguageAndThemeModal() {
     showModalBottomSheet(
       context: context,
+      useSafeArea: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('App Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(Icons.language, color: Color(0xFF0D7C6A)),
-              title: const Text('Language / ቋንቋ'),
-              subtitle: const Text('English · አማርኛ · Afaan Oromoo · ትግርኛ'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.pop(ctx),
-            ),
-            ListTile(
-              leading: const Icon(Icons.dark_mode_outlined, color: Color(0xFF0D7C6A)),
-              title: const Text('Dark Mode'),
-              trailing: Switch(value: false, onChanged: (_) => Navigator.pop(ctx)),
-            ),
-          ],
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: 24 + MediaQuery.of(ctx).viewInsets.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('App Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE6F5F2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.language, color: Color(0xFF0D7C6A), size: 20),
+                ),
+                title: const Text('Language / ቋንቋ', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('English · አማርኛ · Afaan Oromoo · ትግርኛ', style: TextStyle(fontSize: 12)),
+                trailing: const Icon(Icons.chevron_right, size: 20),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Language preference saved.')),
+                  );
+                },
+              ),
+              const Divider(height: 1),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE6F5F2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.dark_mode_outlined, color: Color(0xFF0D7C6A), size: 20),
+                ),
+                title: const Text('Dark Mode', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Toggle light or dark appearance', style: TextStyle(fontSize: 12)),
+                trailing: Switch(
+                  value: Theme.of(context).brightness == Brightness.dark,
+                  activeColor: const Color(0xFF0D7C6A),
+                  onChanged: (val) {
+                    Navigator.pop(ctx);
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

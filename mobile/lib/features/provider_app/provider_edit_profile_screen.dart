@@ -190,8 +190,9 @@ class _ProviderEditProfileScreenState extends ConsumerState<ProviderEditProfileS
             ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 48),
         child: Form(
           key: _formKey,
           child: Column(
@@ -449,6 +450,7 @@ class _ProviderEditProfileScreenState extends ConsumerState<ProviderEditProfileS
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 }

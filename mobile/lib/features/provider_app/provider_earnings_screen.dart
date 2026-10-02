@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../core/network/network_providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../auth/auth_provider.dart';
 import '../../shared/widgets/error_state.dart';
 import '../../shared/widgets/offline_banner.dart';
+import 'widgets/provider_bottom_nav_bar.dart';
 
 class ProviderEarningsScreen extends ConsumerStatefulWidget {
   const ProviderEarningsScreen({super.key});
@@ -138,35 +138,8 @@ class _ProviderEarningsScreenState extends ConsumerState<ProviderEarningsScreen>
           ),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: 2,
-        onDestinationSelected: (index) {
-          switch (index) {
-            case 0:
-              context.go('/provider-dashboard');
-              break;
-            case 1:
-              context.push('/provider/availability');
-              break;
-            case 2:
-              break;
-            case 3:
-              context.push('/chat/apt-101');
-              break;
-            case 4:
-              context.push('/provider/credentials');
-              break;
-          }
-        },
-        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-        elevation: 2,
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard, color: AppTheme.primaryColor), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.schedule_outlined), selectedIcon: Icon(Icons.schedule, color: AppTheme.primaryColor), label: 'Schedule'),
-          NavigationDestination(icon: Icon(Icons.account_balance_wallet_outlined), selectedIcon: Icon(Icons.account_balance_wallet, color: AppTheme.primaryColor), label: 'Earnings'),
-          NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble, color: AppTheme.primaryColor), label: 'Messages'),
-          NavigationDestination(icon: Icon(Icons.verified_user_outlined), selectedIcon: Icon(Icons.verified_user, color: AppTheme.primaryColor), label: 'Credentials'),
-        ],
+      bottomNavigationBar: const ProviderBottomNavBar(
+        currentIndex: 3,
       ),
       body: Column(
         children: [
