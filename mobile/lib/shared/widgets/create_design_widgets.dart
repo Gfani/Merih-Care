@@ -199,6 +199,7 @@ class RatingWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -206,10 +207,10 @@ class RatingWidget extends StatelessWidget {
         const SizedBox(width: 3),
         Text(
           rating.toStringAsFixed(1),
-          style: const TextStyle(
+          style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 12,
-            color: AppTheme.textPrimary,
+            color: isDark ? Colors.white : AppTheme.textPrimary,
           ),
         ),
         if (reviewCount != null) ...[
@@ -246,19 +247,22 @@ class CardWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardContent = Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: color ?? Colors.white,
+        color: color ?? (isDark ? const Color(0xFF1E293B) : Colors.white),
         borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-        border: border ?? Border.all(color: AppTheme.borderColor),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x05000000),
-            blurRadius: 6,
-            offset: Offset(0, 2),
-          ),
-        ],
+        border: border ?? Border.all(color: isDark ? const Color(0xFF334155) : AppTheme.borderColor),
+        boxShadow: isDark
+            ? []
+            : const [
+                BoxShadow(
+                  color: Color(0x05000000),
+                  blurRadius: 6,
+                  offset: Offset(0, 2),
+                ),
+              ],
       ),
       child: child,
     );
@@ -290,16 +294,17 @@ class SectionHeaderWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
-            color: AppTheme.textPrimary,
+            color: isDark ? Colors.white : AppTheme.textPrimary,
             letterSpacing: -0.2,
           ),
         ),
@@ -340,6 +345,7 @@ class ProviderCardWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final name = provider['name'] ?? 'Provider';
     final title = provider['title'] ?? provider['specialty'] ?? 'Specialist';
     final rating = (provider['rating'] as num?)?.toDouble() ?? 4.9;
@@ -369,7 +375,7 @@ class ProviderCardWidget extends StatelessWidget {
                         name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textPrimary),
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDark ? Colors.white : AppTheme.textPrimary),
                       ),
                       Text(
                         title,
@@ -389,7 +395,7 @@ class ProviderCardWidget extends StatelessWidget {
                 RatingWidget(rating: rating, reviewCount: reviewCount),
                 Text(
                   '$distance',
-                  style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary, fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 11, color: isDark ? const Color(0xFF94A3B8) : AppTheme.textSecondary, fontWeight: FontWeight.w600),
                 ),
               ],
             ),
@@ -415,7 +421,7 @@ class ProviderCardWidget extends StatelessWidget {
               children: [
                 Text(
                   name,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.textPrimary),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isDark ? Colors.white : AppTheme.textPrimary),
                 ),
                 Text(
                   title,
@@ -428,7 +434,7 @@ class ProviderCardWidget extends StatelessWidget {
                     const SizedBox(width: 12),
                     Text(
                       '•  $distance',
-                      style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                      style: TextStyle(fontSize: 11, color: isDark ? const Color(0xFF94A3B8) : AppTheme.textSecondary),
                     ),
                   ],
                 ),
@@ -443,7 +449,7 @@ class ProviderCardWidget extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.primaryColor),
               ),
               const SizedBox(height: 6),
-              const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppTheme.borderStrong),
+              Icon(Icons.arrow_forward_ios_rounded, size: 14, color: isDark ? const Color(0xFF64748B) : AppTheme.borderStrong),
             ],
           ),
         ],
@@ -465,6 +471,7 @@ class AppointmentCardWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final service = appointment['service'] ?? appointment['serviceName'] ?? 'Home Healthcare Visit';
     final providerName = appointment['provider']?['name'] ?? appointment['providerName'] ?? 'Assigned Provider';
     final date = appointment['date'] ?? appointment['scheduledDate'] ?? 'Today';
@@ -483,14 +490,21 @@ class AppointmentCardWidget extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: AppTheme.surfaceColor,
+                  color: isDark ? const Color(0xFF0F172A) : AppTheme.surfaceColor,
                   borderRadius: BorderRadius.circular(AppTheme.radiusSm),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.calendar_today, size: 12, color: AppTheme.textSecondary),
+                    Icon(Icons.calendar_today, size: 12, color: isDark ? const Color(0xFF94A3B8) : AppTheme.textSecondary),
                     const SizedBox(width: 6),
-                    Text('$date  ·  $time', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                    Text(
+                      '$date  ·  $time',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? const Color(0xFFCBD5E1) : AppTheme.textPrimary,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -500,7 +514,7 @@ class AppointmentCardWidget extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             service,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.textPrimary),
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isDark ? Colors.white : AppTheme.textPrimary),
           ),
           const SizedBox(height: 4),
           Row(
@@ -509,7 +523,7 @@ class AppointmentCardWidget extends StatelessWidget {
               const SizedBox(width: 4),
               Text(
                 providerName,
-                style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                style: TextStyle(fontSize: 12, color: isDark ? const Color(0xFF94A3B8) : AppTheme.textSecondary),
               ),
             ],
           ),
@@ -532,6 +546,7 @@ class StepProgressWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       children: List.generate(steps.length * 2 - 1, (index) {
         if (index.isOdd) {
@@ -540,7 +555,7 @@ class StepProgressWidget extends StatelessWidget {
           return Expanded(
             child: Container(
               height: 2,
-              color: isDone ? AppTheme.primaryColor : AppTheme.borderColor,
+              color: isDone ? AppTheme.primaryColor : (isDark ? const Color(0xFF334155) : AppTheme.borderColor),
             ),
           );
         }
@@ -555,10 +570,10 @@ class StepProgressWidget extends StatelessWidget {
           decoration: BoxDecoration(
             color: isDone
                 ? AppTheme.primaryColor
-                : (isActive ? AppTheme.primaryLight : Colors.white),
+                : (isActive ? AppTheme.primaryLight : (isDark ? const Color(0xFF1E293B) : Colors.white)),
             shape: BoxShape.circle,
             border: Border.all(
-              color: isDone || isActive ? AppTheme.primaryColor : AppTheme.borderColor,
+              color: isDone || isActive ? AppTheme.primaryColor : (isDark ? const Color(0xFF334155) : AppTheme.borderColor),
               width: 1.5,
             ),
           ),
@@ -599,6 +614,7 @@ class StatCardWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return CardWidget(
       padding: const EdgeInsets.all(14),
       child: Column(
@@ -616,10 +632,10 @@ class StatCardWidget extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: AppTheme.textPrimary,
+              color: isDark ? Colors.white : AppTheme.textPrimary,
               letterSpacing: -0.5,
             ),
           ),

@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/services/services_provider.dart';
 import '../../core/network/network_providers.dart';
 import '../../core/location/location_service.dart';
 import '../../shared/widgets/spot_search_sheet.dart';
@@ -13,8 +14,15 @@ import '../auth/auth_provider.dart';
 
 class BookingScreen extends ConsumerStatefulWidget {
   final String providerId;
+  final String? serviceId;
+  final String? serviceName;
 
-  const BookingScreen({super.key, required this.providerId});
+  const BookingScreen({
+    super.key,
+    required this.providerId,
+    this.serviceId,
+    this.serviceName,
+  });
 
   @override
   ConsumerState<BookingScreen> createState() => _BookingScreenState();
@@ -187,6 +195,26 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final borderCol = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8EE);
+
+    final services = ref.watch(servicesProvider);
+    ServiceModel? matchedService;
+    if (widget.serviceId != null && widget.serviceId!.isNotEmpty) {
+      matchedService = services.where((s) => s.id == widget.serviceId).firstOrNull;
+    }
+    if (matchedService == null && widget.serviceName != null && widget.serviceName!.isNotEmpty) {
+      final query = widget.serviceName!.toLowerCase().trim();
+      matchedService = services.where((s) => s.name.toLowerCase().contains(query) || query.contains(s.name.toLowerCase())).firstOrNull;
+    }
+    if (matchedService == null && services.isNotEmpty) {
+      matchedService = services.first;
+    }
+
+    final activeServiceName = matchedService?.name ?? (widget.serviceName?.isNotEmpty == true ? widget.serviceName! : 'Doctor Home Visit');
+    final activeServiceId = matchedService?.id ?? (widget.serviceId?.isNotEmpty == true ? widget.serviceId! : 'doctor-visit');
+    final activePrice = matchedService?.priceFrom ?? 800.0;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Schedule Care')),
@@ -214,8 +242,8 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(color: const Color(0xFFE2E8EE)),
+                    color: cardBg,
+                    border: Border.all(color: borderCol),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
@@ -489,8 +517,8 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                               'patientName': patientName,
                               if (patientPhone != null && patientPhone.isNotEmpty)
                                 'patientPhone': patientPhone,
-                              'serviceId': 'doctor-visit',
-                              'service': 'Doctor Home Visit',
+                              'serviceId': activeServiceId,
+                              'service': activeServiceName,
                               'date': dateStr,
                               'time': _selectedTime,
                               'location': _addressController.text.trim(),
@@ -498,7 +526,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                               'latitude': _patientLat,
                               'longitude': _patientLon,
                               'notes': _notesController.text.trim(),
-                              'amount': 800.0,
+                              'amount': activePrice,
                             });
                             setState(() => _submitting = false);
                             if (mounted) {
@@ -525,7 +553,10 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                         width: 20,
                         child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                       )
-                    : const Text('Proceed to Payment'),
+                    : Text(
+                        'Confirm & Book ($activeServiceName - ETB ${activePrice.toInt()})',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
               ),
             ],
           ),

@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/storage/secure_storage.dart';
+import '../auth/auth_provider.dart';
 
 class PayoutMethodsScreen extends ConsumerStatefulWidget {
   const PayoutMethodsScreen({super.key});
@@ -14,41 +17,106 @@ class _PayoutMethodsScreenState extends ConsumerState<PayoutMethodsScreen> {
   double _availableBalance = 1650.0;
   String _nextAutoPayoutDate = 'Oct 5';
 
-  final List<Map<String, dynamic>> _methods = [
-    {
-      'id': 'telebirr-1',
-      'type': 'telebirr',
-      'title': 'Telebirr',
-      'holderName': 'Hiwot Girma',
-      'accountNumber': '+251 91 123 4567',
-      'isPrimary': true,
-    },
-    {
-      'id': 'cbe-1',
-      'type': 'cbe',
-      'title': 'Commercial Bank of Ethiopia',
-      'holderName': 'Hiwot Girma',
-      'accountNumber': '1000****4321',
-      'isPrimary': false,
-    },
-  ];
+  List<Map<String, dynamic>> _methods = [];
+  List<Map<String, dynamic>> _history = [];
 
-  final List<Map<String, dynamic>> _history = [
-    {
-      'id': 'tx-101',
-      'amount': 'ETB 2,400',
-      'date': 'Sep 24, 2026',
-      'method': 'Telebirr · +251 91 123 4567',
-      'status': 'Completed',
-    },
-    {
-      'id': 'tx-100',
-      'amount': 'ETB 1,850',
-      'date': 'Sep 17, 2026',
-      'method': 'CBE · 1000****4321',
-      'status': 'Completed',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() => _loadSavedData());
+  }
+
+  Future<void> _loadSavedData() async {
+    try {
+      final savedMethodsJson = await SecureStorage.instance.readString('saved_payout_methods');
+      if (savedMethodsJson != null && savedMethodsJson.isNotEmpty) {
+        final decoded = jsonDecode(savedMethodsJson);
+        if (decoded is List && decoded.isNotEmpty) {
+          setState(() {
+            _methods = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+          });
+        }
+      }
+    } catch (_) {}
+
+    if (_methods.isEmpty) {
+      final user = ref.read(authProvider).user;
+      final holder = (user?['name'] != null && user!['name'].toString().trim().isNotEmpty)
+          ? user['name'].toString().trim()
+          : 'Healthcare Provider';
+      final phone = (user?['phone'] != null && user!['phone'].toString().trim().isNotEmpty)
+          ? user['phone'].toString().trim()
+          : '+251 91 123 4567';
+
+      setState(() {
+        _methods = [
+          {
+            'id': 'telebirr-1',
+            'type': 'telebirr',
+            'title': 'Telebirr',
+            'holderName': holder,
+            'accountNumber': phone,
+            'isPrimary': true,
+          },
+          {
+            'id': 'cbe-1',
+            'type': 'cbe',
+            'title': 'Commercial Bank of Ethiopia',
+            'holderName': holder,
+            'accountNumber': '1000****4321',
+            'isPrimary': false,
+          },
+        ];
+      });
+      _saveMethods();
+    }
+
+    try {
+      final savedHistoryJson = await SecureStorage.instance.readString('saved_payout_history');
+      if (savedHistoryJson != null && savedHistoryJson.isNotEmpty) {
+        final decoded = jsonDecode(savedHistoryJson);
+        if (decoded is List && decoded.isNotEmpty) {
+          setState(() {
+            _history = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+          });
+          return;
+        }
+      }
+    } catch (_) {}
+
+    if (_history.isEmpty) {
+      setState(() {
+        _history = [
+          {
+            'id': 'tx-101',
+            'amount': 'ETB 2,400',
+            'date': 'Sep 24, 2026',
+            'method': 'Telebirr · +251 91 123 4567',
+            'status': 'Completed',
+          },
+          {
+            'id': 'tx-100',
+            'amount': 'ETB 1,850',
+            'date': 'Sep 17, 2026',
+            'method': 'CBE · 1000****4321',
+            'status': 'Completed',
+          },
+        ];
+      });
+    }
+  }
+
+  Future<void> _saveMethods() async {
+    try {
+      await SecureStorage.instance.writeString('saved_payout_methods', jsonEncode(_methods));
+    } catch (_) {}
+  }
+
+  Future<void> _saveHistory() async {
+    try {
+      await SecureStorage.instance.writeString('saved_payout_history', jsonEncode(_history));
+    } catch (_) {}
+  }
 
   void _requestInstantPayout() {
     showDialog(
@@ -57,7 +125,7 @@ class _PayoutMethodsScreenState extends ConsumerState<PayoutMethodsScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Confirm Instant Payout', style: TextStyle(fontWeight: FontWeight.bold)),
         content: Text(
-          'Withdraw ETB ${_availableBalance.toStringAsFixed(0)} to your primary method (Telebirr)? Funds arrive within minutes.',
+          'Withdraw ETB ${_availableBalance.toStringAsFixed(0)} to your primary method? Funds arrive within minutes.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
@@ -70,18 +138,23 @@ class _PayoutMethodsScreenState extends ConsumerState<PayoutMethodsScreen> {
             onPressed: () {
               Navigator.pop(ctx);
               setState(() {
+                final primaryMethod = _methods.firstWhere(
+                  (m) => m['isPrimary'] == true,
+                  orElse: () => _methods.isNotEmpty ? _methods.first : {'title': 'Telebirr', 'accountNumber': ''},
+                );
                 _history.insert(0, {
                   'id': 'tx-${DateTime.now().millisecondsSinceEpoch}',
                   'amount': 'ETB ${_availableBalance.toStringAsFixed(0)}',
                   'date': 'Just now',
-                  'method': 'Telebirr · +251 91 123 4567',
+                  'method': '${primaryMethod['title']} · ${primaryMethod['accountNumber']}',
                   'status': 'Processing',
                 });
                 _availableBalance = 0;
               });
+              _saveHistory();
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Payout requested successfully. Processing via Telebirr.'),
+                  content: Text('Payout requested successfully.'),
                   backgroundColor: Color(0xFF0D7C6A),
                 ),
               );
@@ -93,9 +166,140 @@ class _PayoutMethodsScreenState extends ConsumerState<PayoutMethodsScreen> {
     );
   }
 
+  void _showEditMethodModal(Map<String, dynamic> method) {
+    String methodType = method['type']?.toString() ?? 'telebirr';
+    final nameCtrl = TextEditingController(text: method['holderName']?.toString() ?? '');
+    final accountCtrl = TextEditingController(text: method['accountNumber']?.toString() ?? '');
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (modalCtx, setModalState) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(modalCtx).viewInsets.bottom + 20,
+            left: 20,
+            right: 20,
+            top: 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Edit Payout Method',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text('Telebirr'),
+                      selected: methodType == 'telebirr',
+                      selectedColor: const Color(0xFFE6F5F2),
+                      labelStyle: TextStyle(
+                        color: methodType == 'telebirr' ? const Color(0xFF0D7C6A) : Colors.black87,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      onSelected: (_) => setModalState(() => methodType = 'telebirr'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text('Bank (CBE)'),
+                      selected: methodType == 'cbe',
+                      selectedColor: const Color(0xFFE6F5F2),
+                      labelStyle: TextStyle(
+                        color: methodType == 'cbe' ? const Color(0xFF0D7C6A) : Colors.black87,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      onSelected: (_) => setModalState(() => methodType = 'cbe'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: nameCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Account Holder Name',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: accountCtrl,
+                keyboardType: methodType == 'telebirr' ? TextInputType.phone : TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: methodType == 'telebirr' ? 'Telebirr Phone Number' : 'CBE Account Number',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0D7C6A),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () {
+                    final acc = accountCtrl.text.trim();
+                    final name = nameCtrl.text.trim();
+                    if (acc.isEmpty || name.isEmpty) return;
+                    setState(() {
+                      final idx = _methods.indexWhere((m) => m['id'] == method['id']);
+                      if (idx != -1) {
+                        _methods[idx]['type'] = methodType;
+                        _methods[idx]['title'] = methodType == 'telebirr' ? 'Telebirr' : 'Commercial Bank of Ethiopia';
+                        _methods[idx]['holderName'] = name;
+                        _methods[idx]['accountNumber'] = acc;
+                      }
+                    });
+                    _saveMethods();
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Payout method updated and saved.'),
+                        backgroundColor: Color(0xFF0D7C6A),
+                      ),
+                    );
+                  },
+                  child: const Text('Save Changes'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showAddMethodModal() {
     String methodType = 'telebirr';
-    final nameCtrl = TextEditingController(text: 'Hiwot Girma');
+    final user = ref.read(authProvider).user;
+    final defaultName = (user?['name'] != null && user!['name'].toString().trim().isNotEmpty)
+        ? user['name'].toString().trim()
+        : 'Healthcare Provider';
+    final nameCtrl = TextEditingController(text: defaultName);
     final accountCtrl = TextEditingController();
 
     showModalBottomSheet(
@@ -202,7 +406,14 @@ class _PayoutMethodsScreenState extends ConsumerState<PayoutMethodsScreen> {
                         'isPrimary': _methods.isEmpty,
                       });
                     });
+                    _saveMethods();
                     Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Payout method added and saved.'),
+                        backgroundColor: Color(0xFF0D7C6A),
+                      ),
+                    );
                   },
                   child: const Text('Save Payout Method'),
                 ),
@@ -495,6 +706,11 @@ class _PayoutMethodsScreenState extends ConsumerState<PayoutMethodsScreen> {
                                 ],
                               ),
                             ),
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined, size: 20, color: Color(0xFF0D7C6A)),
+                              tooltip: 'Edit Method',
+                              onPressed: () => _showEditMethodModal(m),
+                            ),
                             if (!isPrimary)
                               TextButton(
                                 style: TextButton.styleFrom(
@@ -508,6 +724,7 @@ class _PayoutMethodsScreenState extends ConsumerState<PayoutMethodsScreen> {
                                       item['isPrimary'] = item['id'] == m['id'];
                                     }
                                   });
+                                  _saveMethods();
                                 },
                                 child: const Text(
                                   'Set primary',
@@ -524,6 +741,7 @@ class _PayoutMethodsScreenState extends ConsumerState<PayoutMethodsScreen> {
                                 setState(() {
                                   _methods.removeWhere((item) => item['id'] == m['id']);
                                 });
+                                _saveMethods();
                               },
                             ),
                           ],

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../auth/auth_provider.dart';
 import '../../core/network/network_providers.dart';
 import '../../core/location/location_service.dart';
+import '../../core/services/services_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/create_design_widgets.dart';
 import '../../shared/widgets/offline_banner.dart';
@@ -126,6 +127,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           _providers = allProvs;
         });
       }
+      ref.read(servicesProvider.notifier).refreshServices();
     } catch (e) {
       print('[PATIENT DASHBOARD] Error loading data: $e');
       if (mounted) {
@@ -208,8 +210,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final hour = DateTime.now().hour;
     final greeting = hour < 12 ? 'Good morning' : (hour < 17 ? 'Good afternoon' : 'Good evening');
 
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final borderCol = isDark ? const Color(0xFF334155) : AppTheme.borderColor;
+    final textPrimaryCol = isDark ? Colors.white : AppTheme.textPrimary;
+    final textSecondaryCol = isDark ? const Color(0xFF94A3B8) : AppTheme.textSecondary;
+    final liveServices = ref.watch(servicesProvider);
+
     return Scaffold(
-      backgroundColor: AppTheme.surfaceColor,
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -229,12 +239,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           children: [
                             Text(
                               '$greeting,',
-                              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted, fontWeight: FontWeight.w500),
+                              style: TextStyle(fontSize: 12, color: textSecondaryCol, fontWeight: FontWeight.w500),
                             ),
                             const SizedBox(height: 2),
                             Text(
                               '$firstName 👋',
-                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.textPrimary, letterSpacing: -0.5),
+                              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textPrimaryCol, letterSpacing: -0.5),
                             ),
                           ],
                         ),
@@ -243,14 +253,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             // Notifications bell
                             Container(
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: cardBg,
                                 shape: BoxShape.circle,
-                                border: Border.all(color: AppTheme.borderColor),
+                                border: Border.all(color: borderCol),
                               ),
                               child: Stack(
                                 children: [
                                   IconButton(
-                                    icon: const Icon(Icons.notifications_outlined, size: 20, color: AppTheme.textSecondary),
+                                    icon: Icon(Icons.notifications_outlined, size: 20, color: textSecondaryCol),
                                     onPressed: () => context.push('/notifications'),
                                   ),
                                   Positioned(
@@ -285,9 +295,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: cardBg,
                         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                        border: Border.all(color: AppTheme.borderColor),
+                        border: Border.all(color: borderCol),
                       ),
                       child: Row(
                         children: [
@@ -298,7 +308,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               locationState.location?.address ?? 'Near Edna Mall, Bole, Addis Ababa',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: textPrimaryCol),
                             ),
                           ),
                           InkWell(
@@ -626,55 +636,66 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       actionLabel: 'See all',
                       onAction: () => context.push('/services'),
                     ),
-                    const SizedBox(height: 10),
-                    GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 4,
-                        crossAxisSpacing: 8,
-                        mainAxisSpacing: 8,
-                        childAspectRatio: 0.85,
-                      ),
-                      itemCount: _serviceCategories.length,
-                      itemBuilder: (context, index) {
-                        final cat = _serviceCategories[index];
-                        return InkWell(
-                          onTap: () => context.push('/search-provider?specialty=${Uri.encodeComponent(cat['name'])}'),
-                          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                              border: Border.all(color: AppTheme.borderColor),
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Container(
-                                  width: 38,
-                                  height: 38,
-                                  decoration: BoxDecoration(
-                                    color: cat['color'] as Color,
-                                    borderRadius: BorderRadius.circular(10),
+                    Builder(builder: (context) {
+                      final serviceItems = liveServices.isNotEmpty
+                          ? liveServices.map((s) => {
+                              'id': s.id,
+                              'name': s.name,
+                              'icon': s.iconData,
+                              'color': s.categoryColor,
+                              'priceFrom': s.priceFrom.toInt(),
+                            }).toList()
+                          : _serviceCategories;
+
+                      return GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 4,
+                          crossAxisSpacing: 8,
+                          mainAxisSpacing: 8,
+                          childAspectRatio: 0.85,
+                        ),
+                        itemCount: serviceItems.length,
+                        itemBuilder: (context, index) {
+                          final cat = serviceItems[index];
+                          return InkWell(
+                            onTap: () => context.push('/search-provider?specialty=${Uri.encodeComponent(cat['name'] as String)}'),
+                            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: cardBg,
+                                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                                border: Border.all(color: borderCol),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    width: 38,
+                                    height: 38,
+                                    decoration: BoxDecoration(
+                                      color: cat['color'] as Color,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Icon(cat['icon'] as IconData, size: 20, color: AppTheme.textPrimary),
                                   ),
-                                  child: Icon(cat['icon'] as IconData, size: 20, color: AppTheme.textPrimary),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  cat['name'] as String,
-                                  textAlign: TextAlign.center,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.textSecondary, height: 1.1),
-                                ),
-                              ],
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    cat['name'] as String,
+                                    textAlign: TextAlign.center,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: textPrimaryCol, height: 1.1),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
+                          );
+                        },
+                      );
+                    }),
 
                     const SizedBox(height: 20),
 
@@ -705,9 +726,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             width: double.infinity,
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: cardBg,
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: AppTheme.borderColor),
+                              border: Border.all(color: borderCol),
                             ),
                             child: Row(
                               children: [
@@ -724,9 +745,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      const Text(
+                                      Text(
                                         'Verified Providers Nearby',
-                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textPrimary),
+                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: textPrimaryCol),
                                       ),
                                       const SizedBox(height: 2),
                                       const Text(
@@ -795,7 +816,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               break;
           }
         },
-        backgroundColor: Colors.white,
+        backgroundColor: cardBg,
         elevation: 2,
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home, color: AppTheme.primaryColor), label: 'Home'),

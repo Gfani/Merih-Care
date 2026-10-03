@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/network/network_providers.dart';
+import '../../core/services/services_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/create_design_widgets.dart';
 
@@ -98,6 +99,9 @@ class _ServiceCatalogueScreenState extends ConsumerState<ServiceCatalogueScreen>
   void initState() {
     super.initState();
     _loadCategories();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(servicesProvider.notifier).refreshServices();
+    });
   }
 
   @override
@@ -226,6 +230,7 @@ class _ServiceCatalogueScreenState extends ConsumerState<ServiceCatalogueScreen>
 
   void _showServiceDetail(Map<String, dynamic> cat) {
     final title = cat['title']?.toString() ?? 'Service';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -245,7 +250,7 @@ class _ServiceCatalogueScreenState extends ConsumerState<ServiceCatalogueScreen>
                 width: 44,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppTheme.borderColor,
+                  color: isDark ? const Color(0xFF334155) : AppTheme.borderColor,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -267,7 +272,14 @@ class _ServiceCatalogueScreenState extends ConsumerState<ServiceCatalogueScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : AppTheme.textPrimary,
+                        ),
+                      ),
                       const SizedBox(height: 2),
                       Text('${cat['providerCount'] ?? 20} verified clinicians ready', style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
                       const SizedBox(height: 2),
@@ -278,14 +290,14 @@ class _ServiceCatalogueScreenState extends ConsumerState<ServiceCatalogueScreen>
               ],
             ),
             const SizedBox(height: 18),
-            const Text('About this service', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            Text('About this service', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDark ? Colors.white : AppTheme.textPrimary)),
             const SizedBox(height: 4),
             Text(
               cat['description']?.toString() ?? 'High-quality home healthcare service provided by verified professionals.',
-              style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary, height: 1.4),
+              style: TextStyle(fontSize: 12, color: isDark ? const Color(0xFF94A3B8) : AppTheme.textSecondary, height: 1.4),
             ),
             const SizedBox(height: 16),
-            const Text('What\'s included', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            Text('What\'s included', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDark ? Colors.white : AppTheme.textPrimary)),
             const SizedBox(height: 8),
             ...[
               'Initial assessment and vital signs check',
@@ -299,7 +311,7 @@ class _ServiceCatalogueScreenState extends ConsumerState<ServiceCatalogueScreen>
                 children: [
                   const Icon(Icons.check_circle, size: 16, color: AppTheme.primaryColor),
                   const SizedBox(width: 8),
-                  Text(inc, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                  Text(inc, style: TextStyle(fontSize: 12, color: isDark ? const Color(0xFF94A3B8) : AppTheme.textSecondary)),
                 ],
               ),
             )),
@@ -325,8 +337,28 @@ class _ServiceCatalogueScreenState extends ConsumerState<ServiceCatalogueScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final filtered = _categories.where((c) {
-      final name = (c['title'] ?? '').toString().toLowerCase();
+    final isDark = theme.brightness == Brightness.dark;
+    final liveServices = ref.watch(servicesProvider);
+
+    final List<Map<String, dynamic>> sourceList = liveServices.isNotEmpty
+        ? liveServices.map((s) {
+            return {
+              'id': s.id,
+              'title': s.name,
+              'name': s.name,
+              'description': s.description,
+              'priceFrom': s.priceFrom.toInt(),
+              'providerCount': s.providerCount > 0 ? s.providerCount : 20,
+              'icon': s.iconData,
+              'color': s.categoryColor,
+            };
+          }).toList()
+        : (_categories.isNotEmpty
+            ? _categories
+            : _fallbackCategories.asMap().entries.map((e) => _normalizeCategory(e.value, e.key)).toList());
+
+    final filtered = sourceList.where((c) {
+      final name = (c['title'] ?? c['name'] ?? '').toString().toLowerCase();
       final desc = (c['description'] ?? '').toString().toLowerCase();
       return name.contains(_searchQuery.toLowerCase()) || desc.contains(_searchQuery.toLowerCase());
     }).toList();
@@ -363,7 +395,7 @@ class _ServiceCatalogueScreenState extends ConsumerState<ServiceCatalogueScreen>
               break;
           }
         },
-        backgroundColor: theme.brightness == Brightness.dark ? const Color(0xFF1E293B) : Colors.white,
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
         elevation: 2,
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home, color: AppTheme.primaryColor), label: 'Home'),
@@ -410,7 +442,12 @@ class _ServiceCatalogueScreenState extends ConsumerState<ServiceCatalogueScreen>
               ),
             ),
             Expanded(
-              child: _loading
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  await ref.read(servicesProvider.notifier).refreshServices();
+                  await _loadCategories();
+                },
+                child: _loading && liveServices.isEmpty
                   ? const Center(child: CircularProgressIndicator())
                   : filtered.isEmpty
                       ? Center(
@@ -593,6 +630,7 @@ class _ServiceCatalogueScreenState extends ConsumerState<ServiceCatalogueScreen>
                                 );
                               },
                             ),
+              ),
             ),
           ],
         ),

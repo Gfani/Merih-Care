@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/storage/secure_storage.dart';
 
 class MedicalInformationScreen extends ConsumerStatefulWidget {
   const MedicalInformationScreen({super.key});
@@ -14,6 +16,48 @@ class _MedicalInformationScreenState extends ConsumerState<MedicalInformationScr
   String _allergies = 'Penicillin, Dust';
   String _chronicConditions = 'Hypertension (managed)';
   String _currentMedications = 'Amlodipine 5mg · Once daily';
+  List<Map<String, String>> _customRecords = [];
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() => _loadMedicalInfo());
+  }
+
+  Future<void> _loadMedicalInfo() async {
+    try {
+      final savedJson = await SecureStorage.instance.readString('patient_medical_info');
+      if (savedJson != null && savedJson.isNotEmpty) {
+        final decoded = jsonDecode(savedJson);
+        if (decoded is Map<String, dynamic>) {
+          setState(() {
+            if (decoded['bloodType'] != null) _bloodType = decoded['bloodType'].toString();
+            if (decoded['allergies'] != null) _allergies = decoded['allergies'].toString();
+            if (decoded['chronicConditions'] != null) _chronicConditions = decoded['chronicConditions'].toString();
+            if (decoded['currentMedications'] != null) _currentMedications = decoded['currentMedications'].toString();
+            if (decoded['customRecords'] is List) {
+              _customRecords = (decoded['customRecords'] as List)
+                  .map((e) => Map<String, String>.from(e as Map))
+                  .toList();
+            }
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveMedicalInfo() async {
+    final payload = {
+      'bloodType': _bloodType,
+      'allergies': _allergies,
+      'chronicConditions': _chronicConditions,
+      'currentMedications': _currentMedications,
+      'customRecords': _customRecords,
+    };
+    try {
+      await SecureStorage.instance.writeString('patient_medical_info', jsonEncode(payload));
+    } catch (_) {}
+  }
 
   void _showEditDialog(String title, String currentValue, ValueChanged<String> onSaved) {
     final controller = TextEditingController(text: currentValue);
@@ -42,10 +86,11 @@ class _MedicalInformationScreenState extends ConsumerState<MedicalInformationScr
               final val = controller.text.trim();
               if (val.isNotEmpty) {
                 onSaved(val);
+                _saveMedicalInfo();
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('$title updated successfully.'),
+                    content: Text('$title updated and saved.'),
                     backgroundColor: const Color(0xFF0D7C6A),
                     duration: const Duration(seconds: 2),
                   ),
@@ -108,6 +153,7 @@ class _MedicalInformationScreenState extends ConsumerState<MedicalInformationScr
                   DropdownMenuItem(value: 'Past Surgeries', child: Text('Past Surgeries')),
                   DropdownMenuItem(value: 'Health Insurance', child: Text('Health Insurance')),
                   DropdownMenuItem(value: 'Dietary Restrictions', child: Text('Dietary Restrictions')),
+                  DropdownMenuItem(value: 'Family Medical History', child: Text('Family Medical History')),
                 ],
                 onChanged: (val) {
                   if (val != null) setModalState(() => category = val);
@@ -135,6 +181,10 @@ class _MedicalInformationScreenState extends ConsumerState<MedicalInformationScr
                   onPressed: () {
                     final text = valCtrl.text.trim();
                     if (text.isEmpty) return;
+                    setState(() {
+                      _customRecords.add({'category': category, 'details': text});
+                    });
+                    _saveMedicalInfo();
                     Navigator.pop(ctx);
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -155,21 +205,27 @@ class _MedicalInformationScreenState extends ConsumerState<MedicalInformationScr
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final textCol = isDark ? Colors.white : const Color(0xFF1E293B);
+    final borderCol = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+    final scaffoldBg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: scaffoldBg,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: cardBg,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, size: 18, color: Color(0xFF1E293B)),
+          icon: Icon(Icons.arrow_back_ios_new, size: 18, color: textCol),
           onPressed: () => context.pop(),
         ),
-        title: const Text(
+        title: Text(
           'Medical Information',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Color(0xFF1E293B),
+            color: textCol,
           ),
         ),
       ),
@@ -181,15 +237,15 @@ class _MedicalInformationScreenState extends ConsumerState<MedicalInformationScr
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFFEFF6FF),
+                color: isDark ? const Color(0xFF1E3A5F) : const Color(0xFFEFF6FF),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFBFDBFE)),
+                border: Border.all(color: isDark ? const Color(0xFF2563EB) : const Color(0xFFBFDBFE)),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Icon(Icons.info_rounded, size: 22, color: Color(0xFF2563EB)),
-                  SizedBox(width: 12),
+                children: [
+                  const Icon(Icons.info_rounded, size: 22, color: Color(0xFF2563EB)),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -199,13 +255,17 @@ class _MedicalInformationScreenState extends ConsumerState<MedicalInformationScr
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E40AF),
+                            color: isDark ? Colors.white : const Color(0xFF1E40AF),
                           ),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         Text(
                           'Your medical information is encrypted and only shared with your confirmed provider during active appointments.',
-                          style: TextStyle(fontSize: 12.5, color: Color(0xFF1E40AF), height: 1.35),
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF1E40AF),
+                            height: 1.35,
+                          ),
                         ),
                       ],
                     ),
@@ -222,6 +282,9 @@ class _MedicalInformationScreenState extends ConsumerState<MedicalInformationScr
               iconBgColor: const Color(0xFFFFF1F2),
               title: 'Blood Type',
               value: _bloodType,
+              cardBg: cardBg,
+              textCol: textCol,
+              borderCol: borderCol,
               onEdit: () => _showEditDialog('Blood Type', _bloodType, (v) => setState(() => _bloodType = v)),
             ),
 
@@ -232,6 +295,9 @@ class _MedicalInformationScreenState extends ConsumerState<MedicalInformationScr
               iconBgColor: const Color(0xFFFEF3C7),
               title: 'Allergies',
               value: _allergies,
+              cardBg: cardBg,
+              textCol: textCol,
+              borderCol: borderCol,
               onEdit: () => _showEditDialog('Allergies', _allergies, (v) => setState(() => _allergies = v)),
             ),
 
@@ -242,6 +308,9 @@ class _MedicalInformationScreenState extends ConsumerState<MedicalInformationScr
               iconBgColor: const Color(0xFFFFEDD5),
               title: 'Chronic Conditions',
               value: _chronicConditions,
+              cardBg: cardBg,
+              textCol: textCol,
+              borderCol: borderCol,
               onEdit: () => _showEditDialog(
                 'Chronic Conditions',
                 _chronicConditions,
@@ -256,12 +325,73 @@ class _MedicalInformationScreenState extends ConsumerState<MedicalInformationScr
               iconBgColor: const Color(0xFFFFF1F2),
               title: 'Current Medications',
               value: _currentMedications,
+              cardBg: cardBg,
+              textCol: textCol,
+              borderCol: borderCol,
               onEdit: () => _showEditDialog(
                 'Current Medications',
                 _currentMedications,
                 (v) => setState(() => _currentMedications = v),
               ),
             ),
+
+            // ─── Custom Added Records ──────────────────────────────────────────
+            ..._customRecords.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final rec = entry.value;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: cardBg,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: borderCol),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE6F5F2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.bookmark_added_outlined, color: Color(0xFF0D7C6A), size: 22),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            rec['category'] ?? 'Health Detail',
+                            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            rec['details'] ?? '',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: textCol,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline_rounded, size: 20, color: Color(0xFFDC2626)),
+                      onPressed: () {
+                        setState(() {
+                          _customRecords.removeAt(idx);
+                        });
+                        _saveMedicalInfo();
+                      },
+                    ),
+                  ],
+                ),
+              );
+            }),
 
             const SizedBox(height: 12),
 
@@ -294,15 +424,18 @@ class _MedicalInformationScreenState extends ConsumerState<MedicalInformationScr
     required Color iconBgColor,
     required String title,
     required String value,
+    required Color cardBg,
+    required Color textCol,
+    required Color borderCol,
     required VoidCallback onEdit,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardBg,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: borderCol),
       ),
       child: Row(
         children: [
@@ -327,10 +460,10 @@ class _MedicalInformationScreenState extends ConsumerState<MedicalInformationScr
                 const SizedBox(height: 2),
                 Text(
                   value,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF1E293B),
+                    color: textCol,
                   ),
                 ),
               ],

@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:dio/dio.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/services/services_provider.dart';
 import '../../core/location/location_service.dart';
 import '../../core/network/network_providers.dart';
 import '../auth/auth_provider.dart';
@@ -947,16 +948,18 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
       maxSize = 0.65;
     }
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return DraggableScrollableSheet(
       initialChildSize: initialSize,
       minChildSize: minSize,
       maxChildSize: maxSize,
       builder: (context, scrollController) {
         return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 16, offset: Offset(0, -4))],
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 16, offset: Offset(0, -4))],
           ),
           child: SingleChildScrollView(
             controller: scrollController,
@@ -970,7 +973,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
                     width: 38,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
+                      color: isDark ? const Color(0xFF475569) : Colors.grey.shade300,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -993,6 +996,26 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
   // ─── BOTTOM SHEET: 1. SERVICE SELECT ──────────────────────────────────────────
 
   Widget _buildBottomSheetServiceSelect() {
+    final liveServices = ref.watch(servicesProvider);
+    final availableServices = liveServices.isNotEmpty
+        ? liveServices.map((s) => {
+            'id': s.id,
+            'name': s.name,
+            'description': s.description,
+            'icon': s.iconData,
+            'color': s.categoryColor,
+            'price': s.priceFrom.toInt(),
+            'duration': '45 min',
+          }).toList()
+        : _onDemandServices;
+
+    if (_selectedService == null || !availableServices.any((s) => s['id'] == _selectedService?['id'])) {
+      _selectedService = availableServices.first;
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textCol = isDark ? Colors.white : AppTheme.textPrimary;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
       child: Column(
@@ -1001,9 +1024,9 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 'Select Care Service',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textCol),
               ),
               Text(
                 '${_nearbyProviders.length} nearby online',
@@ -1018,10 +1041,10 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
             height: 120,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              itemCount: _onDemandServices.length,
+              itemCount: availableServices.length,
               separatorBuilder: (_, __) => const SizedBox(width: 10),
               itemBuilder: (context, index) {
-                final svc = _onDemandServices[index];
+                final svc = availableServices[index];
                 final isSelected = _selectedService?['id'] == svc['id'];
 
                 return InkWell(
@@ -1031,10 +1054,14 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
                     width: 152,
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(
-                      color: isSelected ? const Color(0xFFE6F5F2) : Colors.grey.shade50,
+                      color: isSelected
+                          ? (isDark ? const Color(0xFF134E48) : const Color(0xFFE6F5F2))
+                          : (isDark ? const Color(0xFF0F172A) : Colors.grey.shade50),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: isSelected ? const Color(0xFF0D7C6A) : Colors.grey.shade200,
+                        color: isSelected
+                            ? const Color(0xFF0D7C6A)
+                            : (isDark ? const Color(0xFF334155) : Colors.grey.shade200),
                         width: isSelected ? 2 : 1,
                       ),
                     ),
@@ -1056,7 +1083,7 @@ class _OnDemandFlowScreenState extends ConsumerState<OnDemandFlowScreen> with Ti
                           svc['name'] as String,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.textPrimary),
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: textCol),
                         ),
                         Text(
                           'Est. ${svc['duration']}',

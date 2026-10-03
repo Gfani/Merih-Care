@@ -139,9 +139,30 @@ class SecureStorage {
     } catch (_) {}
   }
 
+  final Map<String, String> _genericFallback = {};
+
+  Future<void> writeString(String key, String value) async {
+    _genericFallback[key] = value;
+    try {
+      await _storage.write(key: key, value: value);
+    } catch (_) {}
+  }
+
+  Future<String?> readString(String key) async {
+    try {
+      final val = await _storage.read(key: key);
+      if (val != null) {
+        _genericFallback[key] = val;
+        return val;
+      }
+    } catch (_) {}
+    return _genericFallback[key];
+  }
+
   Future<void> deleteKey(String key) async {
     if (key == _phoneKey || key == 'last_phone') _phoneFallback = null;
     if (key == _emailKey) _emailFallback = null;
+    _genericFallback.remove(key);
     try {
       await _storage.delete(key: key);
     } catch (_) {}

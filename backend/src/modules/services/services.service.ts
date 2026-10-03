@@ -43,7 +43,34 @@ export class ServicesService {
       if (data.icon !== undefined) service.icon = data.icon;
       if (data.priceFrom !== undefined) service.priceFrom = Number(data.priceFrom);
       if (data.status !== undefined) service.status = data.status;
-      return this.serviceRepo.save(service);
+      const saved = await this.serviceRepo.save(service);
+
+      const aliasMap: Record<string, string> = {
+        "doctor-visit": "srv-1",
+        "srv-1": "doctor-visit",
+        "home-nursing": "srv-2",
+        "srv-2": "home-nursing",
+        "physiotherapy": "srv-3",
+        "srv-3": "physiotherapy",
+        "elderly-care": "srv-4",
+        "srv-4": "elderly-care",
+      };
+      const aliasId = aliasMap[id];
+      if (aliasId) {
+        try {
+          const aliasService = await this.serviceRepo.findOne({ where: { id: aliasId } });
+          if (aliasService) {
+            if (data.name !== undefined) aliasService.name = data.name;
+            if (data.description !== undefined) aliasService.description = data.description;
+            if (data.icon !== undefined) aliasService.icon = data.icon;
+            if (data.priceFrom !== undefined) aliasService.priceFrom = Number(data.priceFrom);
+            if (data.status !== undefined) aliasService.status = data.status;
+            await this.serviceRepo.save(aliasService);
+          }
+        } catch (_) {}
+      }
+
+      return saved;
     }
     return null;
   }

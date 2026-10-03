@@ -1505,6 +1505,33 @@ export class AuthService {
     return result;
   }
 
+  async updateProfile(id: string, updates: { name?: string; phone?: string }): Promise<any> {
+    const user = await this.userRepo.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException("User not found");
+    }
+    if (updates.name && updates.name.trim().length > 0) {
+      user.name = updates.name.trim();
+    }
+    if (updates.phone !== undefined) {
+      user.phone = updates.phone.trim();
+    }
+    const saved = await this.userRepo.save(user);
+
+    if (this.providerRepo) {
+      try {
+        const prov = await this.providerRepo.findOne({ where: { userId: id } });
+        if (prov) {
+          if (updates.name) prov.name = updates.name.trim();
+          if (updates.phone !== undefined) prov.phone = updates.phone.trim();
+          await this.providerRepo.save(prov);
+        }
+      } catch (_) {}
+    }
+
+    return this.getUserById(saved.id);
+  }
+
   async savePendingMfaSecret(userId: string, secret: string): Promise<void> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (user) {

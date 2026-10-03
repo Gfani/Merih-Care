@@ -612,6 +612,13 @@ export class AuthController {
     return this.authService.getUserById(userId);
   }
 
+  @Put("profile")
+  @UseGuards(JwtAuthGuard)
+  async updateProfile(@Body() body: { name?: string; phone?: string }, @Req() req: any) {
+    const userId = req.user.id || req.user.sub;
+    return this.authService.updateProfile(userId, body);
+  }
+
   @Delete("account")
   @UseGuards(JwtAuthGuard)
   async deleteAccount(@Req() req: any) {

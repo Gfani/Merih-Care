@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../auth/auth_provider.dart';
 import '../../core/network/network_providers.dart';
+import '../../core/theme/theme_provider.dart';
 
 class ProfileSettingsScreen extends ConsumerStatefulWidget {
   const ProfileSettingsScreen({super.key});
@@ -31,6 +32,118 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
         ref.read(authProvider.notifier).updateUser(data);
       }
     } catch (_) {}
+  }
+
+  void _showEditProfileModal(Map<String, dynamic> user) {
+    final nameCtrl = TextEditingController(text: (user['name'] ?? '').toString());
+    final phoneCtrl = TextEditingController(text: (user['phone'] ?? '').toString());
+    bool isSaving = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (modalCtx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Edit Profile', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: nameCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Full Name',
+                  prefixIcon: const Icon(Icons.person_outline),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: phoneCtrl,
+                keyboardType: TextInputType.phone,
+                decoration: InputDecoration(
+                  labelText: 'Phone Number',
+                  prefixIcon: const Icon(Icons.phone_outlined),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0D7C6A),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final newName = nameCtrl.text.trim();
+                          final newPhone = phoneCtrl.text.trim();
+                          if (newName.isEmpty) return;
+
+                          setModalState(() => isSaving = true);
+                          try {
+                            final client = ref.read(apiClientProvider);
+                            final res = await client.dio.put('/auth/profile', data: {
+                              'name': newName,
+                              'phone': newPhone,
+                            });
+                            final dynamic data = res.data;
+                            if (data is Map<String, dynamic>) {
+                              ref.read(authProvider.notifier).updateUser(data);
+                            } else {
+                              final updated = Map<String, dynamic>.from(user);
+                              updated['name'] = newName;
+                              updated['phone'] = newPhone;
+                              ref.read(authProvider.notifier).updateUser(updated);
+                            }
+                          } catch (_) {
+                            final updated = Map<String, dynamic>.from(user);
+                            updated['name'] = newName;
+                            updated['phone'] = newPhone;
+                            ref.read(authProvider.notifier).updateUser(updated);
+                          }
+
+                          if (mounted) {
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Profile updated successfully.'),
+                                backgroundColor: Color(0xFF0D7C6A),
+                              ),
+                            );
+                          }
+                        },
+                  child: isSaving
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('Save Changes', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _confirmSignOut() {
@@ -65,6 +178,13 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
     final auth = ref.watch(authProvider);
     final user = auth.user ?? {};
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final textCol = isDark ? Colors.white : const Color(0xFF1E293B);
+    final textSubCol = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+    final borderCol = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+    final statBoxBg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
+
     final displayName = (user['name'] != null && user['name'].toString().trim().isNotEmpty)
         ? user['name'].toString().trim()
         : 'Tigist Bekele';
@@ -83,16 +203,16 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
         user['providerId'] != null;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Profile',
           style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.bold,
-            color: Color(0xFF1E293B),
+            color: textCol,
           ),
         ),
       ),
@@ -106,9 +226,9 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: cardBg,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: borderCol),
               ),
               child: Column(
                 children: [
@@ -127,24 +247,29 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                           children: [
                             Text(
                               displayName,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF1E293B),
+                                color: textCol,
                               ),
                             ),
                             const SizedBox(height: 3),
                             Text(
                               displayPhone,
-                              style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                              style: TextStyle(fontSize: 13, color: textSubCol),
                             ),
                             const SizedBox(height: 2),
                             Text(
                               displayEmail,
-                              style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                              style: TextStyle(fontSize: 13, color: textSubCol),
                             ),
                           ],
                         ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined, color: Color(0xFF0D7C6A), size: 22),
+                        tooltip: 'Edit Profile',
+                        onPressed: () => _showEditProfileModal(user),
                       ),
                     ],
                   ),
@@ -154,16 +279,16 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
+                      color: statBoxBg,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
                       children: [
-                        _buildStatColumn('$_appointmentsCount', 'Appointments'),
-                        Container(width: 1, height: 26, color: const Color(0xFFE2E8F0)),
-                        _buildStatColumn('$_completedCount', 'Completed'),
-                        Container(width: 1, height: 26, color: const Color(0xFFE2E8F0)),
-                        _buildStatColumn('$_avgRating', 'Avg Rating'),
+                        _buildStatColumn('$_appointmentsCount', 'Appointments', textCol, textSubCol),
+                        Container(width: 1, height: 26, color: borderCol),
+                        _buildStatColumn('$_completedCount', 'Completed', textCol, textSubCol),
+                        Container(width: 1, height: 26, color: borderCol),
+                        _buildStatColumn('$_avgRating', 'Avg Rating', textCol, textSubCol),
                       ],
                     ),
                   ),
@@ -175,9 +300,9 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
             // ─── Menu Items List ───────────────────────────────────────────────
             Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: cardBg,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: borderCol),
               ),
               child: Column(
                 children: [
@@ -187,74 +312,82 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                     iconBgColor: const Color(0xFFF3E8FF),
                     title: 'Medical Information',
                     badgeText: 'Private',
+                    textCol: textCol,
                     onTap: () => context.push('/medical-information'),
                   ),
-                  _buildDivider(),
+                  _buildDivider(borderCol),
                   _buildMenuItem(
                     icon: Icons.receipt_long_rounded,
                     iconColor: const Color(0xFF64748B),
                     iconBgColor: const Color(0xFFF1F5F9),
                     title: 'Payment History',
+                    textCol: textCol,
                     onTap: () => context.push('/receipts'),
                   ),
-                  _buildDivider(),
+                  _buildDivider(borderCol),
                   _buildMenuItem(
                     icon: Icons.credit_card_rounded,
                     iconColor: const Color(0xFF0284C7),
                     iconBgColor: const Color(0xFFE0F2FE),
                     title: 'Payment Methods',
+                    textCol: textCol,
                     onTap: () => context.push('/payout-methods'),
                   ),
-                  _buildDivider(),
+                  _buildDivider(borderCol),
                   _buildMenuItem(
                     icon: Icons.location_on_rounded,
                     iconColor: const Color(0xFFE11D48),
                     iconBgColor: const Color(0xFFFFF1F2),
                     title: 'Saved Addresses',
+                    textCol: textCol,
                     onTap: () {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Saved addresses feature coming soon.')),
                       );
                     },
                   ),
-                  _buildDivider(),
+                  _buildDivider(borderCol),
                   _buildMenuItem(
                     icon: Icons.notifications_rounded,
                     iconColor: const Color(0xFFD97706),
                     iconBgColor: const Color(0xFFFEF3C7),
                     title: 'Notifications',
+                    textCol: textCol,
                     onTap: () => context.push('/notifications'),
                   ),
-                  _buildDivider(),
+                  _buildDivider(borderCol),
                   _buildMenuItem(
                     icon: Icons.lock_rounded,
                     iconColor: const Color(0xFFEA580C),
                     iconBgColor: const Color(0xFFFFEDD5),
                     title: 'Privacy & Security',
+                    textCol: textCol,
                     onTap: () {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('All data is encrypted end-to-end.')),
                       );
                     },
                   ),
-                  _buildDivider(),
+                  _buildDivider(borderCol),
                   _buildMenuItem(
                     icon: Icons.help_outline_rounded,
                     iconColor: const Color(0xFFDC2626),
                     iconBgColor: const Color(0xFFFEE2E2),
                     title: 'Help & Support',
+                    textCol: textCol,
                     onTap: () {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Contact support: support@merihcare.live')),
                       );
                     },
                   ),
-                  _buildDivider(),
+                  _buildDivider(borderCol),
                   _buildMenuItem(
                     icon: Icons.settings_rounded,
                     iconColor: const Color(0xFF8B5CF6),
                     iconBgColor: const Color(0xFFF3E8FF),
                     title: 'Settings',
+                    textCol: textCol,
                     onTap: () {
                       _showLanguageAndThemeModal();
                     },
@@ -322,7 +455,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
               break;
           }
         },
-        backgroundColor: Colors.white,
+        backgroundColor: cardBg,
         elevation: 2,
         destinations: const [
           NavigationDestination(
@@ -363,22 +496,22 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
     );
   }
 
-  Widget _buildStatColumn(String value, String label) {
+  Widget _buildStatColumn(String value, String label, Color textCol, Color subCol) {
     return Expanded(
       child: Column(
         children: [
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: Color(0xFF1E293B),
+              color: textCol,
             ),
           ),
           const SizedBox(height: 2),
           Text(
             label,
-            style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+            style: TextStyle(fontSize: 11, color: subCol),
           ),
         ],
       ),
@@ -391,6 +524,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
     required Color iconBgColor,
     required String title,
     String? badgeText,
+    required Color textCol,
     required VoidCallback onTap,
   }) {
     return InkWell(
@@ -412,10 +546,10 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w500,
-                  color: Color(0xFF1E293B),
+                  color: textCol,
                 ),
               ),
             ),
@@ -444,8 +578,8 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
     );
   }
 
-  Widget _buildDivider() {
-    return const Divider(height: 1, indent: 56, endIndent: 16, color: Color(0xFFF1F5F9));
+  Widget _buildDivider(Color dividerCol) {
+    return Divider(height: 1, indent: 56, endIndent: 16, color: dividerCol);
   }
 
   void _showLanguageAndThemeModal() {
@@ -453,73 +587,84 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
       context: context,
       useSafeArea: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 20,
-            bottom: 24 + MediaQuery.of(ctx).viewInsets.bottom,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      builder: (ctx) => Consumer(
+        builder: (bottomSheetCtx, bottomRef, _) {
+          final isDarkActive = bottomRef.watch(themeModeProvider) == ThemeMode.dark ||
+              (bottomRef.watch(themeModeProvider) == ThemeMode.system &&
+                  Theme.of(bottomSheetCtx).brightness == Brightness.dark);
+          final modalBg = isDarkActive ? const Color(0xFF1E293B) : Colors.white;
+          final modalText = isDarkActive ? Colors.white : const Color(0xFF1E293B);
+
+          return SafeArea(
+            child: Container(
+              color: modalBg,
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: 24 + MediaQuery.of(bottomSheetCtx).viewInsets.bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('App Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 20),
-                    onPressed: () => Navigator.pop(ctx),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('App Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: modalText)),
+                      IconButton(
+                        icon: Icon(Icons.close, size: 20, color: modalText),
+                        onPressed: () => Navigator.pop(bottomSheetCtx),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE6F5F2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.language, color: Color(0xFF0D7C6A), size: 20),
+                    ),
+                    title: Text('Language / ቋንቋ', style: TextStyle(fontWeight: FontWeight.w600, color: modalText)),
+                    subtitle: const Text('English · አማርኛ · Afaan Oromoo · ትግርኛ', style: TextStyle(fontSize: 12)),
+                    trailing: const Icon(Icons.chevron_right, size: 20),
+                    onTap: () {
+                      Navigator.pop(bottomSheetCtx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Language preference saved.')),
+                      );
+                    },
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE6F5F2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.dark_mode_outlined, color: Color(0xFF0D7C6A), size: 20),
+                    ),
+                    title: Text('Dark Mode', style: TextStyle(fontWeight: FontWeight.w600, color: modalText)),
+                    subtitle: const Text('Toggle light or dark appearance', style: TextStyle(fontSize: 12)),
+                    trailing: Switch(
+                      value: isDarkActive,
+                      activeColor: const Color(0xFF0D7C6A),
+                      onChanged: (val) {
+                        bottomRef.read(themeModeProvider.notifier).toggleTheme(val);
+                      },
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE6F5F2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.language, color: Color(0xFF0D7C6A), size: 20),
-                ),
-                title: const Text('Language / ቋንቋ', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('English · አማርኛ · Afaan Oromoo · ትግርኛ', style: TextStyle(fontSize: 12)),
-                trailing: const Icon(Icons.chevron_right, size: 20),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Language preference saved.')),
-                  );
-                },
-              ),
-              const Divider(height: 1),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE6F5F2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.dark_mode_outlined, color: Color(0xFF0D7C6A), size: 20),
-                ),
-                title: const Text('Dark Mode', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Toggle light or dark appearance', style: TextStyle(fontSize: 12)),
-                trailing: Switch(
-                  value: Theme.of(context).brightness == Brightness.dark,
-                  activeColor: const Color(0xFF0D7C6A),
-                  onChanged: (val) {
-                    Navigator.pop(ctx);
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }

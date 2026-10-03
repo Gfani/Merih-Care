@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/network/network_providers.dart';
+import '../../core/theme/theme_provider.dart';
 import '../auth/auth_provider.dart';
 import 'widgets/provider_bottom_nav_bar.dart';
 
@@ -80,73 +81,84 @@ class _ProviderProfileSettingsScreenState extends ConsumerState<ProviderProfileS
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 20,
-            bottom: 20 + MediaQuery.of(ctx).viewInsets.bottom,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      builder: (ctx) => Consumer(
+        builder: (bottomSheetCtx, bottomRef, _) {
+          final isDarkActive = bottomRef.watch(themeModeProvider) == ThemeMode.dark ||
+              (bottomRef.watch(themeModeProvider) == ThemeMode.system &&
+                  Theme.of(bottomSheetCtx).brightness == Brightness.dark);
+          final modalBg = isDarkActive ? const Color(0xFF1E293B) : Colors.white;
+          final modalText = isDarkActive ? Colors.white : const Color(0xFF1E293B);
+
+          return SafeArea(
+            child: Container(
+              color: modalBg,
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: 20 + MediaQuery.of(bottomSheetCtx).viewInsets.bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('App Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 20),
-                    onPressed: () => Navigator.pop(ctx),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('App Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: modalText)),
+                      IconButton(
+                        icon: Icon(Icons.close, size: 20, color: modalText),
+                        onPressed: () => Navigator.pop(bottomSheetCtx),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE6F5F2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.language, color: Color(0xFF0D7C6A), size: 20),
+                    ),
+                    title: Text('Language / ቋንቋ', style: TextStyle(fontWeight: FontWeight.w600, color: modalText)),
+                    subtitle: const Text('English · አማርኛ · Afaan Oromoo · ትግርኛ', style: TextStyle(fontSize: 12)),
+                    trailing: const Icon(Icons.chevron_right, size: 20),
+                    onTap: () {
+                      Navigator.pop(bottomSheetCtx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Language selection updated')),
+                      );
+                    },
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE6F5F2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.dark_mode_outlined, color: Color(0xFF0D7C6A), size: 20),
+                    ),
+                    title: Text('Dark Mode', style: TextStyle(fontWeight: FontWeight.w600, color: modalText)),
+                    subtitle: const Text('Toggle light or dark theme', style: TextStyle(fontSize: 12)),
+                    trailing: Switch(
+                      value: isDarkActive,
+                      activeColor: const Color(0xFF0D7C6A),
+                      onChanged: (val) {
+                        bottomRef.read(themeModeProvider.notifier).toggleTheme(val);
+                      },
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE6F5F2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.language, color: Color(0xFF0D7C6A), size: 20),
-                ),
-                title: const Text('Language / ቋንቋ', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('English · አማርኛ · Afaan Oromoo · ትግርኛ', style: TextStyle(fontSize: 12)),
-                trailing: const Icon(Icons.chevron_right, size: 20),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Language selection updated')),
-                  );
-                },
-              ),
-              const Divider(height: 1),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE6F5F2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.dark_mode_outlined, color: Color(0xFF0D7C6A), size: 20),
-                ),
-                title: const Text('Dark Mode', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Toggle light or dark theme', style: TextStyle(fontSize: 12)),
-                trailing: Switch(
-                  value: Theme.of(context).brightness == Brightness.dark,
-                  activeColor: const Color(0xFF0D7C6A),
-                  onChanged: (val) {
-                    Navigator.pop(ctx);
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -161,11 +173,19 @@ class _ProviderProfileSettingsScreenState extends ConsumerState<ProviderProfileS
     final experience = (_providerProfile?['experience'] as num?)?.toInt() ?? 6;
     final isVerified = _providerProfile?['verified'] == true || _providerProfile?['isApproved'] == true;
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scaffoldBg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final textCol = isDark ? Colors.white : const Color(0xFF1E293B);
+    final textSubCol = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+    final borderCol = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+    final dividerCol = isDark ? const Color(0xFF334155) : const Color(0xFFF1F5F9);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: scaffoldBg,
       appBar: AppBar(
-        title: const Text('Provider Profile & Settings'),
-        backgroundColor: Colors.white,
+        title: Text('Provider Profile & Settings', style: TextStyle(color: textCol, fontWeight: FontWeight.bold)),
+        backgroundColor: cardBg,
         elevation: 0,
         automaticallyImplyLeading: false,
       ),
@@ -183,16 +203,18 @@ class _ProviderProfileSettingsScreenState extends ConsumerState<ProviderProfileS
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: cardBg,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.03),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+                  border: Border.all(color: borderCol),
+                  boxShadow: isDark
+                      ? []
+                      : [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.03),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                 ),
                 child: Column(
                   children: [
@@ -217,18 +239,18 @@ class _ProviderProfileSettingsScreenState extends ConsumerState<ProviderProfileS
                             children: [
                               Text(
                                 name,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1E293B),
+                                  color: textCol,
                                 ),
                               ),
                               const SizedBox(height: 2),
                               Text(
                                 title,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 13,
-                                  color: Color(0xFF64748B),
+                                  color: textSubCol,
                                 ),
                               ),
                               const SizedBox(height: 6),
@@ -267,13 +289,13 @@ class _ProviderProfileSettingsScreenState extends ConsumerState<ProviderProfileS
                         ),
                       ],
                     ),
-                    const Divider(height: 28),
+                    Divider(height: 28, color: dividerCol),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _buildStat('Rating', '$rating ★ ($reviewCount)'),
-                        _buildStat('Experience', '$experience Years'),
-                        _buildStat('Status', 'On Duty'),
+                        _buildStat('Rating', '$rating ★ ($reviewCount)', textCol, textSubCol),
+                        _buildStat('Experience', '$experience Years', textCol, textSubCol),
+                        _buildStat('Status', 'On Duty', textCol, textSubCol),
                       ],
                     ),
                   ],
@@ -285,9 +307,9 @@ class _ProviderProfileSettingsScreenState extends ConsumerState<ProviderProfileS
               // ─── Settings & Action Menu ─────────────────────────────────────────
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: cardBg,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: borderCol),
                 ),
                 child: Column(
                   children: [
@@ -297,18 +319,22 @@ class _ProviderProfileSettingsScreenState extends ConsumerState<ProviderProfileS
                       iconBgColor: const Color(0xFFE6F5F2),
                       title: 'Edit Profile Details',
                       subtitle: 'Name, specialized services, visit fees, bio',
+                      textCol: textCol,
+                      subCol: textSubCol,
                       onTap: () => context.push('/provider/edit-profile'),
                     ),
-                    _buildDivider(),
+                    _buildDivider(dividerCol),
                     _buildMenuItem(
                       icon: Icons.schedule_rounded,
                       iconColor: const Color(0xFF0284C7),
                       iconBgColor: const Color(0xFFE0F2FE),
                       title: 'Availability & Working Hours',
                       subtitle: 'Manage duty hours and time slots',
+                      textCol: textCol,
+                      subCol: textSubCol,
                       onTap: () => context.push('/provider/availability'),
                     ),
-                    _buildDivider(),
+                    _buildDivider(dividerCol),
                     _buildMenuItem(
                       icon: Icons.verified_user_rounded,
                       iconColor: const Color(0xFF16A34A),
@@ -316,42 +342,52 @@ class _ProviderProfileSettingsScreenState extends ConsumerState<ProviderProfileS
                       title: 'Verification & Credentials',
                       subtitle: 'Medical licenses, degrees & legal documents',
                       badgeText: 'Verified',
+                      textCol: textCol,
+                      subCol: textSubCol,
                       onTap: () => context.push('/provider/verification'),
                     ),
-                    _buildDivider(),
+                    _buildDivider(dividerCol),
                     _buildMenuItem(
                       icon: Icons.account_balance_rounded,
                       iconColor: const Color(0xFF8B5CF6),
                       iconBgColor: const Color(0xFFF3E8FF),
                       title: 'Payout Methods',
                       subtitle: 'Telebirr & CBE accounts for withdrawal',
+                      textCol: textCol,
+                      subCol: textSubCol,
                       onTap: () => context.push('/provider/payout-methods'),
                     ),
-                    _buildDivider(),
+                    _buildDivider(dividerCol),
                     _buildMenuItem(
                       icon: Icons.receipt_long_rounded,
                       iconColor: const Color(0xFFD97706),
                       iconBgColor: const Color(0xFFFEF3C7),
                       title: 'Payment Receipts',
                       subtitle: 'View appointment receipts and ledger',
+                      textCol: textCol,
+                      subCol: textSubCol,
                       onTap: () => context.push('/receipts'),
                     ),
-                    _buildDivider(),
+                    _buildDivider(dividerCol),
                     _buildMenuItem(
                       icon: Icons.settings_rounded,
                       iconColor: const Color(0xFF475569),
                       iconBgColor: const Color(0xFFF1F5F9),
                       title: 'Settings',
                       subtitle: 'App language, dark theme & notifications',
+                      textCol: textCol,
+                      subCol: textSubCol,
                       onTap: _showSettingsModal,
                     ),
-                    _buildDivider(),
+                    _buildDivider(dividerCol),
                     _buildMenuItem(
                       icon: Icons.help_outline_rounded,
                       iconColor: const Color(0xFFEA580C),
                       iconBgColor: const Color(0xFFFFEDD5),
                       title: 'Help & Support',
                       subtitle: 'Clinical support: support@merihcare.live',
+                      textCol: textCol,
+                      subCol: textSubCol,
                       onTap: () {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Support line: support@merihcare.live | +251 939 044 079')),
@@ -406,21 +442,21 @@ class _ProviderProfileSettingsScreenState extends ConsumerState<ProviderProfileS
     );
   }
 
-  Widget _buildStat(String label, String value) {
+  Widget _buildStat(String label, String value, Color textCol, Color subCol) {
     return Column(
       children: [
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.bold,
-            color: Color(0xFF1E293B),
+            color: textCol,
           ),
         ),
         const SizedBox(height: 2),
         Text(
           label,
-          style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+          style: TextStyle(fontSize: 11, color: subCol),
         ),
       ],
     );
@@ -433,6 +469,8 @@ class _ProviderProfileSettingsScreenState extends ConsumerState<ProviderProfileS
     required String title,
     required String subtitle,
     String? badgeText,
+    required Color textCol,
+    required Color subCol,
     required VoidCallback onTap,
   }) {
     return InkWell(
@@ -458,16 +496,16 @@ class _ProviderProfileSettingsScreenState extends ConsumerState<ProviderProfileS
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF1E293B),
+                      color: textCol,
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                    style: TextStyle(fontSize: 12, color: subCol),
                   ),
                 ],
               ),
@@ -497,7 +535,7 @@ class _ProviderProfileSettingsScreenState extends ConsumerState<ProviderProfileS
     );
   }
 
-  Widget _buildDivider() {
-    return const Divider(height: 1, indent: 64, endIndent: 16, color: Color(0xFFF1F5F9));
+  Widget _buildDivider(Color dividerCol) {
+    return Divider(height: 1, indent: 64, endIndent: 16, color: dividerCol);
   }
 }

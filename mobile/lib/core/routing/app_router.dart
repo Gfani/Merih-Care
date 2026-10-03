@@ -119,7 +119,11 @@ final appRouter = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/booking',
-        builder: (ctx, state) => BookingScreen(providerId: state.uri.queryParameters['providerId'] ?? ''),
+        builder: (ctx, state) => BookingScreen(
+          providerId: state.uri.queryParameters['providerId'] ?? '',
+          serviceId: state.uri.queryParameters['serviceId'],
+          serviceName: state.uri.queryParameters['service'] ?? state.uri.queryParameters['serviceName'] ?? state.uri.queryParameters['specialty'],
+        ),
       ),
       GoRoute(path: '/appointments', builder: (ctx, _) => const AppointmentsScreen()),
       GoRoute(

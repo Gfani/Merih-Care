@@ -5,6 +5,9 @@ import '../../core/theme/app_theme.dart';
 import '../../core/network/network_providers.dart';
 import '../../shared/widgets/create_design_widgets.dart';
 
+import '../../core/storage/secure_storage.dart';
+import '../auth/auth_provider.dart';
+
 class PaymentScreen extends ConsumerStatefulWidget {
   final String appointmentId;
 
@@ -56,7 +59,31 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   @override
   void initState() {
     super.initState();
+    _loadSavedPaymentInfo();
     _loadAppointment();
+  }
+
+  Future<void> _loadSavedPaymentInfo() async {
+    try {
+      final user = ref.read(authProvider).user;
+      final userPhone = user?['phone']?.toString();
+      if (userPhone != null && userPhone.isNotEmpty) {
+        _phoneController.text = userPhone;
+      }
+
+      final savedMethod = await SecureStorage.instance.readString('patient_preferred_payment_method');
+      final savedPhone = await SecureStorage.instance.readString('patient_payment_phone');
+      if (mounted) {
+        setState(() {
+          if (savedMethod != null && savedMethod.isNotEmpty) {
+            _selectedMethod = savedMethod;
+          }
+          if (savedPhone != null && savedPhone.isNotEmpty) {
+            _phoneController.text = savedPhone;
+          }
+        });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -91,6 +118,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     setState(() => _loading = true);
 
     try {
+      try {
+        await SecureStorage.instance.writeString('patient_preferred_payment_method', _selectedMethod);
+        await SecureStorage.instance.writeString('patient_payment_phone', _phoneController.text.trim());
+      } catch (_) {}
+
       final client = ref.read(apiClientProvider);
       final aptId = widget.appointmentId.isNotEmpty ? widget.appointmentId : 'apt-active';
       final response = await client.dio.post('/payments/process-direct', data: {
@@ -122,8 +154,14 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final borderCol = isDark ? const Color(0xFF334155) : AppTheme.borderColor;
+    final textPrimaryCol = isDark ? Colors.white : AppTheme.textPrimary;
+
     return Scaffold(
-      backgroundColor: AppTheme.surfaceColor,
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Checkout Payment'),
       ),
@@ -142,7 +180,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(_serviceName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text(_serviceName, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: textPrimaryCol)),
                         const StatusBadgeWidget(status: 'pending'),
                       ],
                     ),
@@ -150,7 +188,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Total Due', style: TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
+                        Text('Total Due', style: TextStyle(fontSize: 14, color: isDark ? const Color(0xFF94A3B8) : AppTheme.textSecondary)),
                         Text('ETB ${_amount.toStringAsFixed(2)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
                       ],
                     ),
@@ -159,7 +197,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               ),
 
               const SizedBox(height: 20),
-              const Text('Select Payment Method', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              Text('Select Payment Method', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: textPrimaryCol)),
               const SizedBox(height: 12),
 
               ..._paymentMethods.map((m) {
@@ -167,15 +205,18 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: InkWell(
-                    onTap: () => setState(() => _selectedMethod = m['id'] as String),
+                    onTap: () {
+                      setState(() => _selectedMethod = m['id'] as String);
+                      SecureStorage.instance.writeString('patient_preferred_payment_method', m['id'] as String);
+                    },
                     borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                     child: Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: cardBg,
                         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
                         border: Border.all(
-                          color: isSelected ? AppTheme.primaryColor : AppTheme.borderColor,
+                          color: isSelected ? AppTheme.primaryColor : borderCol,
                           width: isSelected ? 2 : 1,
                         ),
                       ),
@@ -195,7 +236,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(m['name'] as String, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                                Text(m['name'] as String, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: textPrimaryCol)),
                                 const SizedBox(height: 2),
                                 Text(m['description'] as String, style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                               ],
@@ -206,7 +247,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                             groupValue: _selectedMethod,
                             activeColor: AppTheme.primaryColor,
                             onChanged: (val) {
-                              if (val != null) setState(() => _selectedMethod = val);
+                              if (val != null) {
+                                setState(() => _selectedMethod = val);
+                                SecureStorage.instance.writeString('patient_preferred_payment_method', val);
+                              }
                             },
                           ),
                         ],
